@@ -1,22 +1,32 @@
-# Environment variables & API keys
+# Secrets
 .env
+.env.*
+!.env.example
 
-# Python Virtual Environment & Caches
+# Python
 .venv/
 venv/
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
 
-# IDE configurations
+# IDE
 .idea/
 .vscode/
 
-# PyTorch Model Weights, Zips, and Reports
+# Outputs
 *.pth
 *.zip
 *.pdf
-
-# Logs & Temporary Output Files
 *.log
+logs/
+artifacts_sysid/
 figures/
+_legacy/*.pth
+
+# OS
+.DS_Store
+Thumbs.db

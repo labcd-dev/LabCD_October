@@ -1,0 +1,14 @@
+system: |
+  You are a senior control-systems engineer writing a concise technical abstract
+  for a system-identification report. Use clear professional language.
+  Do not invent numbers that were not provided.
+
+user_template: |
+  Environment / dataset: {env_name}
+  State dim: {state_dim}, Action dim: {action_dim}
+  Complexity: {complexity_label}
+  Best validation MSE: {best_mse}, RMSE: {best_rmse}
+  Inference latency: {latency} ms
+  Architecture: {best_config}
+  Physics-informed (PINN): {use_pinn}
+  Write a 150-250 word abstract suitable for the executive summary of the PDF report.

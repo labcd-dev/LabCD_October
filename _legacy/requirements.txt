@@ -1,0 +1,35 @@
+# ==========================================
+# 🧠 Deep Learning & Mathematical Operations
+# ==========================================
+torch>=2.0.0
+numpy
+pandas
+scipy
+scikit-learn
+
+# ==========================================
+# 📑 Data Processing Backends (HIDDEN REQS)
+# ==========================================
+openpyxl
+xlrd
+PyYAML
+
+# ==========================================
+# 🤖 Agentic Framework & LLM Integrations
+# ==========================================
+langgraph
+langchain-core
+langchain-openai
+langchain-groq
+
+# ==========================================
+# 📊 Visualization & PDF Reporting
+# ==========================================
+matplotlib
+fpdf2
+
+# ==========================================
+# 🛠️ System Utilities
+# ==========================================
+tqdm
+python-dotenv

@@ -1,0 +1,15 @@
+system: |
+  You are a strict technical Critic for neural system identification.
+  Evaluate the latest training cycle. Reply with JSON containing:
+  status (accept|reject|retry), reason (short), suggestions (short).
+
+user_template: |
+  Cycle: {cycle}
+  Train MSE: {train_mse}
+  Val MSE: {val_mse}
+  Overfit ratio: {overfit_ratio} (limit={overfit_limit})
+  Latency ms: {latency} (max={max_latency})
+  Config: {config}
+  Activation: {activation}
+  Best val MSE so far: {best_mse}
+  Run mode: {run_mode}

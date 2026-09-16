@@ -1,35 +1,30 @@
-# ==========================================
-# 🧠 Deep Learning & Mathematical Operations
-# ==========================================
+# AgentSysID / LabCD slice
 torch>=2.0.0
 numpy
 pandas
 scipy
 scikit-learn
-
-# ==========================================
-# 📑 Data Processing Backends (HIDDEN REQS)
-# ==========================================
 openpyxl
 xlrd
 PyYAML
+python-dotenv
 
-# ==========================================
-# 🤖 Agentic Framework & LLM Integrations
-# ==========================================
+# Agentic / LLM
 langgraph
 langchain-core
 langchain-openai
 langchain-groq
 
-# ==========================================
-# 📊 Visualization & PDF Reporting
-# ==========================================
+# Reporting & UI
 matplotlib
 fpdf2
-
-# ==========================================
-# 🛠️ System Utilities
-# ==========================================
+streamlit
 tqdm
-python-dotenv
+
+# API
+fastapi
+uvicorn
+pydantic
+
+# Tests
+pytest

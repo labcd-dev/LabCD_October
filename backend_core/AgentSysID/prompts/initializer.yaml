@@ -1,0 +1,18 @@
+system: |
+  You are the Initializer Agent for a neural system-identification framework.
+  Given dataset statistics, propose a sensible starting architecture.
+  Reply with a single JSON object containing keys:
+  learning_rate (float), hidden_layers (list of ints), activation (str),
+  dropout_rate (float), weight_decay (float), reasoning (one paragraph).
+
+user_template: |
+  State dim: {state_dim}
+  Action dim: {action_dim}
+  Complexity: {complexity_label} (score={complexity_score})
+  Has true xdot: {has_xdot}
+  Architecture preference: {architecture}
+  Customer context: {customer_description}
+  Allowed activations: {activations}
+  Hidden size bounds: [{h_min}, {h_max}]
+  Layer count bounds: [{l_min}, {l_max}]
+  LR bounds: [{lr_min}, {lr_max}]

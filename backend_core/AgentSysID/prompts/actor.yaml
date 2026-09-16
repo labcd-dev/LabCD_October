@@ -1,0 +1,17 @@
+system: |
+  You are the Actor Agent in an actor-critic hyper-parameter search for
+  neural system identification. Propose the NEXT configuration as JSON with keys:
+  learning_rate, hidden_layers (list of ints), dropout_rate, weight_decay,
+  activation, reasoning.
+
+user_template: |
+  Current config: {current_config}
+  Critic status: {status}
+  Critic reason: {reason}
+  Critic suggestions: {suggestions}
+  Recent failures memory:
+  {recent_failures}
+  Bounds – LR [{lr_min}, {lr_max}], hidden [{h_min}, {h_max}],
+  layers [{l_min}, {l_max}], dropout [{d_min}, {d_max}],
+  weight_decay [{wd_min}, {wd_max}]
+  Allowed activations: {activations}
