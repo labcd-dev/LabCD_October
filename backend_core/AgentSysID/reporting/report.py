@@ -1,18 +1,22 @@
 """
-PDF report generation and result packaging.
+PDF report generation and structured result packaging.
 
-Currently uses fpdf2 (ported from the original pdf_generator.py).
-When packages/labcd_pdfmaker is available in the monorepo it should be
-preferred – see the migration note in GUIDE.md.
+ZIP layout matches the original backend delivery:
+
+    SystemID_RunResults_<timestamp>.zip
+    ├── README.md
+    ├── Agents_log/
+    ├── figures/
+    ├── deployment/
+    └── report/
 """
 
 from __future__ import annotations
 
 import datetime
-import os
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fpdf import FPDF
 
@@ -62,13 +66,14 @@ def generate_final_pdf(
     output_dir: str | Path = ".",
     filename: Optional[str] = None,
 ) -> str:
-    """Generate a concise PDF report and return the file path."""
+    """Generate PDF under output_dir/report/ and return the file path."""
     output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    report_dir = output_dir / "report"
+    report_dir.mkdir(parents=True, exist_ok=True)
     if filename is None:
         stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"SysID_Report_{env_name}_{stamp}.pdf"
-    path = output_dir / filename
+        filename = f"System_Report_{env_name}_{stamp}.pdf"
+    path = report_dir / filename
 
     pdf = SystemIDReport()
     pdf.add_page()
@@ -100,22 +105,102 @@ def generate_final_pdf(
 
 
 def package_final_results_to_zip(
-    pdf_filename: str,
-    extra_files: Optional[List[str]] = None,
-    output_dir: str | Path = ".",
-    env_name: str = "system",
+    run_dir: str | Path,
+    env_name: str,
+    timestamp: str,
+    pdf_filename: Optional[str] = None,
 ) -> str:
-    """Bundle PDF + optional artefacts into a ZIP and return the zip path."""
-    output_dir = Path(output_dir)
-    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    zip_path = output_dir / f"SysID_Delivery_{env_name}_{stamp}.zip"
+    """
+    Package run_dir into SystemID_RunResults_<timestamp>.zip:
 
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        if os.path.isfile(pdf_filename):
-            zf.write(pdf_filename, arcname=os.path.basename(pdf_filename))
-        for f in extra_files or []:
-            if os.path.isfile(f):
-                zf.write(f, arcname=os.path.basename(f))
+        README.md, figures/, deployment/, report/, Agents_log/
+    """
+    run_dir = Path(run_dir)
+    zip_filename = run_dir / f"SystemID_RunResults_{timestamp}.zip"
 
-    print(f"   📦 Delivery ZIP written → {zip_path}")
-    return str(zip_path)
+    print("\n" + "=" * 80)
+    print("📦 PACKAGING FINAL PIPELINE RESULTS")
+    print("=" * 80)
+
+    readme_content = f"""# System Identification & Neural Controller Package
+**Run Timestamp:** {timestamp}
+**Framework:** AgentSysID (LabCD multi-agent system identification)
+
+---
+
+## Directory Structure
+
+### 1. `figures/`
+Diagnostic plots (MSE/RMSE convergence, latency, hyperparameters, architecture contour).
+
+### 2. `deployment/`
+* **Model weights (`*.pth`)**
+* **`deployed_controller_{env_name}.py`** – standalone NeuralController
+* **`NN.py`** – inference / integration snippet
+
+### 3. `report/`
+PDF engineering report.
+
+### 4. `Agents_log/`
+LLM conversation history (prompts, responses, token usage).
+"""
+    readme_path = run_dir / "README.md"
+    readme_path.write_text(readme_content, encoding="utf-8")
+
+    with zipfile.ZipFile(zip_filename, "w", compression=zipfile.ZIP_DEFLATED) as zipf:
+        zipf.write(readme_path, arcname="README.md")
+        print("  ├── Added root README.md")
+
+        fig_dir = run_dir / "figures"
+        n_fig = 0
+        if fig_dir.is_dir():
+            for img in sorted(fig_dir.glob("*.png")):
+                zipf.write(img, arcname=f"figures/{img.name}")
+                n_fig += 1
+        print(f"  ├── [figures/] {n_fig} plot(s)")
+
+        dep_dir = run_dir / "deployment"
+        n_dep = 0
+        if dep_dir.is_dir():
+            for f in sorted(dep_dir.iterdir()):
+                if f.is_file():
+                    zipf.write(f, arcname=f"deployment/{f.name}")
+                    n_dep += 1
+        for m in sorted(run_dir.glob("*.pth")):
+            zipf.write(m, arcname=f"deployment/{m.name}")
+            n_dep += 1
+        print(f"  ├── [deployment/] {n_dep} file(s)")
+
+        report_dir = run_dir / "report"
+        n_rep = 0
+        if report_dir.is_dir():
+            for f in sorted(report_dir.glob("*.pdf")):
+                zipf.write(f, arcname=f"report/{f.name}")
+                n_rep += 1
+        if pdf_filename and Path(pdf_filename).is_file():
+            p = Path(pdf_filename)
+            if p.parent.resolve() != report_dir.resolve():
+                zipf.write(p, arcname=f"report/{p.name}")
+                n_rep += 1
+        print(f"  ├── [report/] {n_rep} PDF(s)")
+
+        n_log = 0
+        for pattern in ("*.txt", "*.log"):
+            for logf in sorted(run_dir.glob(pattern)):
+                if logf.name.lower().startswith("readme"):
+                    continue
+                zipf.write(logf, arcname=f"Agents_log/{logf.name}")
+                n_log += 1
+        agents_dir = run_dir / "Agents_log"
+        if agents_dir.is_dir():
+            for logf in sorted(agents_dir.iterdir()):
+                if logf.is_file():
+                    zipf.write(logf, arcname=f"Agents_log/{logf.name}")
+                    n_log += 1
+        print(f"  ├── [Agents_log/] {n_log} log file(s)")
+
+    print("-" * 80)
+    print(f"  ✅ ZIP: {zip_filename}")
+    print(f"  📂 {zip_filename.resolve()}")
+    print("=" * 80 + "\n")
+    return str(zip_filename)

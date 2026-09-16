@@ -27,13 +27,11 @@ backend_core/AgentSysID/   # core package (run_cli, agents, model, training, …
 backend_api/AgentSysID/    # ASSIGNMENT.md only
 frontend_streamlit/        # ASSIGNMENT.md only
 frontend_mockup/           # ASSIGNMENT.md only
-HANDOFF.md                 # ownership split
 _legacy/                   # original flat sources
 ```
 
 ## Docs
 
-- `HANDOFF.md` – who builds what next  
 - `backend_core/AgentSysID/GUIDE.md` – product rules  
 - `backend_core/AgentSysID/data/DATA_CONTRACT.md` – dataset columns  
 

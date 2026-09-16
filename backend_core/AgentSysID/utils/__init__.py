@@ -1,6 +1,11 @@
 from .stop_control import request_stop, stop_requested, reset_stop_flag
 from .cost_tracker import APICostTracker, cost_tracker
-from .logging_utils import log_agent_interaction, setup_logging
+from .logging_utils import (
+    log_agent_interaction,
+    setup_logging,
+    setup_run_dir,
+    formatted_log,
+)
 from .device import DEVICE, get_device
 
 __all__ = [
@@ -11,6 +16,8 @@ __all__ = [
     "cost_tracker",
     "log_agent_interaction",
     "setup_logging",
+    "setup_run_dir",
+    "formatted_log",
     "DEVICE",
     "get_device",
 ]

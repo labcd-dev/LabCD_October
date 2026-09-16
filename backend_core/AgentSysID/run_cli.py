@@ -5,6 +5,14 @@ AgentSysID CLI entry point.
 Usage (from repository root):
     PYTHONPATH=. python -m backend_core.AgentSysID.run_cli
     PYTHONPATH=. python -m backend_core.AgentSysID.run_cli --data path/to/data.csv --mode fast
+
+All outputs for one run are written under:
+    artifacts_sysid/run_YYYYMMDD_HHMMSS_<env>/
+      llm_conversation_history.txt
+      figures/          # MSE, RMSE, latency, hyperparams, contour
+      deployment/       # .pth, deployed_controller_*.py, NN.py
+      report/           # PDF
+      SystemID_RunResults_<timestamp>.zip
 """
 
 from __future__ import annotations
@@ -16,7 +24,6 @@ import sys
 from pathlib import Path
 from typing import List
 
-import numpy as np
 from sklearn.model_selection import train_test_split
 
 # Ensure repo root is on path when run as script
@@ -34,7 +41,13 @@ from backend_core.AgentSysID.agents import (
     run_data_inspector_agent,
 )
 from backend_core.AgentSysID.data import ExcelDataLoader
-from backend_core.AgentSysID.reporting import generate_final_pdf, package_final_results_to_zip
+from backend_core.AgentSysID.reporting import (
+    generate_final_pdf,
+    package_final_results_to_zip,
+    generate_all_plots,
+    export_standalone_inference_script,
+    write_nn_inference_helper,
+)
 from backend_core.AgentSysID.training import (
     BestConfigTracker,
     compute_rmse,
@@ -46,6 +59,7 @@ from backend_core.AgentSysID.utils import (
     request_stop,
     reset_stop_flag,
     setup_logging,
+    setup_run_dir,
     stop_requested,
 )
 from backend_core.AgentSysID.utils.device import DEVICE
@@ -65,7 +79,12 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("--data", type=str, default=None, help="Path to CSV/Excel dataset")
     parser.add_argument("--mode", type=str, default=cfg.RUN_MODE, choices=["fast", "regular", "heavy"])
     parser.add_argument("--interactive", action="store_true", help="Enable HIL Data Inspector prompts")
-    parser.add_argument("--output-dir", type=str, default="artifacts_sysid", help="Where to write reports")
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="artifacts_sysid",
+        help="Base directory; each run creates a subfolder run_<timestamp>_<env>/",
+    )
     args = parser.parse_args(argv)
 
     data_path = args.data or cfg.EXCEL_FILE_PATH
@@ -77,11 +96,15 @@ def main(argv: List[str] | None = None) -> int:
     reset_stop_flag()
     signal.signal(signal.SIGINT, request_stop)
 
-    log_file = setup_logging("logs")
+    # Per-run folder: artifacts_sysid/run_YYYYMMDD_HHMMSS_<env>/
+    run_dir = setup_run_dir(base_dir=args.output_dir, env_name=cfg.ENV_NAME)
+    log_file = setup_logging(run_dir)
+
     print(f"🚀 PyTorch device: {DEVICE.type.upper()}")
     print(f"📂 Dataset: {data_path}")
     print(f"⚙  Run mode: {args.mode}  |  Interactive HIL: {args.interactive}")
-    print(f"📝 Agent log: {log_file}")
+    print(f"📁 Run folder: {run_dir.resolve()}")
+    print(f"📝 Conversation history: {log_file.name}")
 
     # ------------------------------------------------------------------
     # 1. Load & inspect data
@@ -93,7 +116,6 @@ def main(argv: List[str] | None = None) -> int:
     trajectories = loader.get_trajectories()
     if len(trajectories) < 2:
         print("⚠️  Fewer than 2 trajectories – using a simple 80/20 split of the single segment.")
-        # Duplicate for train/val if needed
         if len(trajectories) == 1:
             trajectories = trajectories * 2
 
@@ -153,7 +175,13 @@ def main(argv: List[str] | None = None) -> int:
             stagnation += 1
 
         performance_history.append(
-            {"cycle": cycle, "val_mse": val_mse, "train_mse": train_mse, "latency": latency, "config": dict(config)}
+            {
+                "cycle": cycle,
+                "val_mse": val_mse,
+                "train_mse": train_mse,
+                "latency": latency,
+                "config": dict(config),
+            }
         )
 
         decision = critic.evaluate(
@@ -185,12 +213,16 @@ def main(argv: List[str] | None = None) -> int:
             )
 
     # ------------------------------------------------------------------
-    # 4. Report & package
+    # 4. Report & package (all under run_dir)
     # ------------------------------------------------------------------
     best_cfg = tracker.best_config or config
     best_mse = tracker.best_mse if tracker.best_mse < float("inf") else float("nan")
     best_rmse = tracker.best_rmse or compute_rmse(best_mse)
-    latency = measure_inference_latency(best_model, loader.state_dim, loader.action_dim) if best_model else 0.0
+    latency = (
+        measure_inference_latency(best_model, loader.state_dim, loader.action_dim)
+        if best_model
+        else 0.0
+    )
 
     report_agent = ReportAgent(log_filename=str(log_file))
     abstract = report_agent.generate_report_text(
@@ -205,8 +237,25 @@ def main(argv: List[str] | None = None) -> int:
         complexity_label=loader.complexity_label,
     )
 
-    out_dir = Path(args.output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    # Timestamp for this packaging batch (matches run folder stamp when possible)
+    run_stamp = run_dir.name.replace("run_", "", 1)
+    if "_" in run_stamp:
+        # run_YYYYMMDD_HHMMSS_env → use YYYYMMDD_HHMMSS
+        parts = run_stamp.split("_")
+        if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+            run_stamp = f"{parts[0]}_{parts[1]}"
+
+    # Figures
+    if getattr(cfg, "SAVE_PLOT", True) and performance_history:
+        print("\n📊 Generating diagnostic figures...")
+        generate_all_plots(
+            performance_history=performance_history,
+            env_name=cfg.ENV_NAME,
+            output_dir=run_dir,
+            timestamp=run_stamp,
+            max_latency=cfg.CUSTOMER_MAX_LATENCY_MS,
+            prefix=getattr(cfg, "PLOT_FILENAME_PREFIX", "system_id"),
+        )
 
     pdf_path = generate_final_pdf(
         env_name=cfg.ENV_NAME,
@@ -218,27 +267,57 @@ def main(argv: List[str] | None = None) -> int:
         state_dim=loader.state_dim,
         action_dim=loader.action_dim,
         use_pinn=cfg.USE_PINN,
-        output_dir=out_dir,
+        output_dir=run_dir,
+        filename=f"System_Report_{cfg.ENV_NAME}_{run_stamp}.pdf",
     )
 
-    extra = []
+    # Deployment artefacts
+    deploy_dir = run_dir / "deployment"
+    deploy_dir.mkdir(parents=True, exist_ok=True)
     if best_model is not None:
-        pth = out_dir / f"best_model_{cfg.ENV_NAME}.pth"
         import torch
+
+        pth = deploy_dir / f"best_model_{cfg.ENV_NAME}_{run_stamp}.pth"
         torch.save(best_model.state_dict(), pth)
-        extra.append(str(pth))
+        print(f"    💾 Weights → {pth.name}")
+        export_standalone_inference_script(
+            model=best_model,
+            hidden_layers=list(best_cfg.get("hidden_layers") or [128, 128]),
+            activation=str(best_cfg.get("activation", "relu")),
+            state_dim=loader.state_dim,
+            action_dim=loader.action_dim,
+            pth_stem=pth.name,
+            env_name=cfg.ENV_NAME,
+            output_dir=run_dir,
+            architecture=cfg.NETWORK_ARCHITECTURE,
+            lstm_seq_length=getattr(cfg, "LSTM_SEQ_LENGTH", 10),
+        )
+        write_nn_inference_helper(
+            env_name=cfg.ENV_NAME,
+            output_dir=run_dir,
+            integrator=getattr(cfg, "INTEGRATOR_TYPE", "RK4"),
+        )
+
+    # Move conversation log into Agents_log/ for ZIP parity
+    agents_log_dir = run_dir / "Agents_log"
+    agents_log_dir.mkdir(parents=True, exist_ok=True)
+    dest_log = agents_log_dir / "agent_prompt_history.log"
+    if log_file.exists():
+        dest_log.write_text(log_file.read_text(encoding="utf-8"), encoding="utf-8")
 
     zip_path = package_final_results_to_zip(
-        pdf_filename=pdf_path,
-        extra_files=extra,
-        output_dir=out_dir,
+        run_dir=run_dir,
         env_name=cfg.ENV_NAME,
+        timestamp=run_stamp,
+        pdf_filename=pdf_path,
     )
 
     cost_tracker.print_summary(cfg.LLM_MODEL)
     print(f"\n✅ AgentSysID finished.")
-    print(f"   PDF : {pdf_path}")
-    print(f"   ZIP : {zip_path}")
+    print(f"   Run folder : {run_dir.resolve()}")
+    print(f"   History    : {dest_log}")
+    print(f"   PDF        : {pdf_path}")
+    print(f"   ZIP        : {zip_path}")
     return 0
 
 
