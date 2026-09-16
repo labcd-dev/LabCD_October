@@ -1,0 +1,22 @@
+# Environment variables & API keys
+.env
+
+# Python Virtual Environment & Caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE configurations
+.idea/
+.vscode/
+
+# PyTorch Model Weights, Zips, and Reports
+*.pth
+*.zip
+*.pdf
+
+# Logs & Temporary Output Files
+*.log
+figures/
