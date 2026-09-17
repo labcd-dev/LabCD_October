@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentSysID — LabCD Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     DESIGN TOKENS
+     A quiet, near-black engineering-tool surface. One accent
+     (indigo) used sparingly — for the active spinner, the module
+     badge, and confirmatory actions only. IBM Plex Sans carries
+     prose; IBM Plex Mono is reserved for things that are literally
+     data: column headers, status lines, metrics, file names.
+     ============================================================ */
+  :root{
+    --bg:            #0b0b0d;
+    --bg-raised:      #101013;
+    --bg-card:        #131316;
+    --bg-input:       #0f0f12;
+    --border:         #212126;
+    --border-soft:    #1a1a1e;
+    --text:           #e9e8e4;
+    --text-dim:       #949398;
+    --text-faint:     #5c5b61;
+    --accent:         #6e79f0;
+    --accent-soft:    rgba(110,121,240,0.14);
+    --accent-soft-2:  rgba(110,121,240,0.28);
+    --good:           #4bd1a0;
+    --good-soft:      rgba(75,209,160,0.14);
+    --warn:           #e0a94f;
+    --curve-a:        #6e79f0;
+    --curve-b:        #e08a5a;
+    --radius-sm:      7px;
+    --radius-md:      11px;
+    --radius-lg:      16px;
+    --sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    font-size:14px;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  button{ font-family:inherit; }
+  textarea, input{ font-family:inherit; }
+
+  ::selection{ background:var(--accent-soft-2); }
+
+  /* focus visibility, kept subtle but present */
+  button:focus-visible, textarea:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
+    outline:2px solid var(--accent-soft-2);
+    outline-offset:2px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.001ms !important; transition-duration:0.001ms !important; }
+  }
+
+  /* ============================================================
+     TOP BAR — empty until the SysID module activates
+     ============================================================ */
+  #topbar{
+    position:fixed; top:0; left:0; right:0; height:52px;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 20px;
+    border-bottom:1px solid transparent;
+    z-index:20;
+    background:linear-gradient(to bottom, var(--bg) 60%, transparent);
+    pointer-events:none;
+  }
+  #topbar .badge-zone{
+    display:flex; align-items:center; gap:10px;
+    opacity:0; transform:translateY(-4px);
+    transition:opacity .5s ease, transform .5s ease;
+    pointer-events:auto;
+  }
+  #topbar.active{ border-bottom:1px solid var(--border-soft); }
+  #topbar.active .badge-zone{ opacity:1; transform:translateY(0); }
+
+  .module-badge{
+    display:flex; align-items:center; gap:7px;
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--text);
+    background:var(--accent-soft);
+    border:1px solid var(--accent-soft-2);
+    padding:4px 10px 4px 8px;
+    border-radius:100px;
+  }
+  .module-badge .dot{
+    width:6px; height:6px; border-radius:50%;
+    background:var(--accent);
+  }
+  .module-sub{
+    font-size:12px; color:var(--text-faint);
+    font-family:var(--mono);
+  }
+  #resetBtn{
+    pointer-events:auto;
+    background:none; border:1px solid var(--border);
+    color:var(--text-faint);
+    font-size:11.5px;
+    padding:5px 10px;
+    border-radius:100px;
+    cursor:pointer;
+    opacity:0;
+    transition:opacity .5s ease, color .15s ease, border-color .15s ease;
+  }
+  #topbar.active #resetBtn{ opacity:1; }
+  #resetBtn:hover{ color:var(--text); border-color:var(--text-faint); }
+
+  /* ============================================================
+     LAYOUT
+     ============================================================ */
+  #app{
+    display:flex;
+    height:100vh;
+    padding-top:52px;
+  }
+  #chatPane{
+    flex:1;
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    position:relative;
+    transition:margin-right .35s cubic-bezier(.4,0,.2,1);
+  }
+  #chatPane.sidebar-open{ margin-right:300px; }
+
+  #chatScroll{
+    width:100%;
+    max-width:640px;
+    flex:1;
+    overflow-y:auto;
+    padding:40px 20px 24px;
+    display:flex;
+    flex-direction:column;
+    gap:22px;
+  }
+  #chatScroll::-webkit-scrollbar{ width:8px; }
+  #chatScroll::-webkit-scrollbar-thumb{ background:var(--border); border-radius:8px; }
+
+  /* Empty-state centering: when there are no messages yet, keep the
+     composer vertically centered so the app opens as pure "just a chatbot" */
+  #chatPane.empty #chatScroll{ justify-content:center; align-items:center; }
+  #chatPane.empty .composer-wrap{ transform:translateY(-18vh); }
+  .composer-wrap{ transition:transform .5s cubic-bezier(.4,0,.2,1); width:100%; max-width:640px; }
+
+  .empty-hint{
+    text-align:center;
+    color:var(--text-faint);
+    font-size:14px;
+    max-width:360px;
+    margin:0 auto 26px;
+    display:none;
+  }
+  #chatPane.empty .empty-hint{ display:block; }
+
+  /* ============================================================
+     CHAT MESSAGES
+     ============================================================ */
+  .msg{ display:flex; gap:10px; max-width:100%; }
+  .msg.user{ align-self:flex-end; flex-direction:row-reverse; max-width:82%; }
+  .msg.agent{ align-self:stretch; }
+
+  .msg .avatar{
+    width:20px; height:20px; border-radius:50%;
+    flex:none; margin-top:3px;
+    background:var(--accent-soft);
+    border:1px solid var(--accent-soft-2);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .msg .avatar span{ width:6px; height:6px; border-radius:50%; background:var(--accent); }
+  .msg.user .avatar{ display:none; }
+
+  .msg .bubble{
+    font-size:14.5px;
+    line-height:1.6;
+    white-space:pre-wrap;
+  }
+  .msg.user .bubble{
+    background:var(--bg-card);
+    border:1px solid var(--border);
+    padding:9px 13px;
+    border-radius:var(--radius-md);
+    color:var(--text);
+  }
+  .msg.agent .bubble{ color:var(--text); padding-top:2px; }
+
+  /* ============================================================
+     SPINNER + STATUS LINE — the one loading affordance in the app
+     ============================================================ */
+  .agent-status{
+    display:flex; align-items:center; gap:9px;
+    font-family:var(--mono);
+    font-size:12.5px;
+    color:var(--text-dim);
+    padding:2px 0;
+  }
+  .spinner{
+    width:13px; height:13px;
+    border-radius:50%;
+    border:1.6px solid var(--border);
+    border-top-color:var(--accent);
+    animation:spin 1.1s linear infinite;
+    flex:none;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .status-text{
+    min-width:0;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .status-done .spinner{
+    border:none;
+    background:var(--good);
+    animation:none;
+    position:relative;
+  }
+  .status-done .status-text{ color:var(--text-dim); }
+
+  .steps-toggle{
+    background:none; border:none;
+    color:var(--text-faint);
+    font-family:var(--mono);
+    font-size:11.5px;
+    cursor:pointer;
+    padding:2px 0 0 22px;
+    display:flex; align-items:center; gap:4px;
+  }
+  .steps-toggle:hover{ color:var(--text-dim); }
+  .steps-toggle .chev{ transition:transform .18s ease; display:inline-block; }
+  .steps-toggle.open .chev{ transform:rotate(90deg); }
+
+  .steps-list{
+    list-style:none; margin:6px 0 0 22px; padding:0;
+    display:none;
+    border-left:1px solid var(--border-soft);
+    padding-left:12px;
+  }
+  .steps-list.open{ display:block; }
+  .steps-list li{
+    font-family:var(--mono);
+    font-size:11.5px;
+    color:var(--text-faint);
+    padding:3px 0;
+    display:flex; gap:8px;
+  }
+  .steps-list li .t{ color:var(--text-faint); opacity:.7; flex:none; }
+  .steps-list li.current{ color:var(--text-dim); }
+
+  /* ============================================================
+     CARDS shared language (sheet / config / artifact)
+     ============================================================ */
+  .card{
+    background:var(--bg-card);
+    border:1px solid var(--border);
+    border-radius:var(--radius-lg);
+    padding:16px;
+  }
+  .card-title{
+    font-size:12px;
+    color:var(--text-faint);
+    font-family:var(--mono);
+    text-transform:none;
+    margin-bottom:12px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+
+  /* ---- Data sheet card ---- */
+  .sheet-actions{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+  .chip-btn{
+    background:var(--bg-raised);
+    border:1px solid var(--border);
+    color:var(--text-dim);
+    font-size:12px;
+    padding:6px 10px;
+    border-radius:100px;
+    cursor:pointer;
+    transition:border-color .15s ease, color .15s ease;
+  }
+  .chip-btn:hover{ border-color:var(--text-faint); color:var(--text); }
+  .chip-btn.accent{ border-color:var(--accent-soft-2); color:var(--accent); background:var(--accent-soft); }
+
+  .sheet-scroll{ overflow-x:auto; border:1px solid var(--border-soft); border-radius:var(--radius-sm); }
+  table.sheet{ border-collapse:collapse; width:100%; font-family:var(--mono); font-size:12px; }
+  table.sheet th, table.sheet td{
+    border-bottom:1px solid var(--border-soft);
+    border-right:1px solid var(--border-soft);
+    padding:7px 10px;
+    text-align:left;
+    white-space:nowrap;
+  }
+  table.sheet th{
+    background:var(--bg-raised);
+    color:var(--text-dim);
+    font-weight:500;
+    position:relative;
+  }
+  table.sheet th[contenteditable="true"], table.sheet td[contenteditable="true"]{ outline:none; }
+  table.sheet th[contenteditable="true"]:focus, table.sheet td[contenteditable="true"]:focus{
+    background:var(--accent-soft);
+  }
+  table.sheet td{ color:var(--text-dim); }
+  table.sheet tr td:last-child, table.sheet tr th:last-child{ border-right:none; }
+  .col-remove{
+    background:none; border:none; color:var(--text-faint);
+    cursor:pointer; font-size:11px; margin-left:6px;
+  }
+  .col-remove:hover{ color:var(--warn); }
+
+  .sheet-meta{
+    margin-top:10px; font-family:var(--mono); font-size:11.5px; color:var(--text-faint);
+  }
+
+  .paste-zone, .rawtext-zone{
+    display:none; margin-top:10px;
+  }
+  .paste-zone.open, .rawtext-zone.open{ display:block; }
+  .paste-zone textarea, .rawtext-zone textarea{
+    width:100%; min-height:76px;
+    background:var(--bg-input);
+    border:1px solid var(--border);
+    border-radius:var(--radius-sm);
+    color:var(--text);
+    padding:9px 10px;
+    font-family:var(--mono);
+    font-size:12px;
+    resize:vertical;
+  }
+  .zone-apply{
+    margin-top:8px;
+  }
+
+  .card-footer-row{
+    margin-top:14px; display:flex; justify-content:flex-end; gap:8px;
+  }
+  .primary-btn{
+    background:var(--accent);
+    color:#fff;
+    border:none;
+    padding:8px 15px;
+    border-radius:100px;
+    font-size:13px;
+    font-weight:500;
+    cursor:pointer;
+    transition:opacity .15s ease;
+  }
+  .primary-btn:hover{ opacity:.88; }
+  .primary-btn:disabled{ opacity:.4; cursor:default; }
+  .ghost-btn{
+    background:none;
+    border:1px solid var(--border);
+    color:var(--text-dim);
+    padding:8px 15px;
+    border-radius:100px;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .ghost-btn:hover{ border-color:var(--text-faint); color:var(--text); }
+
+  /* ---- Config card ---- */
+  .config-grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:10px 14px;
+  }
+  .config-field{ display:flex; flex-direction:column; gap:5px; }
+  .config-field label{ font-size:11.5px; color:var(--text-faint); font-family:var(--mono); }
+  .config-field select, .config-field input[type=text], .config-field input[type=number]{
+    background:var(--bg-input);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:7px 9px;
+    border-radius:var(--radius-sm);
+    font-size:13px;
+  }
+  .config-field.full{ grid-column:1 / -1; }
+  .toggle-row{
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--bg-input); border:1px solid var(--border);
+    padding:8px 10px; border-radius:var(--radius-sm);
+  }
+  .toggle-row span{ font-size:13px; color:var(--text); }
+  .switch{
+    width:34px; height:19px; border-radius:100px;
+    background:var(--border); position:relative; cursor:pointer;
+    flex:none; transition:background .15s ease;
+    border:none;
+  }
+  .switch.on{ background:var(--accent); }
+  .switch::after{
+    content:""; position:absolute; top:2px; left:2px;
+    width:15px; height:15px; border-radius:50%; background:#fff;
+    transition:transform .15s ease;
+  }
+  .switch.on::after{ transform:translateX(15px); }
+
+  .suggest-chips{ display:flex; gap:6px; flex-wrap:wrap; margin-top:12px; }
+
+  /* ============================================================
+     COMPOSER
+     ============================================================ */
+  .composer-wrap{ padding:14px 20px 22px; }
+  #composer{
+    display:flex; align-items:flex-end; gap:8px;
+    background:var(--bg-card);
+    border:1px solid var(--border);
+    border-radius:var(--radius-lg);
+    padding:9px 9px 9px 15px;
+  }
+  #composer:focus-within{ border-color:var(--text-faint); }
+  #msgInput{
+    flex:1; resize:none; border:none; background:transparent;
+    color:var(--text); font-size:14px; max-height:140px;
+    outline:none; padding:7px 0; line-height:1.5;
+  }
+  #msgInput::placeholder{ color:var(--text-faint); }
+  #sendBtn{
+    flex:none;
+    background:var(--accent); border:none; color:#fff;
+    width:32px; height:32px; border-radius:50%;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:opacity .15s ease;
+  }
+  #sendBtn:disabled{ opacity:.35; cursor:default; }
+
+  /* ============================================================
+     ARTIFACTS SIDEBAR
+     ============================================================ */
+  #sidebar{
+    position:fixed; top:52px; right:0; bottom:0;
+    width:300px;
+    background:var(--bg-raised);
+    border-left:1px solid var(--border-soft);
+    display:flex; flex-direction:column;
+    transform:translateX(100%);
+    transition:transform .35s cubic-bezier(.4,0,.2,1);
+    z-index:15;
+  }
+  #sidebar.open{ transform:translateX(0); }
+
+  .sidebar-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 16px 10px;
+  }
+  .sidebar-head h2{
+    font-size:12.5px; margin:0; color:var(--text-dim);
+    font-family:var(--mono); font-weight:500;
+  }
+  #sidebarClose{
+    background:none; border:none; color:var(--text-faint);
+    cursor:pointer; font-size:16px; line-height:1;
+    padding:4px;
+  }
+  #sidebarClose:hover{ color:var(--text); }
+
+  #artifactList{
+    flex:1; overflow-y:auto; padding:4px 14px 16px; display:flex; flex-direction:column; gap:10px;
+  }
+  #artifactList::-webkit-scrollbar{ width:6px; }
+  #artifactList::-webkit-scrollbar-thumb{ background:var(--border); border-radius:6px; }
+
+  .empty-sidebar{
+    color:var(--text-faint); font-size:12.5px; text-align:center;
+    margin-top:40px; padding:0 10px; line-height:1.6;
+  }
+
+  .artifact-card{
+    background:var(--bg-card);
+    border:1px solid var(--border);
+    border-radius:var(--radius-md);
+    padding:11px 12px;
+    cursor:pointer;
+    transition:border-color .15s ease;
+  }
+  .artifact-card:hover{ border-color:var(--text-faint); }
+  .artifact-card.compare{ border-color:var(--accent-soft-2); background:var(--accent-soft); }
+
+  .artifact-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .artifact-label{ font-size:12.5px; font-weight:500; color:var(--text); }
+  .artifact-kind{
+    font-family:var(--mono); font-size:9.5px; color:var(--text-faint);
+    border:1px solid var(--border); border-radius:4px; padding:1px 5px; flex:none;
+  }
+  .artifact-curve{ width:100%; height:38px; margin:8px 0 6px; display:block; }
+  .artifact-metrics{
+    font-family:var(--mono); font-size:11px; color:var(--text-faint);
+    display:flex; justify-content:space-between;
+  }
+
+  .artifact-detail{
+    display:none; margin-top:10px; padding-top:10px;
+    border-top:1px solid var(--border-soft);
+    gap:6px; flex-wrap:wrap;
+  }
+  .artifact-detail.open{ display:flex; }
+  .dl-btn{
+    background:var(--bg-raised); border:1px solid var(--border);
+    color:var(--text-dim); font-size:11px; padding:5px 8px;
+    border-radius:6px; cursor:pointer; font-family:var(--mono);
+  }
+  .dl-btn:hover{ border-color:var(--accent-soft-2); color:var(--accent); }
+
+  /* handle to reopen sidebar once it's been closed */
+  #sidebarHandle{
+    position:fixed; right:0; top:50%; transform:translateY(-50%);
+    background:var(--bg-card); border:1px solid var(--border); border-right:none;
+    color:var(--text-dim); font-family:var(--mono); font-size:11px;
+    padding:10px 7px; border-radius:8px 0 0 8px;
+    cursor:pointer; display:none; flex-direction:column; align-items:center; gap:6px;
+    writing-mode:vertical-rl;
+    z-index:14;
+  }
+  #sidebarHandle.visible{ display:flex; }
+  #sidebarHandle .count{
+    writing-mode:horizontal-tb;
+    background:var(--accent); color:#fff; border-radius:50%;
+    width:16px; height:16px; font-size:9px;
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  @media (max-width: 760px){
+    #chatPane.sidebar-open{ margin-right:0; }
+    #sidebar{ width:86vw; }
+    .config-grid{ grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+
+  <div id="topbar">
+    <div class="badge-zone">
+      <div class="module-badge"><span class="dot"></span>AgentSysID</div>
+      <div class="module-sub" id="caseLabel">case: unsaved</div>
+    </div>
+    <button id="resetBtn" type="button">Reset session</button>
+  </div>
+
+  <div id="app">
+    <main id="chatPane" class="empty">
+      <div id="chatScroll">
+        <div class="empty-hint">Start a conversation to begin. Try something like<br>“I need to identify a system from test data.”</div>
+      </div>
+      <div class="composer-wrap">
+        <form id="composer">
+          <textarea id="msgInput" rows="1" placeholder="Message AgentSysID…"></textarea>
+          <button id="sendBtn" type="submit" aria-label="Send">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 12L20 4L13 20L11 13L4 12Z" fill="currentColor"/></svg>
+          </button>
+        </form>
+      </div>
+    </main>
+
+    <aside id="sidebar">
+      <div class="sidebar-head">
+        <h2>ARTIFACTS</h2>
+        <button id="sidebarClose" aria-label="Collapse artifacts">✕</button>
+      </div>
+      <div id="artifactList">
+        <div class="empty-sidebar">Artifacts from your runs — solution curves, configs, and final files — will collect here.</div>
+      </div>
+    </aside>
+  </div>
+
+  <button id="sidebarHandle" type="button">
+    <span>ARTIFACTS</span>
+    <span class="count" id="artifactCount">0</span>
+  </button>
+
+<script>
+/* ==================================================================
+   AgentSysID mock — single self-contained behavioral prototype.
+   No backend, no network calls. All "intelligence" and progress is
+   scripted/faked with timers and small deterministic pseudo-random
+   data, purely so the interaction pattern reads correctly.
+
+   TRIGGER CHOICE (per spec, documented here):
+   The SysID module activates on the very first message the user
+   sends, regardless of content — this is a mock, so we don't attempt
+   real intent detection. In a real build this would be an intent
+   classifier on the first turn(s).
+   ================================================================== */
+
+(function(){
+  "use strict";
+
+  // ---------------------------------------------------------------
+  // State
+  // ---------------------------------------------------------------
+  const state = {
+    activated:false,
+    stage:"idle",           // idle -> awaiting_target -> data -> planning -> config -> running -> results
+    columns:["time","s_1","s_2","a_1"],
+    runCount:0,
+    runs:[],                 // {id, arch, pinn, mse, rmse, latency, curve}
+    config:{ arch:"LSTM", pinn:true, mode:"Balanced", latency:120, description:"" },
+    sidebarOpen:false
+  };
+
+  // ---------------------------------------------------------------
+  // DOM refs
+  // ---------------------------------------------------------------
+  const topbar = document.getElementById("topbar");
+  const chatPane = document.getElementById("chatPane");
+  const chatScroll = document.getElementById("chatScroll");
+  const composer = document.getElementById("composer");
+  const msgInput = document.getElementById("msgInput");
+  const sendBtn = document.getElementById("sendBtn");
+  const sidebar = document.getElementById("sidebar");
+  const sidebarClose = document.getElementById("sidebarClose");
+  const sidebarHandle = document.getElementById("sidebarHandle");
+  const artifactList = document.getElementById("artifactList");
+  const artifactCount = document.getElementById("artifactCount");
+  const caseLabel = document.getElementById("caseLabel");
+  const resetBtn = document.getElementById("resetBtn");
+
+  // ---------------------------------------------------------------
+  // Utilities
+  // ---------------------------------------------------------------
+  function scrollToBottom(){
+    requestAnimationFrame(()=>{ chatScroll.scrollTop = chatScroll.scrollHeight; });
+  }
+
+  function el(tag, cls, html){
+    const e = document.createElement(tag);
+    if(cls) e.className = cls;
+    if(html !== undefined) e.innerHTML = html;
+    return e;
+  }
+
+  function markNotEmpty(){
+    if(chatPane.classList.contains("empty")){
+      chatPane.classList.remove("empty");
+    }
+  }
+
+  function activateModule(){
+    if(state.activated) return;
+    state.activated = true;
+    topbar.classList.add("active");
+    caseLabel.textContent = "case: session-" + Math.random().toString(36).slice(2,7);
+  }
+
+  function rand(seed){ // tiny deterministic-ish PRNG for stable-looking curves
+    let s = seed;
+    return function(){
+      s = (s * 9301 + 49297) % 233280;
+      return s / 233280;
+    };
+  }
+
+  function curvePath(seed, w, h, dual){
+    const r = rand(seed);
+    let d = "";
+    const n = 24;
+    const pts = [];
+    let v = h*0.75;
+    for(let i=0;i<n;i++){
+      v += (r()-0.55) * h*0.22;
+      v = Math.max(h*0.12, Math.min(h*0.88, v));
+      // gentle decay toward convergence, selling "solution curve" read
+      v = v + (h*0.5 - v) * (i/n) * 0.25;
+      pts.push(v);
+    }
+    const step = w/(n-1);
+    d = "M0," + pts[0].toFixed(1);
+    for(let i=1;i<n;i++){ d += " L" + (i*step).toFixed(1) + "," + pts[i].toFixed(1); }
+    return d;
+  }
+
+  function miniCurveSvg(seedA, seedB){
+    const w=240,h=38;
+    const pathA = curvePath(seedA, w, h);
+    let inner = `<path d="${pathA}" fill="none" stroke="var(--curve-a)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+    if(seedB !== undefined){
+      const pathB = curvePath(seedB, w, h);
+      inner += `<path d="${pathB}" fill="none" stroke="var(--curve-b)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+    }
+    return `<svg class="artifact-curve" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${inner}</svg>`;
+  }
+
+  function toast(text){
+    addAgentText(text);
+  }
+
+  // ---------------------------------------------------------------
+  // Message helpers
+  // ---------------------------------------------------------------
+  function addUserText(text){
+    markNotEmpty();
+    const m = el("div","msg user");
+    m.appendChild(el("div","bubble", escapeHtml(text)));
+    chatScroll.appendChild(m);
+    scrollToBottom();
+  }
+
+  function addAgentText(text){
+    markNotEmpty();
+    const m = el("div","msg agent");
+    m.appendChild(el("div","avatar","<span></span>"));
+    m.appendChild(el("div","bubble", escapeHtml(text)));
+    chatScroll.appendChild(m);
+    scrollToBottom();
+    return m;
+  }
+
+  function addAgentNode(node){
+    markNotEmpty();
+    const m = el("div","msg agent");
+    m.appendChild(el("div","avatar","<span></span>"));
+    const wrap = el("div","bubble");
+    wrap.appendChild(node);
+    m.appendChild(wrap);
+    chatScroll.appendChild(m);
+    scrollToBottom();
+    return m;
+  }
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  // ---------------------------------------------------------------
+  // Composer
+  // ---------------------------------------------------------------
+  msgInput.addEventListener("input", ()=>{
+    msgInput.style.height = "auto";
+    msgInput.style.height = Math.min(msgInput.scrollHeight, 140) + "px";
+  });
+  msgInput.addEventListener("keydown", (e)=>{
+    if(e.key === "Enter" && !e.shiftKey){
+      e.preventDefault();
+      composer.requestSubmit();
+    }
+  });
+  composer.addEventListener("submit", (e)=>{
+    e.preventDefault();
+    const text = msgInput.value.trim();
+    if(!text) return;
+    msgInput.value = "";
+    msgInput.style.height = "auto";
+    handleUserMessage(text);
+  });
+
+  // ---------------------------------------------------------------
+  // Conversation flow
+  // ---------------------------------------------------------------
+  function handleUserMessage(text){
+    addUserText(text);
+
+    if(!state.activated){
+      activateModule();
+      setTimeout(()=>{
+        addAgentText("AgentSysID here. I'll help you identify a model for your system from data.");
+        setTimeout(()=>{
+          addAgentText("First — what are you trying to model? A short description is enough (e.g. \u201Ca two-tank fluid system with one control input\u201D).");
+          state.stage = "awaiting_target";
+        }, 500);
+      }, 350);
+      return;
+    }
+
+    if(state.stage === "awaiting_target"){
+      setTimeout(()=>{
+        proposeInitialSheet(text);
+      }, 450);
+      return;
+    }
+
+    if(state.stage === "config"){
+      // free-text config tweaks
+      setTimeout(()=>handleConfigChat(text), 400);
+      return;
+    }
+
+    if(state.stage === "results"){
+      setTimeout(()=>handleResultsChat(text), 400);
+      return;
+    }
+
+    // default fallback while something else is in progress
+    setTimeout(()=>{
+      addAgentText("One moment — I'll get back to you once the current step finishes.");
+    }, 300);
+  }
+
+  // ---------------------------------------------------------------
+  // Stage: data intake
+  // ---------------------------------------------------------------
+  function proposeInitialSheet(targetDescription){
+    const nStates = 2, nInputs = 1;
+    addAgentText(`Got it — “${targetDescription}”. Based on that I'd expect roughly ${nStates} states and ${nInputs} input. Here's a starting sheet — edit headers, add or remove columns, paste your own data, describe it as text, or upload a pre-structured file.`);
+    state.stage = "data";
+    state.columns = ["time","s_1","s_2","a_1"];
+    renderSheetCard();
+  }
+
+  function renderSheetCard(){
+    const wrap = el("div","card");
+    const title = el("div","card-title");
+    title.innerHTML = `<span>DATA · initial sheet</span><span style="color:var(--text-faint);font-weight:400;">n_states=${state.columns.filter(c=>c.startsWith("s_")).length} · n_inputs=${state.columns.filter(c=>c.startsWith("a_")).length}</span>`;
+    wrap.appendChild(title);
+
+    const actions = el("div","sheet-actions");
+    actions.innerHTML = `
+      <button class="chip-btn" data-act="addcol">+ Add column</button>
+      <button class="chip-btn" data-act="paste">Paste data</button>
+      <button class="chip-btn" data-act="rawtext">Describe as text</button>
+      <label class="chip-btn" style="cursor:pointer;">Upload Excel
+        <input type="file" accept=".xlsx,.xls,.csv" style="display:none;" data-act="upload">
+      </label>
+    `;
+    wrap.appendChild(actions);
+
+    const sheetScroll = el("div","sheet-scroll");
+    wrap.appendChild(sheetScroll);
+
+    const pasteZone = el("div","paste-zone");
+    pasteZone.innerHTML = `<textarea placeholder="Paste tab-separated rows here, first row = headers"></textarea><div><button class="ghost-btn zone-apply" data-act="applypaste">Apply</button></div>`;
+    wrap.appendChild(pasteZone);
+
+    const rawZone = el("div","rawtext-zone");
+    rawZone.innerHTML = `<textarea placeholder="Describe your data in plain text, e.g. 'time, two tank levels, one pump voltage'"></textarea><div><button class="ghost-btn zone-apply" data-act="applyraw">Apply</button></div>`;
+    wrap.appendChild(rawZone);
+
+    const meta = el("div","sheet-meta");
+    wrap.appendChild(meta);
+
+    const footer = el("div","card-footer-row");
+    footer.innerHTML = `<button class="ghost-btn" data-act="reset">Start over</button><button class="primary-btn" data-act="ready">Data is ready</button>`;
+    wrap.appendChild(footer);
+
+    function renderTable(sampleRows){
+      sheetScroll.innerHTML = "";
+      const table = el("table","sheet");
+      const thead = el("thead");
+      const trh = el("tr");
+      state.columns.forEach((c,i)=>{
+        const th = el("th");
+        const span = el("span");
+        span.setAttribute("contenteditable","true");
+        span.textContent = c;
+        span.addEventListener("blur", ()=>{ state.columns[i] = span.textContent.trim() || c; updateMeta(); });
+        th.appendChild(span);
+        if(state.columns.length > 1){
+          const rm = el("button","col-remove","✕");
+          rm.type = "button";
+          rm.addEventListener("click", ()=>{
+            state.columns.splice(i,1);
+            renderTable(sampleRows);
+          });
+          th.appendChild(rm);
+        }
+        trh.appendChild(th);
+      });
+      thead.appendChild(trh);
+      table.appendChild(thead);
+
+      const tbody = el("tbody");
+      const rows = sampleRows || Array.from({length:4}, (_,r)=> state.columns.map((c,ci)=>{
+        if(c.toLowerCase()==="time") return (r*0.1).toFixed(2);
+        return (Math.sin(r+ci)* (ci+1) * 0.7).toFixed(3);
+      }));
+      rows.forEach(rowVals=>{
+        const tr = el("tr");
+        state.columns.forEach((c,ci)=>{
+          const td = el("td");
+          td.setAttribute("contenteditable","true");
+          td.textContent = rowVals[ci] !== undefined ? rowVals[ci] : "";
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      sheetScroll.appendChild(table);
+      updateMeta();
+    }
+
+    function updateMeta(){
+      meta.textContent = `${state.columns.length} columns · showing 4 sample rows of a mock preview`;
+      title.querySelector("span:last-child").textContent =
+        `n_states=${state.columns.filter(c=>c.toLowerCase().startsWith("s_")).length} · n_inputs=${state.columns.filter(c=>c.toLowerCase().startsWith("a_")).length}`;
+    }
+
+    renderTable();
+
+    // interactions
+    wrap.addEventListener("click",(e)=>{
+      const act = e.target.closest("[data-act]")?.dataset.act;
+      if(!act) return;
+
+      if(act === "addcol"){
+        const n = state.columns.filter(c=>c.startsWith("s_")).length + state.columns.filter(c=>c.startsWith("a_")).length + 1;
+        state.columns.push("col_" + n);
+        renderTable();
+      }
+      if(act === "paste"){ pasteZone.classList.toggle("open"); rawZone.classList.remove("open"); }
+      if(act === "rawtext"){ rawZone.classList.toggle("open"); pasteZone.classList.remove("open"); }
+      if(act === "applypaste"){
+        const ta = pasteZone.querySelector("textarea");
+        const lines = ta.value.trim().split("\n").filter(Boolean);
+        if(lines.length){
+          const headers = lines[0].split("\t").map(s=>s.trim()).filter(Boolean);
+          if(headers.length) state.columns = headers;
+          const rows = lines.slice(1).map(l=>l.split("\t"));
+          renderTable(rows.length ? rows : undefined);
+          pasteZone.classList.remove("open");
+          toast(`Parsed ${Math.max(lines.length-1,0)} pasted row(s) into ${state.columns.length} columns.`);
+        }
+      }
+      if(act === "applyraw"){
+        rawZone.classList.remove("open");
+        state.columns = ["time","s_1","s_2","a_1"];
+        renderTable();
+        toast("Interpreted your description into a starting schema — feel free to rename the columns.");
+      }
+      if(act === "reset"){
+        state.columns = ["time","s_1","s_2","a_1"];
+        renderTable();
+        pasteZone.classList.remove("open");
+        rawZone.classList.remove("open");
+      }
+      if(act === "ready"){
+        wrap.querySelectorAll("button, [contenteditable], input").forEach(n=> n.setAttribute("disabled","true"));
+        footer.remove();
+        onDataReady();
+      }
+    });
+
+    wrap.addEventListener("change",(e)=>{
+      if(e.target.dataset.act === "upload"){
+        const f = e.target.files[0];
+        if(!f) return;
+        state.columns = ["time","x_1","x_2","u_1"];
+        renderTable();
+        toast(`Loaded “${f.name}” — detected a pre-structured sheet and mapped it to the schema above.`);
+      }
+    });
+
+    addAgentNode(wrap);
+  }
+
+  function onDataReady(){
+    addAgentText("Data locked in. Give me a moment to plan a configuration.");
+    startPlanning();
+  }
+
+  // ---------------------------------------------------------------
+  // Stage: planning (spinner + status text)
+  // ---------------------------------------------------------------
+  function startPlanning(){
+    state.stage = "planning";
+    const planSteps = ["Inspecting data shape…","Estimating state order…","Selecting architecture…","Drafting config…"];
+    runSpinnerSequence(planSteps, 520, ()=>{
+      proposeConfig();
+    }, "Planning");
+  }
+
+  function runSpinnerSequence(steps, msPerStep, onDone, logLabel){
+    const wrap = el("div");
+    const status = el("div","agent-status");
+    const spinner = el("div","spinner");
+    const text = el("div","status-text");
+    status.appendChild(spinner); status.appendChild(text);
+    wrap.appendChild(status);
+
+    const toggle = el("button","steps-toggle");
+    toggle.type = "button";
+    toggle.innerHTML = `<span class="chev">▸</span><span class="count-label">0 steps</span>`;
+    const list = el("ul","steps-list");
+    wrap.appendChild(toggle);
+    wrap.appendChild(list);
+    toggle.addEventListener("click", ()=>{
+      toggle.classList.toggle("open");
+      list.classList.toggle("open");
+    });
+
+    addAgentNode(wrap);
+
+    let i = 0;
+    const log = [];
+    function tick(){
+      if(i >= steps.length){
+        status.classList.add("status-done");
+        text.textContent = (logLabel || "Done") + " complete";
+        toggle.querySelector(".count-label").textContent = `${log.length} steps`;
+        onDone();
+        return;
+      }
+      const stepName = steps[i];
+      text.textContent = stepName;
+      const ts = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      log.push({name:stepName, ts});
+      const li = el("li","","");
+      li.innerHTML = `<span class="t">${ts}</span><span>${stepName}</span>`;
+      list.querySelectorAll("li.current").forEach(n=>n.classList.remove("current"));
+      li.classList.add("current");
+      list.appendChild(li);
+      toggle.querySelector(".count-label").textContent = `${log.length} steps`;
+      scrollToBottom();
+      i++;
+      setTimeout(tick, msPerStep);
+    }
+    tick();
+  }
+
+  // ---------------------------------------------------------------
+  // Stage: config proposal
+  // ---------------------------------------------------------------
+  function proposeConfig(){
+    state.stage = "config";
+    addAgentText("Here's what I'd recommend to start. You can ask me to change anything, or confirm to launch.");
+    renderConfigCard();
+  }
+
+  function renderConfigCard(){
+    const wrap = el("div","card");
+    const title = el("div","card-title","<span>PROPOSED CONFIG</span>");
+    wrap.appendChild(title);
+
+    const grid = el("div","config-grid");
+    grid.innerHTML = `
+      <div class="config-field">
+        <label>Architecture</label>
+        <select data-f="arch">
+          <option value="LSTM">LSTM</option>
+          <option value="MLP">MLP</option>
+          <option value="GRU">GRU</option>
+        </select>
+      </div>
+      <div class="config-field">
+        <label>Run mode</label>
+        <select data-f="mode">
+          <option value="Balanced">Balanced</option>
+          <option value="Fast">Fast</option>
+          <option value="Thorough">Thorough</option>
+        </select>
+      </div>
+      <div class="config-field">
+        <label>Max latency (ms)</label>
+        <input type="number" data-f="latency" value="${state.config.latency}">
+      </div>
+      <div class="config-field">
+        <div class="toggle-row" data-f="pinn-row">
+          <span>Physics-informed (PINN)</span>
+          <button type="button" class="switch ${state.config.pinn ? 'on':''}" data-f="pinn"></button>
+        </div>
+      </div>
+      <div class="config-field full">
+        <label>Notes for this run (optional)</label>
+        <input type="text" data-f="description" placeholder="e.g. prioritize low steady-state error">
+      </div>
+    `;
+    wrap.appendChild(grid);
+    grid.querySelector('select[data-f="arch"]').value = state.config.arch;
+    grid.querySelector('select[data-f="mode"]').value = state.config.mode;
+
+    const chips = el("div","suggest-chips");
+    chips.innerHTML = `
+      <button class="chip-btn" data-sug="toggle-pinn">${state.config.pinn ? "Turn off PINN" : "Add PINN"}</button>
+      <button class="chip-btn" data-sug="lower-latency">Lower latency budget</button>
+      <button class="chip-btn" data-sug="switch-arch">Try ${state.config.arch === "LSTM" ? "MLP" : "LSTM"} instead</button>
+    `;
+    wrap.appendChild(chips);
+
+    const footer = el("div","card-footer-row");
+    footer.innerHTML = `<button class="primary-btn" data-act="launch">Start identification</button>`;
+    wrap.appendChild(footer);
+
+    function syncFromInputs(){
+      state.config.arch = grid.querySelector('select[data-f="arch"]').value;
+      state.config.mode = grid.querySelector('select[data-f="mode"]').value;
+      state.config.latency = grid.querySelector('input[data-f="latency"]').value;
+      state.config.description = grid.querySelector('input[data-f="description"]').value;
+    }
+
+    grid.addEventListener("change", syncFromInputs);
+    grid.addEventListener("input", syncFromInputs);
+
+    grid.querySelector('button[data-f="pinn"]').addEventListener("click",(e)=>{
+      state.config.pinn = !state.config.pinn;
+      e.target.classList.toggle("on", state.config.pinn);
+      chips.querySelector('[data-sug="toggle-pinn"]').textContent = state.config.pinn ? "Turn off PINN" : "Add PINN";
+    });
+
+    chips.addEventListener("click",(e)=>{
+      const sug = e.target.closest("[data-sug]")?.dataset.sug;
+      if(!sug) return;
+      if(sug === "toggle-pinn"){
+        state.config.pinn = !state.config.pinn;
+        grid.querySelector('button[data-f="pinn"]').classList.toggle("on", state.config.pinn);
+        e.target.textContent = state.config.pinn ? "Turn off PINN" : "Add PINN";
+      }
+      if(sug === "lower-latency"){
+        state.config.latency = Math.max(20, Math.round(state.config.latency * 0.7));
+        grid.querySelector('input[data-f="latency"]').value = state.config.latency;
+      }
+      if(sug === "switch-arch"){
+        state.config.arch = state.config.arch === "LSTM" ? "MLP" : "LSTM";
+        grid.querySelector('select[data-f="arch"]').value = state.config.arch;
+        e.target.textContent = `Try ${state.config.arch === "LSTM" ? "MLP" : "LSTM"} instead`;
+      }
+    });
+
+    wrap.addEventListener("click",(e)=>{
+      if(e.target.closest("[data-act]")?.dataset.act === "launch"){
+        wrap.querySelectorAll("button, select, input").forEach(n=> n.setAttribute("disabled","true"));
+        launchRun();
+      }
+    });
+
+    addAgentNode(wrap);
+  }
+
+  function handleConfigChat(text){
+    const lower = text.toLowerCase();
+    if(lower.includes("pinn")){
+      state.config.pinn = !lower.includes("off") && !lower.includes("remove");
+      addAgentText(`Updated — PINN is now ${state.config.pinn ? "on" : "off"} in the proposed config above.`);
+      return;
+    }
+    if(lower.includes("mlp") || lower.includes("lstm") || lower.includes("gru")){
+      const arch = lower.includes("mlp") ? "MLP" : lower.includes("gru") ? "GRU" : "LSTM";
+      state.config.arch = arch;
+      addAgentText(`Switched the recommended architecture to ${arch}.`);
+      return;
+    }
+    if(lower.includes("latency") || lower.includes("faster") || lower.includes("slow")){
+      state.config.latency = Math.max(20, Math.round(state.config.latency * 0.75));
+      addAgentText(`Tightened the latency budget to ${state.config.latency}ms.`);
+      return;
+    }
+    addAgentText("Noted. You can also confirm the card above to start the run whenever you're ready.");
+  }
+
+  // ---------------------------------------------------------------
+  // Stage: run
+  // ---------------------------------------------------------------
+  function launchRun(){
+    state.stage = "running";
+    state.runCount += 1;
+    const runId = state.runCount;
+    addAgentText(`Starting identification #${runId} — ${state.config.arch}${state.config.pinn ? " + PINN" : ""}.`);
+
+    const steps = ["Inspect","Initialize","Train cycle 1","Train cycle 2","Train cycle 3","Critic / Actor / Explorer","Report"];
+    runSpinnerSequence(steps, 480, ()=>{
+      finishRun(runId);
+    }, "Run");
+  }
+
+  function finishRun(runId){
+    const mse = (0.01 + Math.random()*0.05).toFixed(4);
+    const rmse = Math.sqrt(parseFloat(mse)).toFixed(4);
+    const latency = Math.round(40 + Math.random()*60);
+    const run = {
+      id: runId,
+      arch: state.config.arch,
+      pinn: state.config.pinn,
+      mse, rmse, latency,
+      seed: 17*runId + 3
+    };
+    state.runs.push(run);
+
+    addAgentText(`Run #${runId} complete — ${run.arch}${run.pinn ? " + PINN":""}. Best MSE ${mse} · RMSE ${rmse} · latency ${latency}ms.`);
+    addArtifactCard(run);
+
+    if(state.runs.length >= 2){
+      const prev = state.runs[state.runs.length-2];
+      addComparisonArtifact(prev, run);
+    }
+
+    state.stage = "results";
+    setTimeout(()=>{
+      addAgentText("Want to try another configuration for comparison — e.g. a different architecture — or are we done here?");
+    }, 400);
+
+    openSidebar();
+  }
+
+  function handleResultsChat(text){
+    const lower = text.toLowerCase();
+    if(lower.includes("mlp") || lower.includes("lstm") || lower.includes("gru") || lower.includes("another") || lower.includes("compare") || lower.includes("try")){
+      if(lower.includes("mlp")) state.config.arch = "MLP";
+      else if(lower.includes("gru")) state.config.arch = "GRU";
+      else if(lower.includes("lstm")) state.config.arch = "LSTM";
+      else state.config.arch = state.config.arch === "LSTM" ? "MLP" : "LSTM";
+      addAgentText(`Sure — let me plan a ${state.config.arch} configuration for comparison.`);
+      startPlanning();
+      return;
+    }
+    addAgentText("Good stopping point. All runs and files are available in the artifacts panel on the right.");
+  }
+
+  // ---------------------------------------------------------------
+  // Artifacts sidebar
+  // ---------------------------------------------------------------
+  function clearEmptySidebarNote(){
+    const note = artifactList.querySelector(".empty-sidebar");
+    if(note) note.remove();
+  }
+
+  function addArtifactCard(run){
+    clearEmptySidebarNote();
+    const card = el("div","artifact-card");
+    card.innerHTML = `
+      <div class="artifact-top">
+        <span class="artifact-label">${run.arch}${run.pinn ? " + PINN" : ""} — run #${run.id}</span>
+        <span class="artifact-kind">MODEL</span>
+      </div>
+      ${miniCurveSvg(run.seed)}
+      <div class="artifact-metrics"><span>MSE ${run.mse}</span><span>RMSE ${run.rmse}</span><span>${run.latency}ms</span></div>
+      <div class="artifact-detail">
+        <button class="dl-btn" data-dl="pdf">Download PDF</button>
+        <button class="dl-btn" data-dl="zip">Download ZIP</button>
+        <button class="dl-btn" data-dl="weights">Download weights</button>
+      </div>
+    `;
+    card.addEventListener("click",(e)=>{
+      if(e.target.closest("[data-dl]")){
+        addAgentText(`(mock) “${e.target.closest('[data-dl]').dataset.dl}” for run #${run.id} would download here.`);
+        return;
+      }
+      card.querySelector(".artifact-detail").classList.toggle("open");
+    });
+    artifactList.prepend(card);
+    bumpArtifactCount();
+  }
+
+  function addComparisonArtifact(a, b){
+    clearEmptySidebarNote();
+    const deltaPct = (( (b.rmse - a.rmse) / a.rmse) * 100).toFixed(0);
+    const better = deltaPct < 0 ? b.arch : a.arch;
+    const card = el("div","artifact-card compare");
+    card.innerHTML = `
+      <div class="artifact-top">
+        <span class="artifact-label">Comparison: ${a.arch} vs ${b.arch}</span>
+        <span class="artifact-kind">COMPARE</span>
+      </div>
+      ${miniCurveSvg(a.seed, b.seed)}
+      <div class="artifact-metrics"><span>${a.arch} RMSE ${a.rmse}</span><span>${b.arch} RMSE ${b.rmse}</span></div>
+      <div class="sheet-meta" style="margin-top:8px;">${better} performs ${Math.abs(deltaPct)}% better on RMSE</div>
+      <div class="artifact-detail">
+        <button class="dl-btn" data-dl="pdf">Download PDF</button>
+        <button class="dl-btn" data-dl="zip">Download ZIP</button>
+      </div>
+    `;
+    card.addEventListener("click",(e)=>{
+      if(e.target.closest("[data-dl]")){
+        addAgentText(`(mock) “${e.target.closest('[data-dl]').dataset.dl}” for the comparison would download here.`);
+        return;
+      }
+      card.querySelector(".artifact-detail").classList.toggle("open");
+    });
+    artifactList.prepend(card);
+    bumpArtifactCount();
+  }
+
+  function bumpArtifactCount(){
+    const n = artifactList.querySelectorAll(".artifact-card").length;
+    document.getElementById("artifactCount").textContent = n;
+    sidebarHandle.classList.add("visible");
+  }
+
+  function openSidebar(){
+    state.sidebarOpen = true;
+    sidebar.classList.add("open");
+    chatPane.classList.add("sidebar-open");
+    sidebarHandle.classList.remove("visible");
+  }
+  function closeSidebar(){
+    state.sidebarOpen = false;
+    sidebar.classList.remove("open");
+    chatPane.classList.remove("sidebar-open");
+    if(artifactList.querySelectorAll(".artifact-card").length){
+      sidebarHandle.classList.add("visible");
+    }
+  }
+  sidebarClose.addEventListener("click", closeSidebar);
+  sidebarHandle.addEventListener("click", openSidebar);
+
+  // ---------------------------------------------------------------
+  // Reset
+  // ---------------------------------------------------------------
+  resetBtn.addEventListener("click", ()=>{
+    if(!confirm("Reset this session? This clears the conversation and artifacts.")) return;
+    location.reload();
+  });
+
+  // initial focus
+  msgInput.focus();
+
+})();
+</script>
+</body>
+</html>
