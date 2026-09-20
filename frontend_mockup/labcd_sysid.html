@@ -605,7 +605,7 @@
     columns:["time","s_1","s_2","a_1"],
     runCount:0,
     runs:[],                 // {id, arch, pinn, mse, rmse, latency, curve}
-    config:{ arch:"LSTM", pinn:true, mode:"Balanced", latency:120, description:"" },
+    config:{ arch:"LSTM", pinn:false, mode:"regular", latency:2.0, description:"" },
     sidebarOpen:false
   };
 
@@ -1035,22 +1035,21 @@
       <div class="config-field">
         <label>Architecture</label>
         <select data-f="arch">
-          <option value="LSTM">LSTM</option>
-          <option value="MLP">MLP</option>
-          <option value="GRU">GRU</option>
+          <option value="LSTM">LSTM (memory window)</option>
+          <option value="MLP">MLP (memoryless)</option>
         </select>
       </div>
       <div class="config-field">
         <label>Run mode</label>
         <select data-f="mode">
-          <option value="Balanced">Balanced</option>
-          <option value="Fast">Fast</option>
-          <option value="Thorough">Thorough</option>
+          <option value="regular">regular — 20 cycles / 1.5 h</option>
+          <option value="fast">fast — 7 cycles / 0.5 h</option>
+          <option value="heavy">heavy — 40 cycles / 4 h</option>
         </select>
       </div>
       <div class="config-field">
         <label>Max latency (ms)</label>
-        <input type="number" data-f="latency" value="${state.config.latency}">
+        <input type="number" step="0.1" min="0.1" data-f="latency" value="${state.config.latency}">
       </div>
       <div class="config-field">
         <div class="toggle-row" data-f="pinn-row">
@@ -1104,7 +1103,7 @@
         e.target.textContent = state.config.pinn ? "Turn off PINN" : "Add PINN";
       }
       if(sug === "lower-latency"){
-        state.config.latency = Math.max(20, Math.round(state.config.latency * 0.7));
+        state.config.latency = Math.max(0.1, +(state.config.latency * 0.7).toFixed(2));
         grid.querySelector('input[data-f="latency"]').value = state.config.latency;
       }
       if(sug === "switch-arch"){
@@ -1132,14 +1131,14 @@
       return;
     }
     if(lower.includes("mlp") || lower.includes("lstm") || lower.includes("gru")){
-      const arch = lower.includes("mlp") ? "MLP" : lower.includes("gru") ? "GRU" : "LSTM";
+      const arch = lower.includes("mlp") ? "MLP" : "LSTM";
       state.config.arch = arch;
       addAgentText(`Switched the recommended architecture to ${arch}.`);
       return;
     }
     if(lower.includes("latency") || lower.includes("faster") || lower.includes("slow")){
-      state.config.latency = Math.max(20, Math.round(state.config.latency * 0.75));
-      addAgentText(`Tightened the latency budget to ${state.config.latency}ms.`);
+      state.config.latency = Math.max(0.1, +(state.config.latency * 0.75).toFixed(2));
+      addAgentText(`Tightened the latency budget to ${state.config.latency} ms.`);
       return;
     }
     addAgentText("Noted. You can also confirm the card above to start the run whenever you're ready.");
@@ -1154,7 +1153,8 @@
     const runId = state.runCount;
     addAgentText(`Starting identification #${runId} — ${state.config.arch}${state.config.pinn ? " + PINN" : ""}.`);
 
-    const steps = ["Inspect","Initialize","Train cycle 1","Train cycle 2","Train cycle 3","Critic / Actor / Explorer","Report"];
+    const steps = ["Questionnaire","Loading dataset","Data Inspector","Splitting trajectories",
+                   "Initializer Agent","Tuning cycles","Held-out verification","Report & packaging"];
     runSpinnerSequence(steps, 480, ()=>{
       finishRun(runId);
     }, "Run");
@@ -1163,17 +1163,24 @@
   function finishRun(runId){
     const mse = (0.01 + Math.random()*0.05).toFixed(4);
     const rmse = Math.sqrt(parseFloat(mse)).toFixed(4);
-    const latency = Math.round(40 + Math.random()*60);
+    // Composite success score: Pillar A (1-step fit, 75 pts) + Pillar B (rollout, 25 pts)
+    const score = +(72 + Math.random()*27).toFixed(1);
+    const status = score > 75 ? "STABLE & HIGH-FIDELITY"
+                 : score > 50 ? "STABLE & ACCEPTABLE"
+                 : score >= 40 ? "UNSTABLE ROLLOUT" : "UNSTABLE / FAILED";
+    const tier = "Level 3 (Moderately Complex)";
+    const latency = +(0.08 + Math.random()*0.9).toFixed(3);
     const run = {
       id: runId,
       arch: state.config.arch,
       pinn: state.config.pinn,
       mse, rmse, latency,
+      score, status, tier,
       seed: 17*runId + 3
     };
     state.runs.push(run);
 
-    addAgentText(`Run #${runId} complete — ${run.arch}${run.pinn ? " + PINN":""}. Best MSE ${mse} · RMSE ${rmse} · latency ${latency}ms.`);
+    addAgentText(`Run #${runId} complete — ${run.arch}${run.pinn ? " + PINN":""}. Best MSE ${mse} · RMSE ${rmse} · latency ${latency} ms · score ${score}/100 [${status}].`);
     addArtifactCard(run);
 
     if(state.runs.length >= 2){
@@ -1191,9 +1198,8 @@
 
   function handleResultsChat(text){
     const lower = text.toLowerCase();
-    if(lower.includes("mlp") || lower.includes("lstm") || lower.includes("gru") || lower.includes("another") || lower.includes("compare") || lower.includes("try")){
+    if(lower.includes("mlp") || lower.includes("lstm") || lower.includes("another") || lower.includes("compare") || lower.includes("try")){
       if(lower.includes("mlp")) state.config.arch = "MLP";
-      else if(lower.includes("gru")) state.config.arch = "GRU";
       else if(lower.includes("lstm")) state.config.arch = "LSTM";
       else state.config.arch = state.config.arch === "LSTM" ? "MLP" : "LSTM";
       addAgentText(`Sure — let me plan a ${state.config.arch} configuration for comparison.`);
@@ -1220,7 +1226,7 @@
         <span class="artifact-kind">MODEL</span>
       </div>
       ${miniCurveSvg(run.seed)}
-      <div class="artifact-metrics"><span>MSE ${run.mse}</span><span>RMSE ${run.rmse}</span><span>${run.latency}ms</span></div>
+      <div class="artifact-metrics"><span>MSE ${run.mse}</span><span>RMSE ${run.rmse}</span><span>${run.latency} ms</span><span>${run.score}/100</span></div>
       <div class="artifact-detail">
         <button class="dl-btn" data-dl="pdf">Download PDF</button>
         <button class="dl-btn" data-dl="zip">Download ZIP</button>

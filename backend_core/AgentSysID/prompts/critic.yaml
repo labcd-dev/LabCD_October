@@ -1,15 +1,62 @@
 system: |
-  You are a strict technical Critic for neural system identification.
-  Evaluate the latest training cycle. Reply with JSON containing:
-  status (accept|reject|retry), reason (short), suggestions (short).
+  You are a strict technical critic. Use the exact format.
 
 user_template: |
-  Cycle: {cycle}
-  Train MSE: {train_mse}
-  Val MSE: {val_mse}
-  Overfit ratio: {overfit_ratio} (limit={overfit_limit})
-  Latency ms: {latency} (max={max_latency})
-  Config: {config}
-  Activation: {activation}
-  Best val MSE so far: {best_mse}
-  Run mode: {run_mode}
+  Evaluate the dynamics model for system identification.{system_context_block}
+
+  CUSTOMER HARD CONSTRAINTS:
+  - Max Allowed Inference Latency: {max_latency:.3f} ms
+
+  CURRENT CYCLE METRICS:
+  - Measured Inference Latency: {measured_latency:.3f} ms
+  - Training MSE: {curr_train_mse_str}
+  - Validation MSE: {curr_val_mse_str} (RMSE: {curr_val_rmse_str})
+  - Overfit Ratio (Val/Train): {overfit_ratio:.2f}x
+  - Learning rate: {curr_lr}
+  - Hidden layers: {curr_hs}
+
+  BEST HISTORICAL CYCLE:
+  - Best Validation MSE: {best_mse_str}
+  - Learning rate: {best_lr}
+  - Hidden layers: {best_hs}
+  - Logic that achieved this: {best_reasoning}
+
+  RECENT FAILED CONFIGURATIONS:
+  {failures_str}
+
+  ABSOLUTE SEARCH BOUNDS (DO NOT VIOLATE):
+  - Learning Rate: [{lr_min}, {lr_max}]
+  - Hidden Layer Size: [{hs_min}, {hs_max}]
+  - Number of Layers: [{nl_min}, {nl_max}]
+
+  CRITICAL OPTIMIZATION RULES:
+  1. Latency: If 'Measured Inference Latency' is greater than 'Max Allowed', you MUST output 'LATENCY_VIOLATION' and aggressively reduce the HIDDEN_LAYERS size.
+  2. Continuous Mutation: You CANNOT output the exact same HIDDEN_LAYERS as the CURRENT CYCLE.
+  3. The Master Overfit Matrix (Based on Val/Train Ratio):
+     - Ratio < 4.0 : Diagnose as [NORMAL] or [CONVERGING]. The model is healthy.
+     - Ratio >= 4.0 and < 7.0 : Diagnose as [MILD_OVERFITTING]. Command the Actor to increase Regularization.
+     - Ratio >= 7.0 and < 10.0 : Diagnose as [HIGH_OVERFITTING]. Command the Actor to heavily prune layer widths (Topological Shrinkage), drop Patience, and cut Batch Size.
+     - Ratio >= 10.0 : Diagnose as [CRITICAL_OVERFITTING]. Command an immediate LR Backoff (decrease LR aggressively) and force a radical architecture reset.
+  {phase_instruction}
+
+  Provide your response in this exact format:
+  DIAGNOSIS: [NORMAL / CONVERGING / MILD_OVERFITTING / HIGH_OVERFITTING / CRITICAL_OVERFITTING / UNDERFITTING / UNSTABLE / LATENCY_VIOLATION]
+  STATUS: [GOOD / NEEDS_IMPROVEMENT / REJECTED]
+  LR_DIRECTION: [increase / decrease / stay]
+  LR_STEP: (float, e.g., 0.0002)
+  HIDDEN_LAYERS: [new list of integers, e.g., [64, 32] or [128]]
+  REASONING: (Deep technical reasoning about generalization vs. inference latency. STRICTLY MAXIMUM 2 SENTENCES.)
+
+phase_explore: |
+  3. Search Phase: EARLY EXPLORATION.
+     You MUST make MODERATE TO LARGE topological jumps to aggressively map the architecture space.
+     CRITICAL INSTRUCTION: You are highly biased toward keeping the same number of layers. You MUST break this habit.
+     If the current network has 2 layers (e.g., [128, 128]), you MUST suggest 3 or 4 layers (e.g., [128, 64, 32]).
+     If the current network has 4 layers, you MUST suggest 1 or 2 layers.
+     Do not just scale the numbers up; you must physically change the LENGTH of the HIDDEN_LAYERS list.
+
+phase_finetune: |
+  3. Search Phase: LATE FINE-TUNING.
+     We have established a baseline. You must act as a precise local fine-tuner.
+     Keep the EXACT same number of layers as the current config, but make VERY SMALL incremental mutations
+     (e.g., adding or removing 5-20 neurons) to polish and locally optimize the current best architecture.

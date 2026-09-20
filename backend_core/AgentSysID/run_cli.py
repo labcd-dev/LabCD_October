@@ -5,320 +5,143 @@ AgentSysID CLI entry point.
 Usage (from repository root):
     PYTHONPATH=. python -m backend_core.AgentSysID.run_cli
     PYTHONPATH=. python -m backend_core.AgentSysID.run_cli --data path/to/data.csv --mode fast
+    PYTHONPATH=. python -m backend_core.AgentSysID.run_cli --data data.csv --headless
+
+The engineer questionnaire, the HIL Data Inspector and the Initializer config
+review are ON BY DEFAULT, exactly as the legacy main() ran them. Pass
+--headless (or --no-interactive) for API / Streamlit / CI callers, where
+nothing may block on a prompt.
+
+This module only parses argv and delegates: the pipeline itself lives in
+``pipeline.run_pipeline``, so the CLI, the Streamlit UI and the FastAPI
+adapter all drive exactly the same code.
 
 All outputs for one run are written under:
     artifacts_sysid/run_YYYYMMDD_HHMMSS_<env>/
-      llm_conversation_history.txt
-      figures/          # MSE, RMSE, latency, hyperparams, contour
+      figures/          # MSE, RMSE, latency, hyperparams, contour, verification
       deployment/       # .pth, deployed_controller_*.py, NN.py
       report/           # PDF
+      Agents_log/       # full LLM conversation history
       SystemID_RunResults_<timestamp>.zip
 """
 
 from __future__ import annotations
 
 import argparse
-import os
-import signal
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
-from sklearn.model_selection import train_test_split
-
-# Ensure repo root is on path when run as script
+# Ensure repo root is on path when run as a script
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from backend_core.AgentSysID import config as cfg
-from backend_core.AgentSysID.agents import (
-    ActorAgent,
-    CriticAgent,
-    ExplorerAgent,
-    InitializerAgent,
-    ReportAgent,
-    run_data_inspector_agent,
+from backend_core.AgentSysID.pipeline import (
+    OVERFIT_PENALTY_MSE,
+    OVERFIT_PENALTY_RMSE,
+    STAGNATION_LIMIT,
+    SysIDOptions,
+    run_pipeline,
 )
-from backend_core.AgentSysID.data import ExcelDataLoader
-from backend_core.AgentSysID.reporting import (
-    generate_final_pdf,
-    package_final_results_to_zip,
-    generate_all_plots,
-    export_standalone_inference_script,
-    write_nn_inference_helper,
-)
-from backend_core.AgentSysID.training import (
-    BestConfigTracker,
-    compute_rmse,
-    measure_inference_latency,
-    train_dynamics_model,
-)
-from backend_core.AgentSysID.utils import (
-    cost_tracker,
-    request_stop,
-    reset_stop_flag,
-    setup_logging,
-    setup_run_dir,
-    stop_requested,
-)
-from backend_core.AgentSysID.utils.device import DEVICE
+
+__all__ = [
+    "main",
+    "build_options",
+    "OVERFIT_PENALTY_MSE",
+    "OVERFIT_PENALTY_RMSE",
+    "STAGNATION_LIMIT",
+]
 
 
-def _max_cycles(mode: str) -> int:
-    mode = (mode or "regular").lower()
-    if mode == "fast":
-        return 5
-    if mode == "heavy":
-        return 40
-    return 15  # regular
-
-
-def main(argv: List[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="AgentSysID – Agentic System Identification")
     parser.add_argument("--data", type=str, default=None, help="Path to CSV/Excel dataset")
-    parser.add_argument("--mode", type=str, default=cfg.RUN_MODE, choices=["fast", "regular", "heavy"])
-    parser.add_argument("--interactive", action="store_true", help="Enable HIL Data Inspector prompts")
+    parser.add_argument(
+        "--mode", type=str, default=cfg.RUN_MODE, choices=["fast", "regular", "heavy"]
+    )
+    # The legacy main() always asked the engineer these questions, so the
+    # interactive path is the DEFAULT. Adapters (API / Streamlit / CI) opt out
+    # with --headless, which is the only safe mode when nobody is at a terminal.
+    parser.add_argument(
+        "--interactive",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Dataset questionnaire, HIL Data Inspector and Initializer config review "
+        "(default: on; use --no-interactive or --headless to disable)",
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Alias for --no-interactive: never block on a prompt",
+    )
+    parser.add_argument(
+        "--arch",
+        type=str,
+        default=None,
+        choices=["MLP", "LSTM", "mlp", "lstm"],
+        help="Override NETWORK_ARCHITECTURE for this run",
+    )
+    parser.add_argument(
+        "--max-cycles", type=int, default=None, help="Override the run mode's cycle limit"
+    )
+    parser.add_argument(
+        "--epochs", type=int, default=None, help="Override the per-cycle epoch budget"
+    )
     parser.add_argument(
         "--output-dir",
         type=str,
         default="artifacts_sysid",
         help="Base directory; each run creates a subfolder run_<timestamp>_<env>/",
     )
-    args = parser.parse_args(argv)
+    return parser
 
-    data_path = args.data or cfg.EXCEL_FILE_PATH
-    if not os.path.isfile(data_path):
-        print(f"❌ Dataset not found: {data_path}")
+
+def build_options(args: argparse.Namespace) -> SysIDOptions:
+    """Translate parsed argv into the pipeline's options object."""
+    return SysIDOptions(
+        data_path=args.data or cfg.EXCEL_FILE_PATH,
+        run_mode=args.mode,
+        output_dir=args.output_dir,
+        interactive=args.interactive,
+        max_cycles=args.max_cycles,
+        epochs=args.epochs,
+        architecture=args.arch,
+    )
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
+    if args.headless:
+        args.interactive = False
+
+    # A questionnaire needs a real terminal. If stdin is not a TTY (piped input,
+    # cron, a worker thread) fall back to headless rather than hanging on EOF.
+    if args.interactive and not sys.stdin.isatty():
+        print("ℹ️  No interactive terminal detected (stdin is not a TTY) — running headless.")
+        args.interactive = False
+
+    options = build_options(args)
+
+    if not Path(options.data_path).is_file():
+        print(f"❌ Dataset not found: {options.data_path}")
         print("   Provide --data path/to/file.csv or place system_data.csv in the working directory.")
         return 1
 
-    reset_stop_flag()
-    signal.signal(signal.SIGINT, request_stop)
-
-    # Per-run folder: artifacts_sysid/run_YYYYMMDD_HHMMSS_<env>/
-    run_dir = setup_run_dir(base_dir=args.output_dir, env_name=cfg.ENV_NAME)
-    log_file = setup_logging(run_dir)
-
-    print(f"🚀 PyTorch device: {DEVICE.type.upper()}")
-    print(f"📂 Dataset: {data_path}")
-    print(f"⚙  Run mode: {args.mode}  |  Interactive HIL: {args.interactive}")
-    print(f"📁 Run folder: {run_dir.resolve()}")
-    print(f"📝 Conversation history: {log_file.name}")
-
-    # ------------------------------------------------------------------
-    # 1. Load & inspect data
-    # ------------------------------------------------------------------
-    loader = ExcelDataLoader(data_path)
-    loader = run_data_inspector_agent(
-        loader, interactive=args.interactive, log_filename=str(log_file)
-    )
-    trajectories = loader.get_trajectories()
-    if len(trajectories) < 2:
-        print("⚠️  Fewer than 2 trajectories – using a simple 80/20 split of the single segment.")
-        if len(trajectories) == 1:
-            trajectories = trajectories * 2
-
-    train_trajs, val_trajs = train_test_split(trajectories, test_size=0.2, random_state=42)
-
-    # ------------------------------------------------------------------
-    # 2. Initializer
-    # ------------------------------------------------------------------
-    init_agent = InitializerAgent(loader, log_filename=str(log_file))
-    config = init_agent.determine_initial_setup()
-    print(f"\n🎯 Initial config from Initializer:\n   {config}")
-
-    # ------------------------------------------------------------------
-    # 3. Actor–Critic–Explorer loop
-    # ------------------------------------------------------------------
-    tracker = BestConfigTracker(run_mode=args.mode)
-    critic = CriticAgent(tracker, run_mode=args.mode, log_filename=str(log_file))
-    actor = ActorAgent(activation=config.get("activation", "relu"), log_filename=str(log_file))
-    explorer = ExplorerAgent(log_filename=str(log_file))
-
-    max_cycles = _max_cycles(args.mode)
-    performance_history = []
-    best_model = None
-    stagnation = 0
-
-    for cycle in range(1, max_cycles + 1):
-        if stop_requested():
-            print("🛑 Stop requested – exiting loop.")
-            break
-
-        print(f"\n{'='*60}\n🔄 CYCLE {cycle}/{max_cycles}\n{'='*60}")
-        print(f"   Config: {config}")
-
-        model, train_mse, val_mse = train_dynamics_model(
-            train_trajs=train_trajs,
-            val_trajs=val_trajs,
-            state_dim=loader.state_dim,
-            action_dim=loader.action_dim,
-            hidden_layers=config["hidden_layers"],
-            learning_rate=config["learning_rate"],
-            activation=config.get("activation", "relu"),
-            dropout_rate=config.get("dropout_rate", 0.0),
-            weight_decay=config.get("weight_decay", 0.0),
-            epochs=min(cfg.EPOCHS, 100 if args.mode == "fast" else cfg.EPOCHS),
+    if args.interactive:
+        print(
+            "ℹ️  Press Ctrl+C at any time to stop training early and get results "
+            "from the best checkpoint so far."
         )
 
-        latency = measure_inference_latency(model, loader.state_dim, loader.action_dim)
-        rmse = compute_rmse(val_mse)
-        print(f"   Train MSE={train_mse:.6e}  Val MSE={val_mse:.6e}  Latency={latency:.3f} ms")
+    result = run_pipeline(options)
 
-        improved = tracker.update(val_mse, config, current_rmse=rmse)
-        if improved:
-            best_model = model
-            stagnation = 0
-            print("   ⭐ New best configuration.")
-        else:
-            stagnation += 1
-
-        performance_history.append(
-            {
-                "cycle": cycle,
-                "val_mse": val_mse,
-                "train_mse": train_mse,
-                "latency": latency,
-                "config": dict(config),
-            }
-        )
-
-        decision = critic.evaluate(
-            train_mse=train_mse,
-            val_mse=val_mse,
-            current_config=config,
-            activation=config.get("activation", "relu"),
-            measured_latency=latency,
-            max_latency=cfg.CUSTOMER_MAX_LATENCY_MS,
-            cycle_number=cycle,
-        )
-        print(f"   Critic → {decision['status']}: {decision.get('reason', '')}")
-
-        if decision["status"] == "accept":
-            print("✅ Critic accepted the configuration. Stopping search.")
-            break
-
-        if stagnation >= 3:
-            print("   🧭 Stagnation detected – calling Explorer.")
-            config = explorer.propose_escape(performance_history, config, cycle)
-            stagnation = 0
-        else:
-            tracker.add_reasoning_to_memory(decision.get("reason", ""))
-            config = actor.propose(
-                current_config=config,
-                critic_feedback=decision,
-                cycle=cycle,
-                recent_failures=tracker.get_recent_failures_str(),
-            )
-
-    # ------------------------------------------------------------------
-    # 4. Report & package (all under run_dir)
-    # ------------------------------------------------------------------
-    best_cfg = tracker.best_config or config
-    best_mse = tracker.best_mse if tracker.best_mse < float("inf") else float("nan")
-    best_rmse = tracker.best_rmse or compute_rmse(best_mse)
-    latency = (
-        measure_inference_latency(best_model, loader.state_dim, loader.action_dim)
-        if best_model
-        else 0.0
-    )
-
-    report_agent = ReportAgent(log_filename=str(log_file))
-    abstract = report_agent.generate_report_text(
-        env_name=cfg.ENV_NAME,
-        state_dim=loader.state_dim,
-        action_dim=loader.action_dim,
-        best_config=best_cfg,
-        best_mse=best_mse,
-        best_rmse=best_rmse,
-        latency=latency,
-        use_pinn=cfg.USE_PINN,
-        complexity_label=loader.complexity_label,
-    )
-
-    # Timestamp for this packaging batch (matches run folder stamp when possible)
-    run_stamp = run_dir.name.replace("run_", "", 1)
-    if "_" in run_stamp:
-        # run_YYYYMMDD_HHMMSS_env → use YYYYMMDD_HHMMSS
-        parts = run_stamp.split("_")
-        if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
-            run_stamp = f"{parts[0]}_{parts[1]}"
-
-    # Figures
-    if getattr(cfg, "SAVE_PLOT", True) and performance_history:
-        print("\n📊 Generating diagnostic figures...")
-        generate_all_plots(
-            performance_history=performance_history,
-            env_name=cfg.ENV_NAME,
-            output_dir=run_dir,
-            timestamp=run_stamp,
-            max_latency=cfg.CUSTOMER_MAX_LATENCY_MS,
-            prefix=getattr(cfg, "PLOT_FILENAME_PREFIX", "system_id"),
-        )
-
-    pdf_path = generate_final_pdf(
-        env_name=cfg.ENV_NAME,
-        abstract=abstract,
-        best_config=best_cfg,
-        best_mse=best_mse,
-        best_rmse=best_rmse,
-        latency_ms=latency,
-        state_dim=loader.state_dim,
-        action_dim=loader.action_dim,
-        use_pinn=cfg.USE_PINN,
-        output_dir=run_dir,
-        filename=f"System_Report_{cfg.ENV_NAME}_{run_stamp}.pdf",
-    )
-
-    # Deployment artefacts
-    deploy_dir = run_dir / "deployment"
-    deploy_dir.mkdir(parents=True, exist_ok=True)
-    if best_model is not None:
-        import torch
-
-        pth = deploy_dir / f"best_model_{cfg.ENV_NAME}_{run_stamp}.pth"
-        torch.save(best_model.state_dict(), pth)
-        print(f"    💾 Weights → {pth.name}")
-        export_standalone_inference_script(
-            model=best_model,
-            hidden_layers=list(best_cfg.get("hidden_layers") or [128, 128]),
-            activation=str(best_cfg.get("activation", "relu")),
-            state_dim=loader.state_dim,
-            action_dim=loader.action_dim,
-            pth_stem=pth.name,
-            env_name=cfg.ENV_NAME,
-            output_dir=run_dir,
-            architecture=cfg.NETWORK_ARCHITECTURE,
-            lstm_seq_length=getattr(cfg, "LSTM_SEQ_LENGTH", 10),
-        )
-        write_nn_inference_helper(
-            env_name=cfg.ENV_NAME,
-            output_dir=run_dir,
-            integrator=getattr(cfg, "INTEGRATOR_TYPE", "RK4"),
-        )
-
-    # Move conversation log into Agents_log/ for ZIP parity
-    agents_log_dir = run_dir / "Agents_log"
-    agents_log_dir.mkdir(parents=True, exist_ok=True)
-    dest_log = agents_log_dir / "agent_prompt_history.log"
-    if log_file.exists():
-        dest_log.write_text(log_file.read_text(encoding="utf-8"), encoding="utf-8")
-
-    zip_path = package_final_results_to_zip(
-        run_dir=run_dir,
-        env_name=cfg.ENV_NAME,
-        timestamp=run_stamp,
-        pdf_filename=pdf_path,
-    )
-
-    cost_tracker.print_summary(cfg.LLM_MODEL)
-    print(f"\n✅ AgentSysID finished.")
-    print(f"   Run folder : {run_dir.resolve()}")
-    print(f"   History    : {dest_log}")
-    print(f"   PDF        : {pdf_path}")
-    print(f"   ZIP        : {zip_path}")
-    return 0
+    if result.status == "completed":
+        return 0
+    if result.message:
+        print(f"\n{result.message}")
+    return 0 if result.status == "failed" and "PINN" in result.message else 1
 
 
 if __name__ == "__main__":

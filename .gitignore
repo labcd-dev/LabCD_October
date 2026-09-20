@@ -24,6 +24,7 @@ __pycache__/
 *.log
 logs/
 artifacts_sysid/
+.streamlit_uploads/
 figures/
 _legacy/*.pth
 

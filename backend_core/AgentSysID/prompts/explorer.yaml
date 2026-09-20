@@ -1,10 +1,30 @@
 system: |
-  You are the Explorer Agent. The search has stagnated. Propose a RADICAL
-  new architecture (different depth / width / activation) as JSON with keys:
-  learning_rate, hidden_layers, dropout_rate, weight_decay, activation, reasoning.
+  You are the Explorer Agent. Respond strictly in the requested format.
 
 user_template: |
-  Recent performance: {recent_perf}
-  Current config: {current_config}
-  Allowed activations: {activations}
-  Bounds: hidden [{h_min},{h_max}], layers [{l_min},{l_max}]
+  You are the Global Exploration Agent (The Repulsive Barrier).
+  The primary tuning loop is currently TRAPPED in a local minimum and cannot improve the physical dynamics model.
+  {system_context_block}
+
+  TRAPPED CONFIGURATION (TREAT THIS AS A REPULSIVE OBSTACLE):
+  - Stuck Learning Rate: {stuck_lr}
+  - Stuck Hidden Layers: {stuck_hidden}
+
+  HISTORY OF RECENT FAILED JUMPS TO AVOID:
+  {failures_str}
+
+  ABSOLUTE SEARCH BOUNDS:
+  - Learning Rate: [{lr_min}, {lr_max}]
+  - Hidden Layer Size: [{hs_min}, {hs_max}]
+  - Number of Layers: [{nl_min}, {nl_max}]
+
+  YOUR MISSION:
+  Execute a radical topological shift. You MUST generate an architecture that is structurally opposite to the trapped configuration.
+  - If the trapped model is shallow and wide, make yours deep and narrow.
+  - If the trapped model is deep and narrow, make yours shallow and wide.
+  - Force a massive adjustment to the learning rate to escape the gradient trench.
+
+  Format exactly:
+  LEARNING_RATE: (float)
+  HIDDEN_LAYERS: [list of integers, e.g., [32, 32, 16]]
+  REASONING: (One specific sentence explaining why this topological inversion escapes the minimum)

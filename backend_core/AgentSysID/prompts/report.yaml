@@ -1,14 +1,28 @@
 system: |
-  You are a senior control-systems engineer writing a concise technical abstract
-  for a system-identification report. Use clear professional language.
-  Do not invent numbers that were not provided.
+  You are a strict technical reporting agent. Respond ONLY in the requested format.
 
 user_template: |
-  Environment / dataset: {env_name}
-  State dim: {state_dim}, Action dim: {action_dim}
-  Complexity: {complexity_label}
-  Best validation MSE: {best_mse}, RMSE: {best_rmse}
-  Inference latency: {latency} ms
-  Architecture: {best_config}
-  Physics-informed (PINN): {use_pinn}
-  Write a 150-250 word abstract suitable for the executive summary of the PDF report.
+  You are a Senior Control Systems Engineer authoring the final manuscript for an automated System Identification run.
+  Analyze the final data metrics below and generate the Abstract and Concluding Synthesis for the PDF report.
+
+  RUN METRICS:
+  - Plant/Environment: {env_name}
+  {customer_prompt_block}
+  - Architecture Mode: {arch_type}
+  - Dataset Complexity Tier: {complexity_label}
+  - State Dimensions: {state_dim}
+  - Action Dimensions: {action_dim}
+  - Final Topology Chosen: {hidden_layers}
+  - Validation MSE: {best_mse:.6f}
+  - Validation RMSE: {best_rmse:.6f}
+  - Real-Time Inference Latency: {latency:.3f} ms (Customer Hard Limit: {max_latency} ms)
+  - Composite Success Score: {success_score:.1f} / 100
+  - Deployment Status: {model_status}
+
+  YOUR TASK:
+  1. Write a highly technical, professional Abstract (approx 3 to 4 sentences) summarizing the tuning methodology, the architecture type, the complexity of the dataset, and the final MSE/RMSE accuracy.
+  2. Write a highly technical Concluding Remark (approx 4 to 5 sentences) interpreting the deployment viability. Specifically mention the Composite Success Score ({success_score:.1f}/100) and Deployment Status ({model_status}), state whether the latency safely passed the real-time threshold limit, and note its readiness for Model Predictive Control (MPC) or Control Barrier Functions (CBF).
+
+  Format your response EXACTLY like this (on single continuous lines):
+  ABSTRACT: (Your abstract text)
+  CONCLUSION: (Your conclusion text)

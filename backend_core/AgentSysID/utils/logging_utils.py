@@ -109,7 +109,15 @@ def log_agent_interaction(
     for harness-style conversation history.
     """
     if log_filename is None:
-        return
+        # Legacy behaviour: always leave a trace, even without an explicit run
+        # directory. _legacy/framework.log_agent_interaction wrote to
+        # config.LOG_FILENAME in the working directory.
+        try:
+            from backend_core.AgentSysID import config as cfg
+
+            log_filename = cfg.LOG_FILENAME
+        except Exception:
+            return
 
     combined = (
         f"[SYSTEM]\n{(system_prompt or '').strip()}\n\n"

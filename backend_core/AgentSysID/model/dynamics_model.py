@@ -1,8 +1,14 @@
 """
 DynamicsModel – MLP or LSTM network that predicts state derivatives (x_dot).
+
+Input  : [state, action, dt] (normalised internally)
+Output : (out_phys, out_norm) – physical derivatives for integration and
+         normalised derivatives for the loss.
 """
 
 from __future__ import annotations
+
+from typing import Optional
 
 import numpy as np
 import torch
@@ -17,9 +23,19 @@ class DynamicsModel(nn.Module):
         hidden_layers: list[int],
         activation: str = "relu",
         dropout_rate: float = 0.0,
-        architecture: str = "MLP",
+        architecture: Optional[str] = None,
     ):
         super().__init__()
+
+        # Determine architecture mode: explicit argument wins, otherwise fall
+        # back to the live config (legacy behaviour), then to MLP.
+        if architecture is None:
+            try:
+                from backend_core.AgentSysID import config as cfg
+
+                architecture = cfg.NETWORK_ARCHITECTURE
+            except Exception:
+                architecture = "MLP"
 
         self.arch = (architecture or "MLP").strip().upper()
 

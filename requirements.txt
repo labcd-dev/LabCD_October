@@ -19,6 +19,7 @@ langchain-groq
 matplotlib
 fpdf2
 streamlit
+altair
 tqdm
 
 # API

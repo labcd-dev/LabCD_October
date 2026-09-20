@@ -6,7 +6,7 @@ from .logging_utils import (
     setup_run_dir,
     formatted_log,
 )
-from .device import DEVICE, get_device
+from .device import DEVICE, get_device, describe_device
 
 __all__ = [
     "request_stop",
@@ -20,4 +20,5 @@ __all__ = [
     "formatted_log",
     "DEVICE",
     "get_device",
+    "describe_device",
 ]

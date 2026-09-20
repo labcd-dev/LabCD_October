@@ -1,0 +1,17 @@
+# Theme for the AgentSysID Streamlit UI.
+# Mirrors the design tokens in frontend_mockup/labcd_sysid.html so the
+# reference UI and the HTML mock read as the same product.
+
+[theme]
+base = "dark"
+primaryColor = "#6e79f0"           # indigo accent — active controls only
+backgroundColor = "#0b0b0d"        # app surface
+secondaryBackgroundColor = "#131316"  # cards, sidebar, inputs
+textColor = "#e9e8e4"
+font = "sans serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

@@ -79,22 +79,20 @@ class NeuralController:
         self.dt_buffer.append(dt)
 
     def predict_xdot(self, state, action, dt):
-        from collections import deque
-        import numpy as np
+        temp_s = list(self.state_buffer) + [state]
+        temp_a = list(self.action_buffer) + [action]
+        temp_dt = list(self.dt_buffer) + [dt]
+
+        # Pad the buffer if the simulation just started
+        while len(temp_s) < self.seq_len:
+            temp_s.insert(0, temp_s[0])
+            temp_a.insert(0, temp_a[0])
+            temp_dt.insert(0, temp_dt[0])
+
         with torch.no_grad():
-            if len(self.state_buffer) < self.seq_len:
-                self.commit_to_memory(state, action, dt)
-            s = np.array(list(self.state_buffer) if self.state_buffer else [state], dtype=np.float32)
-            a = np.array(list(self.action_buffer) if self.action_buffer else [action], dtype=np.float32)
-            d = np.array([[x] for x in (self.dt_buffer if self.dt_buffer else [dt])], dtype=np.float32)
-            if len(s) < self.seq_len:
-                pad = self.seq_len - len(s)
-                s = np.concatenate([np.repeat(s[:1], pad, axis=0), s], axis=0)
-                a = np.concatenate([np.repeat(a[:1], pad, axis=0), a], axis=0)
-                d = np.concatenate([np.repeat(d[:1], pad, axis=0), d], axis=0)
-            s_t = torch.tensor(s[-self.seq_len:], dtype=torch.float32).unsqueeze(0).to(self.device)
-            a_t = torch.tensor(a[-self.seq_len:], dtype=torch.float32).unsqueeze(0).to(self.device)
-            dt_t = torch.tensor(d[-self.seq_len:], dtype=torch.float32).unsqueeze(0).to(self.device)
+            s_t = torch.tensor(np.array(temp_s[-self.seq_len:]), dtype=torch.float32).unsqueeze(0).to(self.device)
+            a_t = torch.tensor(np.array(temp_a[-self.seq_len:]), dtype=torch.float32).unsqueeze(0).to(self.device)
+            dt_t = torch.tensor(np.array(temp_dt[-self.seq_len:]), dtype=torch.float32).unsqueeze(-1).unsqueeze(0).to(self.device)
             out_phys = self.model(s_t, a_t, dt_t)
             return out_phys.squeeze(0).cpu().numpy()
 """
@@ -228,4 +226,41 @@ print("Predicted Next State:", next_state_prediction)
 '''
     path = deploy_dir / "NN.py"
     path.write_text(content, encoding="utf-8")
+    return path
+
+
+def save_best_model(
+    dyn_model: nn.Module,
+    hidden_layers: List[int],
+    state_dim: int,
+    action_encoding_dim: int,
+    mse: float,
+    config: dict,
+    activation: str,
+    env_name: str,
+    timestamp: str,
+    output_dir: Union[str, Path],
+    rollout_horizon: int = 1,
+) -> Path:
+    """
+    Persist the winning weights under a self-describing filename.
+
+    The name encodes the environment, run timestamp, loss mode, prediction
+    target and achieved MSE, e.g.::
+
+        best_model_<env>_<timestamp>_SingleStep_Xdot_MSE_0.001234.pth
+
+    Returns the written path (the stem is what the deployable controller
+    references as its weights file).
+    """
+    deploy_dir = Path(output_dir) / "deployment"
+    deploy_dir.mkdir(parents=True, exist_ok=True)
+
+    mode_label = f"Rollout{rollout_horizon}" if rollout_horizon > 1 else "SingleStep"
+    target_label = "Xdot"
+    base = f"best_model_{env_name}_{timestamp}_{mode_label}_{target_label}_MSE_{mse:.6f}"
+    path = deploy_dir / f"{base}.pth"
+
+    torch.save(dyn_model.state_dict(), path)
+    print(f"    💾 Weights → {path.name}")
     return path
