@@ -289,6 +289,22 @@ def train_dynamics_model(
     X_val_dt_t = torch.tensor(val_dts, dtype=torch.float32)
     y_val_xdot_t = torch.tensor(val_xdots, dtype=torch.float32)
 
+    # An empty validation set is never acceptable: every validation metric
+    # would average 0/0, the run would report a PERFECT score (MSE 0.0) from no
+    # data at all, and the Critic would tune against that phantom. Fail loudly
+    # and say exactly what to change.
+    if len(val_states) == 0:
+        val_rows = sum(len(np.asarray(t["states"])) for t in val_trajs)
+        raise ValueError(
+            f"The validation set produced no windows of length {total_len} "
+            f"(architecture={arch}, LSTM_SEQ_LENGTH={seq_len}, ROLLOUT_HORIZON={horizon}).\n"
+            f"  Validation holds {len(val_trajs)} trajectory/ies totalling {val_rows} rows, "
+            f"and every one of them is shorter than {total_len} steps.\n"
+            "  Fix by any of: supplying a longer dataset, reducing LSTM_SEQ_LENGTH or "
+            "ROLLOUT_HORIZON, switching to the MLP architecture, or lowering "
+            "TRAJECTORY_CHUNK_SIZE so the split keeps longer segments."
+        )
+
     # --- Model ------------------------------------------------------------
     dyn_model = DynamicsModel(
         state_dim,
@@ -467,13 +483,15 @@ def train_dynamics_model(
         # --- Adaptive epoch extension -------------------------------------
         if epoch == max_allowed_epochs - 1:
             triggered_extension = False
-            if best_train_loss != float("inf"):
+            # A zero best loss makes the relative-improvement ratio undefined,
+            # so treat "already exactly zero" as nothing left to gain.
+            if best_train_loss not in (float("inf"), 0.0):
                 train_improvement = (best_train_loss - current_train_norm_loss) / best_train_loss
                 if train_improvement > improvement_threshold:
                     max_allowed_epochs += extension_steps
                     triggered_extension = True
 
-            if best_val_norm_loss != float("inf"):
+            if best_val_norm_loss not in (float("inf"), 0.0):
                 val_improvement = (best_val_norm_loss - current_val_norm_loss) / best_val_norm_loss
                 if val_improvement > improvement_threshold:
                     if not triggered_extension:

@@ -21,6 +21,8 @@ keeps whatever ``config.py`` already holds.
 
 from __future__ import annotations
 
+import datetime
+import json
 import signal
 import time
 from dataclasses import dataclass, field, fields
@@ -323,6 +325,51 @@ class SysIDResult:
     llm_cost_usd: float = 0.0
     elapsed_seconds: float = 0.0
     message: str = ""
+
+    #: What produced this run — echoed into the manifest so a past run can be
+    #: reopened, compared, or reproduced.
+    dataset: str = ""
+    run_mode: str = ""
+    architecture: str = ""
+    use_pinn: bool = False
+    finished_at: str = ""
+
+    # ------------------------------------------------------------------
+    def to_dict(self) -> Dict[str, Any]:
+        """JSON-safe view, for manifests and HTTP responses."""
+        from dataclasses import asdict
+
+        data = asdict(self)
+        data["run_dir"] = str(self.run_dir) if self.run_dir else None
+        return data
+
+    def save_manifest(self) -> Optional[Path]:
+        """
+        Write ``run_manifest.json`` into the run folder.
+
+        This is what lets a UI list previous runs across restarts. It is
+        deliberately written at the run root, which the ZIP packager does not
+        collect, so the delivered archive is unchanged.
+        """
+        if self.run_dir is None:
+            return None
+        path = Path(self.run_dir) / "run_manifest.json"
+        try:
+            path.write_text(
+                json.dumps(self.to_dict(), indent=2, default=str), encoding="utf-8"
+            )
+            return path
+        except Exception as exc:  # noqa: BLE001 - a manifest must never fail a run
+            print(f"    ⚠️ Could not write the run manifest: {exc}")
+            return None
+
+    @staticmethod
+    def load_manifest(path: str | Path) -> Optional[Dict[str, Any]]:
+        """Read one ``run_manifest.json``; returns None when unreadable."""
+        try:
+            return json.loads(Path(path).read_text(encoding="utf-8"))
+        except Exception:
+            return None
 
 
 # ---------------------------------------------------------------------------
@@ -1091,6 +1138,12 @@ def run_pipeline(
     result.llm_calls = cost_tracker.total_calls
     result.llm_cost_usd = cost_tracker.estimated_cost(cfg.LLM_MODEL)
     result.elapsed_seconds = time.time() - started
+    result.dataset = data_path
+    result.run_mode = options.run_mode
+    result.architecture = arch
+    result.use_pinn = bool(cfg.USE_PINN)
+    result.finished_at = datetime.datetime.now().isoformat(timespec="seconds")
+    result.save_manifest()
 
     elapsed_min = result.elapsed_seconds / 60.0
     print("✅ AgentSysID finished.")

@@ -126,6 +126,11 @@ enormous false derivative.
 
 ## 6. Acceptance
 
+**A validation split shorter than the rollout window is a hard error.** Every
+validation metric would otherwise average 0/0 and the run would report a
+perfect MSE of 0.0 from no data, which the Critic would then tune against. The
+trainer raises instead, naming the settings to change.
+
 A cycle is rejected outright when the validation loss exceeds
 `OVERFIT_RATIO_LIMIT` (default 10x) times the training loss — it is assigned a
 penalty MSE so it can never win.
@@ -161,8 +166,13 @@ artifacts_sysid/run_<timestamp>_<env>/
 ├── deployment/                    # .pth, deployed_controller_<env>.py, NN.py
 ├── report/                        # 9-section PDF manuscript
 ├── Agents_log/
+├── run_manifest.json              # JSON summary; what a UI lists as history
 └── SystemID_RunResults_<timestamp>.zip
 ```
+
+`run_manifest.json` is written at the run root, which the ZIP packager does not
+collect — the delivered archive is unchanged. `SysIDResult.save_manifest()`
+writes it and `SysIDResult.load_manifest()` reads one back.
 
 `deployed_controller_<env>.py` has **no dependency on this framework** — it
 hardcodes the topology and normalisation buffers and needs only torch and

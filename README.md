@@ -65,8 +65,13 @@ PYTHONPATH=. python frontend_streamlit/run_agent_sysid_ui.py     # → http://lo
 PYTHONPATH=. streamlit run frontend_streamlit/agent_sysid_app.py --server.port 8504
 ```
 
-The Streamlit app is the browser equivalent of the terminal run. It exposes
-**every** option the CLI asks for — the three questionnaire answers, all
+The browser equivalent of the terminal run, branded **LabCD · System
+Identification**. Three sections — **Configure**, **Monitor**, **Results** —
+with a **run history sidebar** that persists across restarts: every finished
+run writes a `run_manifest.json`, so past runs can be reopened with their
+score, figures and downloads intact, searched, or deleted.
+
+It exposes **every** option the CLI asks for — the three questionnaire answers, all
 fourteen Initializer overrides (blank = keep the agent's choice), the
 architecture / rollout / integrator settings, the derivative estimator, the
 state-space filter, PINN, the training limits, the client-authorised search
@@ -75,9 +80,14 @@ progress, per-cycle metrics, convergence and latency charts, and the raw agent
 log, and finally offers the ZIP, PDF, `.pth`, standalone controller, `NN.py`
 and conversation log as downloads.
 
+Before you start, the **data preview** shows what the loader will see —
+row count, detected `s_*` / `a_*` / `xdot_*` columns, and a warning if the
+`time` column is missing.
+
 It never duplicates core logic: every control maps to a field on
 `SysIDOptions` and the run is `run_pipeline` on a worker thread — the same
-function the CLI calls.
+function the CLI calls. The Monitor panel refreshes itself through a Streamlit
+fragment, so the live log updates without the page flashing.
 
 `frontend_mockup/labcd_sysid.html` is the chat-style design target for the
 React path; its stages, run modes, latency units and score now match the core.
@@ -94,6 +104,7 @@ artifacts_sysid/run_<timestamp>_<env>/
 ├── deployment/                    # .pth weights, deployed_controller_<env>.py, NN.py
 ├── report/                        # 9-section PDF engineering manuscript
 ├── Agents_log/
+├── run_manifest.json              # JSON summary the UI lists as run history
 └── SystemID_RunResults_<timestamp>.zip
 ```
 
@@ -104,6 +115,7 @@ topology and the normalisation buffers and needs only torch and numpy.
 
 ```
 backend_core/AgentSysID/   # core package
+├── pipeline.py            # SysIDOptions + run_pipeline — the one implementation
 ├── run_cli.py             # argv wrapper around pipeline.run_pipeline
 ├── questionnaire.py       # interactive dataset questions
 ├── config.py              # every knob, env-overridable, mutated live by agents
@@ -115,9 +127,8 @@ backend_core/AgentSysID/   # core package
 ├── reporting/             # plots, verification rollout, PDF, export, ZIP
 ├── graph/                 # LangGraph wiring of the same pipeline
 └── tests/
-├── pipeline.py            # SysIDOptions + run_pipeline — the one implementation
 backend_api/AgentSysID/    # ASSIGNMENT.md only
-frontend_streamlit/        # agent_sysid_app.py + run_agent_sysid_ui.py
+frontend_streamlit/        # agent_sysid_app.py, ui_theme.py, ui_history.py, launcher
 frontend_mockup/           # HTML agent-harness mock (design target)
 _legacy/                   # original flat sources (reference)
 ```
@@ -133,6 +144,6 @@ _legacy/                   # original flat sources (reference)
 PYTHONPATH=. pytest backend_core/AgentSysID/tests -v
 ```
 
-120 tests, no API key or GPU required. They cover the derivative estimators,
+123 tests, no API key or GPU required. They cover the derivative estimators,
 the rollout trainer, every agent's parsing *and* fallback path, the PDF, the
 exported controller, the interactive prompts, and UI/pipeline option parity.

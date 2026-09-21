@@ -196,3 +196,54 @@ def test_graceful_stop_halts_training(monkeypatch):
         assert train_mse == float("inf")
     finally:
         stop_control.reset_stop_flag()
+
+
+def test_empty_validation_set_raises_instead_of_reporting_a_perfect_score():
+    """
+    Regression: a validation split shorter than the rollout window used to
+    average 0/0 and report val MSE == 0.0 — a perfect score from no data,
+    which the Critic would then tune against. It must fail loudly instead.
+    """
+    cfg.NETWORK_ARCHITECTURE = "LSTM"
+    cfg.LSTM_SEQ_LENGTH = 10
+    train = [_linear_trajectory(n=300)]
+    too_short = [_linear_trajectory(n=6)]  # 6 rows < the 10-step window
+
+    with pytest.raises(ValueError, match="no windows"):
+        train_dynamics_model(
+            train, too_short, state_dim=2, action_encoding_dim=1,
+            hidden_layers=[16], learning_rate=1e-3, epochs=60,
+            batch_size=32, patience=5, activation="relu", architecture="LSTM",
+            verbose=False,
+        )
+
+
+def test_empty_validation_error_names_the_offending_settings():
+    cfg.LSTM_SEQ_LENGTH = 8
+    cfg.ROLLOUT_HORIZON = 3
+    with pytest.raises(ValueError) as excinfo:
+        train_dynamics_model(
+            [_linear_trajectory(n=200)], [_linear_trajectory(n=4)],
+            state_dim=2, action_encoding_dim=1, hidden_layers=[8],
+            learning_rate=1e-3, epochs=5, batch_size=16, patience=5,
+            activation="relu", architecture="LSTM", verbose=False,
+        )
+    message = str(excinfo.value)
+    assert "LSTM_SEQ_LENGTH=8" in message
+    assert "ROLLOUT_HORIZON=3" in message
+    assert "4 rows" in message          # what the split actually held
+    assert "length 10" in message       # 8 + 3 - 1
+
+
+def test_zero_best_loss_does_not_divide_by_zero():
+    """The epoch-extension ratio is undefined at a zero best loss."""
+    train = [_linear_trajectory(n=200)]
+    val = [_linear_trajectory(n=80)]
+    # Exercising the extension branch must not raise.
+    model, train_mse, val_mse, _, _, _ = train_dynamics_model(
+        train, val, state_dim=2, action_encoding_dim=1,
+        hidden_layers=[8], learning_rate=1e-3, epochs=3,
+        batch_size=32, patience=25, activation="relu", architecture="MLP",
+        verbose=False,
+    )
+    assert np.isfinite(val_mse)
