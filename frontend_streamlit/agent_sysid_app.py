@@ -27,6 +27,7 @@ Layout
 from __future__ import annotations
 
 import json
+import math
 import queue
 import sys
 import threading
@@ -231,6 +232,7 @@ def render_sidebar(output_dir: str, running: bool) -> None:
     if sb.button("＋  New run", width="stretch", type="primary", disabled=running):
         st.session_state["viewing"] = None
         st.session_state["result"] = None
+        st.session_state["config_step"] = 1
         goto("Configure")
         st.rerun()
 
@@ -296,298 +298,731 @@ def render_sidebar(output_dir: str, running: bool) -> None:
 # ---------------------------------------------------------------------------
 # Configure
 # ---------------------------------------------------------------------------
+def render_sysid_intro() -> None:
+    """A lightweight animated overview of the system-identification workflow."""
+    st.html(
+        """
+        <section class="sysid-intro" aria-label="System identification overview">
+          <div class="sysid-intro-copy">
+            <div class="sysid-intro-kicker">LABCD / AGENTSYSID · MODULE OVERVIEW</div>
+            <h2 class="sysid-intro-title">From measured data to a model of the system.</h2>
+            <p class="sysid-intro-definition">
+              <strong>System identification</strong> learns how a real process behaves
+              from its inputs and measured responses. The result is a dynamics model
+              that can be checked against data the model has never seen.
+            </p>
+            <div class="sysid-intro-features">
+              <span>01 · Inspect data</span>
+              <span>02 · Fit dynamics</span>
+              <span>03 · Verify + export</span>
+            </div>
+            <div class="sysid-intro-footnote">
+              YOUR DATA → A VERIFIED, REUSABLE SYSTEM MODEL
+            </div>
+          </div>
+          <div class="sysid-visual">
+            <div class="scene-header">
+              <span class="scene-label"><i class="scene-live-dot"></i> IDENTIFICATION LOOP</span>
+              <span class="scene-state">OBSERVE · ESTIMATE · VERIFY</span>
+            </div>
+            <div class="scene-flow-row" role="img" aria-label="Inputs and measurements feed model fitting, then the model is checked against held-out data">
+              <div class="scene-node data-block">
+                <div class="scene-node-head"><span>01 / MEASUREMENTS</span><b>DATA</b></div>
+                <div class="scene-equation">u(t) + x(t)</div>
+                <div class="scene-copy">known input · observed state</div>
+                <div class="scene-wave data-wave" aria-hidden="true">
+                  <i style="height:28%"></i><i style="height:46%"></i><i style="height:68%"></i><i style="height:42%"></i>
+                  <i style="height:82%"></i><i style="height:57%"></i><i style="height:35%"></i><i style="height:72%"></i>
+                  <i style="height:50%"></i><i style="height:88%"></i><i style="height:62%"></i><i style="height:40%"></i>
+                  <i style="height:76%"></i><i style="height:53%"></i><i style="height:31%"></i><i style="height:66%"></i>
+                </div>
+                <div class="scene-node-foot">TIME-ALIGNED OBSERVATIONS</div>
+              </div>
+              <div class="scene-wire" aria-hidden="true"><span class="wire-label">FIT</span><span class="wire-track"><i></i></span><span class="wire-type">x, u</span></div>
+              <div class="scene-node model-block">
+                <div class="scene-node-head"><span>02 / DYNAMICS</span><b>ESTIMATE</b></div>
+                <div class="scene-equation">ẋ = f(x, u; θ)</div>
+                <div class="scene-copy">estimate unknown system behavior</div>
+                <div class="scene-params"><span>x</span><span>u</span><span class="param-focus">θ</span></div>
+                <div class="scene-node-foot">TRAIN ↔ CRITIC · ITERATIVE FIT</div>
+              </div>
+              <div class="scene-wire scene-wire-test" aria-hidden="true"><span class="wire-label">TEST</span><span class="wire-track"><i></i></span><span class="wire-type">x̂</span></div>
+              <div class="scene-node verify-block">
+                <div class="scene-node-head"><span>03 / HELD-OUT CHECK</span><b>VERIFY</b></div>
+                <div class="scene-equation">predict ↔ observe</div>
+                <div class="scene-copy">check error and rollout stability</div>
+                <div class="compare-traces" aria-hidden="true">
+                  <div class="compare-row"><b class="compare-label">MEASURED</b><div class="compare-bars">
+                    <i style="height:55%"></i><i style="height:78%"></i><i style="height:92%"></i><i style="height:62%"></i><i style="height:48%"></i><i style="height:84%"></i><i style="height:68%"></i><i style="height:96%"></i>
+                  </div></div>
+                  <div class="compare-row"><b class="compare-label">MODEL</b><div class="compare-bars compare-model">
+                    <i style="height:52%"></i><i style="height:74%"></i><i style="height:88%"></i><i style="height:66%"></i><i style="height:51%"></i><i style="height:81%"></i><i style="height:71%"></i><i style="height:91%"></i>
+                  </div></div>
+                </div>
+                <div class="scene-node-foot">REPORT · MODEL · INFERENCE CODE</div>
+              </div>
+            </div>
+            <div class="scene-legend"><span><i class="legend-measured"></i> measured signal</span><span><i class="legend-model"></i> fitted response</span><span class="scene-loop">AGENT-ASSISTED MODEL SEARCH</span></div>
+          </div>
+        </section>
+        """,
+    )
+
+
 def render_configure() -> tuple[Optional[SysIDOptions], bool]:
-    st.markdown("#### Dataset")
-    c1, c2 = st.columns([3, 2])
-    uploaded = c1.file_uploader(
-        "Upload CSV / Excel", type=["csv", "xlsx", "xls"],
-        help="Columns: time, s_* states, a_* actions, optional xdot_* derivatives "
-             "(see data/DATA_CONTRACT.md).",
-    )
-    use_example = c2.checkbox(
-        "Use the bundled example dataset", value=not uploaded,
-        help=str(DEFAULT_EXAMPLE.relative_to(_REPO_ROOT)),
-    )
-    output_dir = c2.text_input("Output directory", "artifacts_sysid")
+    # Initialize wizard state and remember the selected dataset across steps.
+    if "config_step" not in st.session_state:
+        st.session_state["config_step"] = 1
+    if "data_path" not in st.session_state:
+        st.session_state["data_path"] = None
+    if st.session_state["config_step"] not in (1, 2, 3):
+        st.session_state["config_step"] = 1
+    if st.session_state["config_step"] != 1 and not st.session_state.get("data_path"):
+        st.session_state["config_step"] = 1
+        st.rerun()
 
-    data_path: Optional[str] = None
-    if uploaded is not None:
-        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        target = UPLOAD_DIR / uploaded.name
-        target.write_bytes(uploaded.getbuffer())
-        data_path = str(target)
-    elif use_example and DEFAULT_EXAMPLE.is_file():
-        data_path = str(DEFAULT_EXAMPLE)
+    if st.session_state["config_step"] == 1:
+        st.progress(1 / 3)
+        render_sysid_intro()
+        st.markdown("### 1 · Dataset")
+        st.caption("Step 1 of 3 · Upload a time-series file and check the detected columns.")
 
-    if data_path:
-        render_data_preview(data_path)
+        with st.container(border=True):
+            uploaded = st.file_uploader(
+                "Dataset", type=["csv", "xlsx", "xls"],
+                help="CSV or Excel. Required: time and one or more s_* state columns.",
+            )
+            st.caption("Required: time, s_* · Optional: a_* actions, xdot_* derivatives")
+
+        if uploaded is not None:
+            UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+            target = UPLOAD_DIR / uploaded.name
+            target.write_bytes(uploaded.getbuffer())
+            st.session_state["data_path"] = str(target)
+
+        with st.expander("Data format and integration guide"):
+            st.markdown(
+                "Use one s_* column per state. Column order determines state and action ordering. "
+                "The pipeline estimates derivatives when xdot_* columns are absent."
+            )
+            img_path = _REPO_ROOT / "AgentSysID_Data_Contract_Specification.png"
+            if img_path.is_file():
+                st.image(
+                    str(img_path), width="stretch",
+                    caption="System identification data schema",
+                )
+            guide_path = (
+                _REPO_ROOT
+                / "backend_core/AgentSysID/data/System Identification Data Integration Guide.pdf"
+            )
+            if guide_path.is_file():
+                st.download_button(
+                    "Download integration guide",
+                    data=guide_path.read_bytes(),
+                    file_name="System_Identification_Data_Integration_Guide.pdf",
+                    mime="application/pdf",
+                )
+
+        if st.session_state["data_path"]:
+            with st.container(border=True):
+                render_data_preview(st.session_state["data_path"])
+
+            if st.button(
+                "Continue to data assumptions",
+                type="primary",
+                icon=":material/arrow_forward:",
+            ):
+                st.session_state["config_step"] = 2
+                st.rerun()
+
+        return None, False
+
+    if st.session_state["config_step"] == 2:
+        st.progress(2 / 3)
+        st.markdown("### 2 · Data assumptions")
+        st.caption("Step 2 of 3 · Tell us how to interpret angles and experiment boundaries.")
+
+        with st.container(border=True):
+            st.markdown(f"Dataset · **{Path(st.session_state['data_path']).name}**")
+
+        data_path = st.session_state["data_path"]
+        try:
+            state_columns = list(_peek(data_path, Path(data_path).stat().st_mtime)["states"])
+        except Exception as exc:  # noqa: BLE001
+            state_columns = []
+            st.warning(f"State columns could not be read: {exc}")
+        st.session_state["configured_state_columns"] = state_columns
+
+        customer_description = st.text_input(
+            "What physical system does this data describe? (optional)",
+            value=st.session_state.get(
+                "configured_customer_description", D("CUSTOMER_SYSTEM_DESCRIPTION")
+            ),
+            placeholder="e.g. A pendulum with a motor at its pivot",
+            help="A short description helps the agents choose a useful model.",
+            key="customer_description_step2",
+        )
+        st.session_state["configured_customer_description"] = customer_description
+
+        # Migrate assumptions created by the earlier version of this step.
+        legacy_angle_mode = st.session_state.get("configured_angle_mode", "None")
+        if "configured_has_wrapping_states" not in st.session_state:
+            st.session_state["configured_has_wrapping_states"] = (
+                "No" if legacy_angle_mode == "None" else "Yes"
+            )
+        if "configured_angle_method" not in st.session_state:
+            st.session_state["configured_angle_method"] = (
+                "Choose manually"
+                if legacy_angle_mode == "Specify manually"
+                else "Auto-detect"
+            )
+        if "configured_wrap_state_names" not in st.session_state:
+            old_indices = _int_list(st.session_state.get("configured_angle_text", "")) or []
+            st.session_state["configured_wrap_state_names"] = [
+                state_columns[index] for index in old_indices
+                if 0 <= index < len(state_columns)
+            ]
+
+        with st.container(border=True):
+            st.subheader("Angle wrapping")
+            st.caption(
+                "An angle stored between −π and +π jumps from +π to −π when it completes a turn. "
+                "Tell us whether any state behaves this way."
+            )
+            angle_controls, angle_visual = st.columns([1, 1.15], vertical_alignment="center")
+            with angle_controls:
+                has_wrapping = st.segmented_control(
+                    "Do any states wrap at ±π?",
+                    ["No", "Yes"],
+                    default=st.session_state["configured_has_wrapping_states"],
+                    required=True,
+                    key="has_wrapping_states_step2",
+                    wrap=True,
+                )
+                angle_method = st.session_state.get(
+                    "configured_angle_method", "Auto-detect"
+                )
+                selected_wrap_states = st.session_state.get(
+                    "configured_wrap_state_names", []
+                )
+                if has_wrapping == "Yes":
+                    angle_method = st.segmented_control(
+                        "How should we identify them?",
+                        ["Auto-detect", "Choose manually"],
+                        default=angle_method,
+                        required=True,
+                        key="angle_method_step2",
+                        wrap=True,
+                    )
+                    if angle_method == "Choose manually":
+                        if state_columns:
+                            saved_names = [
+                                name for name in selected_wrap_states if name in state_columns
+                            ]
+                            selected_wrap_states = st.multiselect(
+                                "Select the wrapping states",
+                                options=state_columns,
+                                default=saved_names,
+                                format_func=lambda name: (
+                                    f"State {state_columns.index(name)} · {name}"
+                                ),
+                                help="The displayed state numbers are 0-based and match the dataset column order.",
+                                key="angle_wrap_states_step2",
+                            )
+                            st.caption("Choose every state whose angle resets at ±π.")
+                            if not selected_wrap_states:
+                                st.warning("Select at least one state to continue.")
+                        else:
+                            st.warning("No s_* state columns were found for manual selection.")
+
+            with angle_visual:
+                st.markdown("**Wrapped angle in the dataset**")
+                st.altair_chart(angle_wrap_example_chart(), width="stretch")
+                st.caption("Example: the stored angle reaches +π, then wraps to −π.")
+
+        st.session_state["configured_has_wrapping_states"] = has_wrapping or "No"
+        st.session_state["configured_angle_method"] = angle_method
+        st.session_state["configured_wrap_state_names"] = list(selected_wrap_states)
+
+        with st.container(border=True):
+            st.subheader("Trajectory structure")
+            st.caption(
+                "A single run continues as one experiment. Several stacked runs are separate "
+                "experiments joined into one file, often with a state reset between them."
+            )
+            single_chart, stacked_chart = trajectory_structure_examples()
+            chart_col_a, chart_col_b = st.columns(2)
+            with chart_col_a:
+                st.markdown("**Single continuous run**")
+                st.altair_chart(single_chart, width="stretch")
+                st.caption("One uninterrupted experiment")
+            with chart_col_b:
+                st.markdown("**Several stacked runs**")
+                st.altair_chart(stacked_chart, width="stretch")
+                st.caption("Separate experiments joined together")
+
+            traj_mode = st.segmented_control(
+                "How is your data organized?",
+                ["Single continuous run", "Several stacked trajectories"],
+                default=st.session_state.get(
+                    "configured_traj_mode", "Single continuous run"
+                ),
+                required=True,
+                key="traj_mode_step2",
+                wrap=True,
+            )
+            st.session_state["configured_traj_mode"] = (
+                traj_mode or "Single continuous run"
+            )
+
+            split_mode = st.session_state.get(
+                "configured_split_mode", "Auto-detect boundaries"
+            )
+            split_times_text = st.session_state.get("configured_split_times_text", "")
+            if traj_mode == "Several stacked trajectories":
+                split_mode = st.segmented_control(
+                    "How should we find where each run starts?",
+                    ["Auto-detect boundaries", "I know the timestamps"],
+                    default=split_mode,
+                    required=True,
+                    key="split_mode_step2",
+                    wrap=True,
+                )
+                if split_mode == "I know the timestamps":
+                    split_times_text = st.text_input(
+                        "Run start times (seconds)",
+                        value=split_times_text,
+                        placeholder="e.g. 12.5, 25.0",
+                        help="Enter each split time from the time column, separated by commas.",
+                        key="split_times_step2",
+                    )
+                    parsed_splits = _float_list(split_times_text)
+                    if not split_times_text.strip():
+                        st.caption("Add at least one split time, for example: 12.5, 25.0")
+                    elif parsed_splits is None:
+                        st.warning("Enter numeric split times separated by commas.")
+                    elif not parsed_splits:
+                        st.caption("Add at least one split time, for example: 12.5, 25.0")
+            st.session_state["configured_split_mode"] = split_mode
+            st.session_state["configured_split_times_text"] = split_times_text
+
+        angle_configuration_valid = not (
+            has_wrapping == "Yes"
+            and angle_method == "Choose manually"
+            and (not selected_wrap_states or not state_columns)
+        )
+        trajectory_configuration_valid = not (
+            traj_mode == "Several stacked trajectories"
+            and split_mode == "I know the timestamps"
+            and not (_float_list(split_times_text) or [])
+        )
+
+        st.caption("Press Enter to continue, or choose Continue below.")
+        continue_col, back_col = st.columns([2, 1])
+        with continue_col:
+            continue_step = st.button(
+                "Continue to run settings",
+                type="primary",
+                icon=":material/arrow_forward:",
+                key="continue_to_run_settings",
+                width="stretch",
+                shortcut="Enter",
+                disabled=not (angle_configuration_valid and trajectory_configuration_valid),
+            )
+        with back_col:
+            back_step = st.button(
+                "Back to dataset",
+                icon=":material/arrow_back:",
+                key="back_to_dataset",
+                width="stretch",
+            )
+
+        if continue_step or back_step:
+            st.session_state["config_step"] = 3 if continue_step else 1
+            st.rerun()
+
+        return None, False
+
+    st.progress(1.0)
+    st.markdown("### 3 · Model and run")
+    st.caption("Step 3 of 3 · Choose your model and run size; adjust advanced options only if needed.")
+
+    with st.container(border=True):
+        dataset_col, assumption_col, change_col = st.columns([3, 2, 2])
+        with dataset_col:
+            st.markdown(f"Dataset · **{Path(st.session_state['data_path']).name}**")
+        with assumption_col:
+            if st.button("Edit assumptions", key="edit_sysid_assumptions", width="stretch"):
+                st.session_state["config_step"] = 2
+                st.rerun()
+        with change_col:
+            if st.button("Change dataset", key="change_sysid_dataset", width="stretch"):
+                st.session_state["config_step"] = 1
+                st.rerun()
+
+    output_dir = "artifacts_sysid"
+
+    # --- Client-facing model choices -------------------------------------
+    configured_architecture = str(
+        st.session_state.get("configured_architecture", D("NETWORK_ARCHITECTURE"))
+    ).upper()
+    default_architecture = "LSTM" if configured_architecture == "LSTM" else "MLP"
+    lstm_seq_length = int(
+        st.session_state.get("configured_lstm_seq_length", D("LSTM_SEQ_LENGTH"))
+    )
+    pinn_loss_weight = float(
+        st.session_state.get("configured_pinn_loss_weight", D("PINN_LOSS_WEIGHT"))
+    )
+    pinn_equation_file = str(
+        st.session_state.get("configured_pinn_equation_file", D("PINN_EQUATION_FILE"))
+    )
+
+    model_col, physics_col = st.columns([1.35, 1], gap="medium")
+    with model_col:
+        with st.container(border=True):
+            st.markdown("#### Choose a model")
+            st.caption("Pick how the model reads your time-series data.")
+            architecture = st.segmented_control(
+                "Model architecture",
+                ["LSTM", "MLP"],
+                default=default_architecture,
+                required=True,
+                key="client_model_architecture",
+                help="LSTM reads a short sequence of recent samples. MLP maps one sample directly.",
+            ) or default_architecture
+            st.session_state["configured_architecture"] = architecture
+
+            mlp_selected = " selected" if architecture == "MLP" else ""
+            lstm_selected = " selected" if architecture == "LSTM" else ""
+            st.html(f"""
+            <div class="model-diagrams">
+              <section class="model-diagram{mlp_selected}">
+                <div class="model-diagram-head"><b>MLP</b><span>one sample at a time</span></div>
+                <div class="mlp-flow">
+                  <div class="mlp-input"><i>State</i><i>Input</i></div>
+                  <span class="model-arrow">→</span>
+                  <div class="mlp-layers" aria-label="Neural network layers">
+                    <i></i><i></i><i></i>
+                  </div>
+                  <span class="model-arrow">→</span>
+                  <div class="mlp-output">Next change</div>
+                </div>
+                <p>Current state + input → predicted change</p>
+              </section>
+              <section class="model-diagram{lstm_selected}">
+                <div class="model-diagram-head"><b>LSTM</b><span>recent sequence</span></div>
+                <div class="lstm-flow">
+                  <div class="lstm-steps">
+                    <i>t−2</i><span>→</span><i>t−1</i><span>→</span><i>t</i>
+                  </div>
+                  <div class="lstm-memory"><span>recent history</span><i></i></div>
+                  <div class="lstm-result">→ next change</div>
+                </div>
+                <p>Recent samples → learns how motion evolves</p>
+              </section>
+            </div>
+            """)
+            if architecture == "LSTM":
+                lstm_seq_length = st.number_input(
+                    "Recent history given to LSTM (steps)",
+                    min_value=2,
+                    max_value=200,
+                    value=int(lstm_seq_length),
+                    help="How many previous rows the LSTM can use to understand motion over time.",
+                    key="client_lstm_memory_window",
+                )
+                st.session_state["configured_lstm_seq_length"] = int(lstm_seq_length)
+            st.caption(
+                "LSTM is a good starting point when behavior depends on recent motion. "
+                "MLP is a simpler direct mapping when each row contains enough information."
+            )
+
+    with physics_col:
+        with st.container(border=True):
+            st.markdown("#### Physics guidance · optional")
+            st.caption(
+                "A physics-informed neural network (PINN) uses your system equations "
+                "with the measured data to guide plausible predictions."
+            )
+            use_pinn = st.toggle(
+                "Use physics-informed training (PINN)",
+                value=bool(st.session_state.get("configured_use_pinn", D("USE_PINN"))),
+                key="client_use_pinn",
+                help="Leave this off if you do not have a trusted equation for this system.",
+            )
+            st.session_state["configured_use_pinn"] = bool(use_pinn)
+            if use_pinn:
+                st.info(
+                    "Use PINN only when you can provide a trusted equation. If the equation "
+                    "file is missing, a starter file is created and must be completed before training.",
+                    icon="ℹ️",
+                )
+                with st.expander("PINN setup", expanded=False):
+                    pinn_loss_weight = st.number_input(
+                        "Physics influence",
+                        min_value=0.0,
+                        max_value=10.0,
+                        value=float(pinn_loss_weight),
+                        step=0.1,
+                        help="How strongly the known equation guides training. The default is a balanced starting point.",
+                        key="client_pinn_loss_weight",
+                    )
+                    pinn_equation_file = st.text_input(
+                        "Physics equation file",
+                        value=pinn_equation_file,
+                        help="The module must define compute_analytical_xdot(states, actions).",
+                        key="client_pinn_equation_file",
+                    )
+                    st.session_state["configured_pinn_loss_weight"] = float(pinn_loss_weight)
+                    st.session_state["configured_pinn_equation_file"] = pinn_equation_file
+
+    if not use_pinn:
+        pinn_loss_weight = float(
+            st.session_state.get("configured_pinn_loss_weight", D("PINN_LOSS_WEIGHT"))
+        )
+        pinn_equation_file = str(
+            st.session_state.get("configured_pinn_equation_file", D("PINN_EQUATION_FILE"))
+        )
 
     # --- Run budget -------------------------------------------------------
-    st.markdown("#### Run budget")
-    b1, b2, b3, b4 = st.columns(4)
-    run_mode = b1.selectbox(
+    st.markdown("#### Run size")
+    run_mode = st.selectbox(
         "Run mode", ["fast", "regular", "heavy"], index=1,
         help="fast = 7 cycles / 0.5 h · regular = 20 / 1.5 h · heavy = 40 / 4 h",
     )
     limits = cfg.run_mode_limits(run_mode)
-    max_cycles = b2.text_input("Max cycles", "", placeholder=str(limits["max_cycles"]))
-    epochs = b3.text_input("Epochs / cycle", "", placeholder=str(D("EPOCHS")))
-    save_plot = b4.checkbox("Diagnostic figures", value=True)
     st.caption(
         f"{limits['max_cycles']} cycles · {limits['max_hours']} h · Critic explores to cycle "
         f"{limits['critic_explore_limit']} · failure memory: {limits['memory_capacity']} · "
         f"customer context: {limits['context_status']}"
     )
+    st.caption("Fit diagnostics and held-out validation plots are saved with the run for review.")
 
-    # --- Questionnaire ----------------------------------------------------
-    st.markdown("#### Dataset questionnaire")
-    st.caption("The three questions the terminal asks before training.")
-    q1, q2 = st.columns([3, 2])
-    customer_description = q1.text_area(
-        "System description", value=D("CUSTOMER_SYSTEM_DESCRIPTION"), height=110,
-        help="Free text fed to every agent as physical context.",
-    )
-    angle_mode = q2.radio("Angular states (wrap at ±π)",
-                          ["None", "Specify manually", "Auto-detect"])
-    angle_text = ""
-    if angle_mode == "Specify manually":
-        angle_text = q2.text_input("State indices (0-based)", "", placeholder="2, 4")
+    with st.expander("Custom cycle and epoch limits"):
+        max_cycles, epochs = st.columns(2)
+        max_cycles = max_cycles.text_input(
+            "Maximum cycles", "", placeholder=str(limits["max_cycles"]),
+        )
+        epochs = epochs.text_input("Epochs per cycle", "", placeholder=str(D("EPOCHS")))
 
-    t1, t2 = st.columns([3, 2])
-    traj_mode = t1.radio("Trajectory structure",
-                         ["Single continuous run", "Several stacked trajectories"],
-                         horizontal=True)
-    split_mode, split_times_text = "Auto-detect boundaries", ""
-    if traj_mode == "Several stacked trajectories":
-        split_mode = t2.radio("Boundaries",
-                              ["Auto-detect boundaries", "I know the timestamps"])
-        if split_mode == "I know the timestamps":
-            split_times_text = t2.text_input("Split timestamps (s)", "", placeholder="12.5, 25.0")
+    with st.expander("Advanced settings", expanded=False):
+        st.markdown("##### Data and rollout")
+        col_l, col_r = st.columns(2)
 
-    # --- Advanced ---------------------------------------------------------
-    st.markdown("#### Model & physics")
-    col_l, col_r = st.columns(2)
+        with col_l.expander("Rollout and integration"):
+            rollout_horizon = st.number_input(
+                "Rollout horizon", 1, 50, int(D("ROLLOUT_HORIZON")),
+                help=">1 trains autoregressively on its own predictions.",
+            )
+            integrator_type = st.selectbox(
+                "Kinematic integrator", ["RK4", "EULER"],
+                index=0 if str(D("INTEGRATOR_TYPE")).upper() == "RK4" else 1,
+            )
+            trajectory_chunk_size = st.number_input(
+                "Trajectory chunk size (0 = none)", 0, 100000, int(D("TRAJECTORY_CHUNK_SIZE"))
+            )
+            shuffle_data = st.checkbox(
+                "Shuffle data", value=bool(D("SHUFFLE_DATA")),
+                help="Forced off for LSTM to preserve contiguous temporal memory.",
+            )
+            st.caption(
+                f"Validation windows need **{int(lstm_seq_length) if architecture == 'LSTM' else 1}"
+                f" + {int(rollout_horizon)} − 1 = "
+                f"{(int(lstm_seq_length) if architecture == 'LSTM' else 1) + int(rollout_horizon) - 1}"
+                " consecutive rows**. A shorter validation split is rejected rather than "
+                "scored as a perfect fit."
+            )
 
-    with col_l.expander("Architecture & rollout", expanded=True):
-        architecture = st.selectbox(
-            "Network", ["LSTM", "MLP"],
-            index=0 if str(D("NETWORK_ARCHITECTURE")).upper() == "LSTM" else 1,
-        )
-        lstm_seq_length = st.number_input(
-            "LSTM memory window (steps)", 2, 200, int(D("LSTM_SEQ_LENGTH")),
-            disabled=architecture != "LSTM",
-        )
-        rollout_horizon = st.number_input(
-            "Rollout horizon", 1, 50, int(D("ROLLOUT_HORIZON")),
-            help=">1 trains autoregressively on its own predictions.",
-        )
-        integrator_type = st.selectbox(
-            "Kinematic integrator", ["RK4", "EULER"],
-            index=0 if str(D("INTEGRATOR_TYPE")).upper() == "RK4" else 1,
-        )
-        trajectory_chunk_size = st.number_input(
-            "Trajectory chunk size (0 = none)", 0, 100000, int(D("TRAJECTORY_CHUNK_SIZE"))
-        )
-        shuffle_data = st.checkbox(
-            "Shuffle data", value=bool(D("SHUFFLE_DATA")),
-            help="Forced off for LSTM to preserve contiguous temporal memory.",
-        )
-        st.caption(
-            f"Validation windows need **{int(lstm_seq_length) if architecture == 'LSTM' else 1}"
-            f" + {int(rollout_horizon)} − 1 = "
-            f"{(int(lstm_seq_length) if architecture == 'LSTM' else 1) + int(rollout_horizon) - 1}"
-            " consecutive rows**. A shorter validation split is rejected rather than "
-            "scored as a perfect fit."
-        )
+        with col_r.expander("Derivative estimation"):
+            st.caption("Only used when the dataset has no xdot_* columns.")
+            methods = ["finite_difference", "savitzky_golay", "sliding_mode"]
+            derivative_method = st.selectbox(
+                "Method", methods,
+                index=methods.index(str(D("DERIVATIVE_METHOD")))
+                if str(D("DERIVATIVE_METHOD")) in methods else 0,
+            )
+            derivative_filter_tau = st.number_input(
+                "Simulink filter tau (0 = off)", 0.0, 5.0, float(D("DERIVATIVE_FILTER_TAU")),
+                step=0.001, format="%.4f",
+            )
+            savgol_window = st.number_input(
+                "Savitzky-Golay window (odd)", 3, 201, int(D("SAVGOL_WINDOW")),
+                disabled=derivative_method != "savitzky_golay",
+            )
+            savgol_polyorder = st.number_input(
+                "Savitzky-Golay polyorder", 1, 9, int(D("SAVGOL_POLYORDER")),
+                disabled=derivative_method != "savitzky_golay",
+            )
+            smd_lambda_1 = st.number_input(
+                "Sliding-mode λ1", 0.0, 500.0, float(D("SMD_LAMBDA_1")),
+                disabled=derivative_method != "sliding_mode",
+            )
+            smd_lambda_2 = st.number_input(
+                "Sliding-mode λ2", 0.0, 500.0, float(D("SMD_LAMBDA_2")),
+                disabled=derivative_method != "sliding_mode",
+            )
+            reset_threshold_text = st.text_input(
+                "Reset threshold", "", placeholder="auto-calibrated from the data",
+                help="One float, or one per state. Blank = auto.",
+            )
 
-    with col_r.expander("Derivative estimation", expanded=True):
-        st.caption("Only used when the dataset has no xdot_* columns.")
-        methods = ["finite_difference", "savitzky_golay", "sliding_mode"]
-        derivative_method = st.selectbox(
-            "Method", methods,
-            index=methods.index(str(D("DERIVATIVE_METHOD")))
-            if str(D("DERIVATIVE_METHOD")) in methods else 0,
-        )
-        derivative_filter_tau = st.number_input(
-            "Simulink filter tau (0 = off)", 0.0, 5.0, float(D("DERIVATIVE_FILTER_TAU")),
-            step=0.001, format="%.4f",
-        )
-        savgol_window = st.number_input(
-            "Savitzky-Golay window (odd)", 3, 201, int(D("SAVGOL_WINDOW")),
-            disabled=derivative_method != "savitzky_golay",
-        )
-        savgol_polyorder = st.number_input(
-            "Savitzky-Golay polyorder", 1, 9, int(D("SAVGOL_POLYORDER")),
-            disabled=derivative_method != "savitzky_golay",
-        )
-        smd_lambda_1 = st.number_input(
-            "Sliding-mode λ1", 0.0, 500.0, float(D("SMD_LAMBDA_1")),
-            disabled=derivative_method != "sliding_mode",
-        )
-        smd_lambda_2 = st.number_input(
-            "Sliding-mode λ2", 0.0, 500.0, float(D("SMD_LAMBDA_2")),
-            disabled=derivative_method != "sliding_mode",
-        )
-        reset_threshold_text = st.text_input(
-            "Reset threshold", "", placeholder="auto-calibrated from the data",
-            help="One float, or one per state. Blank = auto.",
-        )
+        with st.expander("State-space filter"):
+            use_state_filter = st.checkbox("Clip state outliers", value=bool(D("USE_STATE_FILTER")))
+            pct_low, pct_high = st.slider(
+                "Percentile band", 0.0, 100.0,
+                (float(D("AUTO_FILTER_PERCENTILES")[0]), float(D("AUTO_FILTER_PERCENTILES")[1])),
+                disabled=not use_state_filter,
+            )
 
-    col_l2, col_r2 = st.columns(2)
-    with col_l2.expander("State-space filter"):
-        use_state_filter = st.checkbox("Clip state outliers", value=bool(D("USE_STATE_FILTER")))
-        pct_low, pct_high = st.slider(
-            "Percentile band", 0.0, 100.0,
-            (float(D("AUTO_FILTER_PERCENTILES")[0]), float(D("AUTO_FILTER_PERCENTILES")[1])),
-            disabled=not use_state_filter,
-        )
+        st.markdown("##### Training and search")
+        col_l3, col_r3 = st.columns(2)
+        with col_l3.expander("Training limits"):
+            batch_size = st.number_input("Batch size", 8, 4096, int(D("BATCH_SIZE")))
+            early_stop_patience = st.number_input(
+                "Early-stop patience", 1, 500, int(D("EARLY_STOP_PATIENCE"))
+            )
+            mse_target = st.number_input(
+                "MSE target (stops the run)", 0.0, 10.0, float(D("MSE_TARGET")),
+                step=1e-5, format="%.6f",
+            )
+            overfit_ratio_limit = st.number_input(
+                "Overfit ratio limit", 1.0, 100.0, float(D("OVERFIT_RATIO_LIMIT"))
+            )
+            customer_max_latency_ms = st.number_input(
+                "Max inference latency (ms)", 0.01, 1000.0, float(D("CUSTOMER_MAX_LATENCY_MS"))
+            )
+            adaptive_regularization = st.checkbox(
+                "Adaptive regularization", value=bool(D("ADAPTIVE_REGULARIZATION")),
+                help="Let the Actor tune dropout / weight decay.",
+            )
+            lr_reduce_factor = st.number_input(
+                "LR reduce factor", 0.05, 0.99, float(D("LR_REDUCE_FACTOR"))
+            )
+            lr_schedule_min_floor = st.number_input(
+                "LR floor", 1e-9, 1e-2, float(D("LR_SCHEDULE_MIN_FLOOR")), format="%.8f"
+            )
+            adaptive_improvement_threshold = st.number_input(
+                "Epoch-extension threshold", 0.0, 1.0,
+                float(D("ADAPTIVE_IMPROVEMENT_THRESHOLD")), step=0.001, format="%.4f",
+            )
+            epoch_extension_steps = st.number_input(
+                "Epoch-extension steps", 0, 1000, int(D("EPOCH_EXTENSION_STEPS"))
+            )
 
-    with col_r2.expander("Physics-informed (PINN)"):
-        use_pinn = st.checkbox("Enable physics residual", value=bool(D("USE_PINN")))
-        pinn_loss_weight = st.number_input(
-            "Physics loss weight λ", 0.0, 10.0, float(D("PINN_LOSS_WEIGHT")),
-            step=0.1, disabled=not use_pinn,
-        )
-        pinn_equation_file = st.text_input(
-            "Equation file", str(D("PINN_EQUATION_FILE")), disabled=not use_pinn,
-            help="Must define compute_analytical_xdot(states, actions). "
-                 "A template is generated if missing.",
-        )
+        with col_r3.expander("Search bounds (client-authorised)"):
+            lr_lo = st.number_input("LR min", 1e-8, 1.0, float(D("LEARNING_RATE_MIN")), format="%.8f")
+            lr_hi = st.number_input("LR max", 1e-8, 1.0, float(D("LEARNING_RATE_MAX")), format="%.8f")
+            hs_lo = st.number_input("Hidden size min", 1, 4096, int(D("HIDDEN_SIZE_MIN")))
+            hs_hi = st.number_input("Hidden size max", 1, 4096, int(D("HIDDEN_SIZE_MAX")))
+            nl_lo = st.number_input("Layer count min", 1, 32, int(D("NUM_LAYERS_MIN")))
+            nl_hi = st.number_input("Layer count max", 1, 32, int(D("NUM_LAYERS_MAX")))
 
-    col_l3, col_r3 = st.columns(2)
-    with col_l3.expander("Training limits"):
-        batch_size = st.number_input("Batch size", 8, 4096, int(D("BATCH_SIZE")))
-        early_stop_patience = st.number_input(
-            "Early-stop patience", 1, 500, int(D("EARLY_STOP_PATIENCE"))
-        )
-        mse_target = st.number_input(
-            "MSE target (stops the run)", 0.0, 10.0, float(D("MSE_TARGET")),
-            step=1e-5, format="%.6f",
-        )
-        overfit_ratio_limit = st.number_input(
-            "Overfit ratio limit", 1.0, 100.0, float(D("OVERFIT_RATIO_LIMIT"))
-        )
-        customer_max_latency_ms = st.number_input(
-            "Max inference latency (ms)", 0.01, 1000.0, float(D("CUSTOMER_MAX_LATENCY_MS"))
-        )
-        adaptive_regularization = st.checkbox(
-            "Adaptive regularization", value=bool(D("ADAPTIVE_REGULARIZATION")),
-            help="Let the Actor tune dropout / weight decay.",
-        )
-        lr_reduce_factor = st.number_input(
-            "LR reduce factor", 0.05, 0.99, float(D("LR_REDUCE_FACTOR"))
-        )
-        lr_schedule_min_floor = st.number_input(
-            "LR floor", 1e-9, 1e-2, float(D("LR_SCHEDULE_MIN_FLOOR")), format="%.8f"
-        )
-        adaptive_improvement_threshold = st.number_input(
-            "Epoch-extension threshold", 0.0, 1.0,
-            float(D("ADAPTIVE_IMPROVEMENT_THRESHOLD")), step=0.001, format="%.4f",
-        )
-        epoch_extension_steps = st.number_input(
-            "Epoch-extension steps", 0, 1000, int(D("EPOCH_EXTENSION_STEPS"))
-        )
+        st.markdown("##### Agents")
+        col_l4, col_r4 = st.columns(2)
+        with col_l4.expander("Initializer agent"):
+            choose_via_llm = st.checkbox(
+                "Let the Initializer Agent choose", value=bool(D("CHOOSE_VIA_LLM_INITIALIZER"))
+            )
+            st.caption(
+                "Manual presets, used when the agent is switched off:" if not choose_via_llm
+                else "Presets below apply only if the agent is switched off."
+            )
+            manual_starting_lr = st.number_input(
+                "Preset LR", 1e-8, 1.0, float(D("MANUAL_STARTING_LR")),
+                format="%.6f", disabled=choose_via_llm,
+            )
+            manual_hidden_text = st.text_input(
+                "Preset topology", ", ".join(str(x) for x in D("MANUAL_STARTING_HIDDEN_LAYERS")),
+                disabled=choose_via_llm,
+            )
+            activations = list(cfg.AVAILABLE_ACTIVATIONS)
+            manual_activation = st.selectbox(
+                "Preset activation", activations,
+                index=activations.index(D("MANUAL_ACTIVATION"))
+                if D("MANUAL_ACTIVATION") in activations else 0,
+                disabled=choose_via_llm,
+            )
+            manual_dropout_rate = st.number_input(
+                "Preset dropout", 0.0, 0.9, float(D("MANUAL_DROPOUT_RATE")), disabled=choose_via_llm
+            )
+            manual_weight_decay = st.number_input(
+                "Preset weight decay", 0.0, 1.0, float(D("MANUAL_WEIGHT_DECAY")),
+                format="%.6f", disabled=choose_via_llm,
+            )
+            user_overrides_text = st.text_area(
+                "Client-locked parameters (JSON)", value="", height=70,
+                placeholder='{"hidden_layers": [128, 128]}',
+                help="Echoed into the Initializer prompt as parameters the client has "
+                     "locked — the agent must return these exact values.",
+            )
 
-    with col_r3.expander("Search bounds (client-authorised)"):
-        lr_lo = st.number_input("LR min", 1e-8, 1.0, float(D("LEARNING_RATE_MIN")), format="%.8f")
-        lr_hi = st.number_input("LR max", 1e-8, 1.0, float(D("LEARNING_RATE_MAX")), format="%.8f")
-        hs_lo = st.number_input("Hidden size min", 1, 4096, int(D("HIDDEN_SIZE_MIN")))
-        hs_hi = st.number_input("Hidden size max", 1, 4096, int(D("HIDDEN_SIZE_MAX")))
-        nl_lo = st.number_input("Layer count min", 1, 32, int(D("NUM_LAYERS_MIN")))
-        nl_hi = st.number_input("Layer count max", 1, 32, int(D("NUM_LAYERS_MAX")))
+        with col_r4.expander("Override the agent's proposal"):
+            st.caption(
+                "The same fourteen parameters the terminal offers after the agent reports. "
+                "Blank = keep the agent's choice."
+            )
+            o1, o2 = st.columns(2)
+            ov_lr = o1.text_input("learning_rate", "", placeholder="e.g. 0.001")
+            ov_layers = o2.text_input("hidden_layers", "", placeholder="e.g. 128, 64")
+            ov_activation = o1.selectbox(
+                "activation", ["(keep agent's choice)"] + list(cfg.AVAILABLE_ACTIVATIONS)
+            )
+            ov_dropout = o2.text_input("dropout_rate", "", placeholder="0.0 – 0.5")
+            ov_wd = o1.text_input("weight_decay", "", placeholder="e.g. 0.0001")
+            ov_filter = o2.selectbox("use_state_filter", ["(keep agent's choice)", "True", "False"])
+            ov_pct = o1.text_input("auto_filter_percentiles", "", placeholder="2, 98")
+            ov_tau = o2.text_input("derivative_filter_tau", "", placeholder="e.g. 0.005")
+            ov_lr_bounds = o1.text_input("LR search bounds", "", placeholder="0.00005, 0.001")
+            ov_hs_bounds = o2.text_input("Hidden size bounds", "", placeholder="32, 256")
+            ov_nl_bounds = o1.text_input("Layer depth bounds", "", placeholder="1, 3")
+            ov_epochs = o2.text_input("epochs", "", placeholder=str(D("EPOCHS")))
+            ov_batch = o1.text_input("batch_size", "", placeholder=str(D("BATCH_SIZE")))
+            ov_patience = o2.text_input(
+                "early_stop_patience", "", placeholder=str(D("EARLY_STOP_PATIENCE"))
+            )
 
-    st.markdown("#### Agents")
-    col_l4, col_r4 = st.columns(2)
-    with col_l4.expander("Initializer Agent"):
-        choose_via_llm = st.checkbox(
-            "Let the Initializer Agent choose", value=bool(D("CHOOSE_VIA_LLM_INITIALIZER"))
-        )
-        st.caption(
-            "Manual presets, used when the agent is switched off:" if not choose_via_llm
-            else "Presets below apply only if the agent is switched off."
-        )
-        manual_starting_lr = st.number_input(
-            "Preset LR", 1e-8, 1.0, float(D("MANUAL_STARTING_LR")),
-            format="%.6f", disabled=choose_via_llm,
-        )
-        manual_hidden_text = st.text_input(
-            "Preset topology", ", ".join(str(x) for x in D("MANUAL_STARTING_HIDDEN_LAYERS")),
-            disabled=choose_via_llm,
-        )
-        activations = list(cfg.AVAILABLE_ACTIVATIONS)
-        manual_activation = st.selectbox(
-            "Preset activation", activations,
-            index=activations.index(D("MANUAL_ACTIVATION"))
-            if D("MANUAL_ACTIVATION") in activations else 0,
-            disabled=choose_via_llm,
-        )
-        manual_dropout_rate = st.number_input(
-            "Preset dropout", 0.0, 0.9, float(D("MANUAL_DROPOUT_RATE")), disabled=choose_via_llm
-        )
-        manual_weight_decay = st.number_input(
-            "Preset weight decay", 0.0, 1.0, float(D("MANUAL_WEIGHT_DECAY")),
-            format="%.6f", disabled=choose_via_llm,
-        )
-        user_overrides_text = st.text_area(
-            "Client-locked parameters (JSON)", value="", height=70,
-            placeholder='{"hidden_layers": [128, 128]}',
-            help="Echoed into the Initializer prompt as parameters the client has "
-                 "locked — the agent must return these exact values.",
-        )
-
-    with col_r4.expander("Override the agent's proposal"):
-        st.caption(
-            "The same fourteen parameters the terminal offers after the agent reports. "
-            "Blank = keep the agent's choice."
-        )
-        o1, o2 = st.columns(2)
-        ov_lr = o1.text_input("learning_rate", "", placeholder="e.g. 0.001")
-        ov_layers = o2.text_input("hidden_layers", "", placeholder="e.g. 128, 64")
-        ov_activation = o1.selectbox(
-            "activation", ["(keep agent's choice)"] + list(cfg.AVAILABLE_ACTIVATIONS)
-        )
-        ov_dropout = o2.text_input("dropout_rate", "", placeholder="0.0 – 0.5")
-        ov_wd = o1.text_input("weight_decay", "", placeholder="e.g. 0.0001")
-        ov_filter = o2.selectbox("use_state_filter", ["(keep agent's choice)", "True", "False"])
-        ov_pct = o1.text_input("auto_filter_percentiles", "", placeholder="2, 98")
-        ov_tau = o2.text_input("derivative_filter_tau", "", placeholder="e.g. 0.005")
-        ov_lr_bounds = o1.text_input("LR search bounds", "", placeholder="0.00005, 0.001")
-        ov_hs_bounds = o2.text_input("Hidden size bounds", "", placeholder="32, 256")
-        ov_nl_bounds = o1.text_input("Layer depth bounds", "", placeholder="1, 3")
-        ov_epochs = o2.text_input("epochs", "", placeholder=str(D("EPOCHS")))
-        ov_batch = o1.text_input("batch_size", "", placeholder=str(D("BATCH_SIZE")))
-        ov_patience = o2.text_input("early_stop_patience", "", placeholder=str(D("EARLY_STOP_PATIENCE")))
-
-    with st.expander("LLM provider"):
-        p1, p2, p3 = st.columns(3)
-        providers = ["openai", "groq", "openrouter"]
-        api_provider = p1.selectbox(
-            "Provider", providers,
-            index=providers.index(D("API_PROVIDER")) if D("API_PROVIDER") in providers else 0,
-        )
-        llm_model = p2.text_input("Model", D("LLM_MODEL"))
-        llm_temperature = p3.slider("Temperature", 0.0, 2.0, float(D("LLM_TEMPERATURE")), 0.05)
-        st.caption(
-            "No API key? Every agent falls back to its deterministic mathematical "
-            "path and the run still produces the full deliverable."
-        )
-
-    if data_path is None:
-        return None, False
-
+        with st.expander("LLM provider"):
+            p1, p2, p3 = st.columns(3)
+            providers = ["openai", "groq", "openrouter"]
+            api_provider = p1.selectbox(
+                "Provider", providers,
+                index=providers.index(D("API_PROVIDER")) if D("API_PROVIDER") in providers else 0,
+            )
+            llm_model = p2.text_input("Model", D("LLM_MODEL"))
+            llm_temperature = p3.slider(
+                "Temperature", 0.0, 2.0, float(D("LLM_TEMPERATURE")), 0.05,
+            )
+            st.caption(
+                "No API key? Every agent falls back to its deterministic mathematical "
+                "path and the run still produces the full deliverable."
+            )
     # --- Assemble ---------------------------------------------------------
-    if angle_mode == "None":
-        angle_indices, auto_detect_angles = [], False
-    elif angle_mode == "Specify manually":
-        angle_indices, auto_detect_angles = (_int_list(angle_text) or []), False
-    else:
-        angle_indices, auto_detect_angles = [], True
 
-    multi_trajectory = traj_mode != "Single continuous run"
-    manual_split_times: List[float] = []
-    if multi_trajectory and split_mode == "I know the timestamps":
-        manual_split_times = sorted(_float_list(split_times_text) or [])
+    # Restore dataset assumptions saved before moving between wizard steps.
+    customer_description = st.session_state.get("configured_customer_description", "")
+    output_dir = "artifacts_sysid"
 
+    has_wrapping_states = (
+        st.session_state.get("configured_has_wrapping_states", "No") == "Yes"
+    )
+    angle_method = st.session_state.get("configured_angle_method", "Auto-detect")
+    auto_detect_angles = has_wrapping_states and angle_method == "Auto-detect"
+    configured_state_columns = st.session_state.get("configured_state_columns", [])
+    selected_wrap_state_names = st.session_state.get("configured_wrap_state_names", [])
+    angle_indices = [
+        configured_state_columns.index(name)
+        for name in selected_wrap_state_names
+        if name in configured_state_columns
+    ] if has_wrapping_states and angle_method == "Choose manually" else []
+
+    traj_mode = st.session_state.get("configured_traj_mode", "Single continuous run")
+    multi_trajectory = (traj_mode == "Several stacked trajectories")
+    split_mode = st.session_state.get("configured_split_mode", "Auto-detect boundaries")
+    manual_split_times = sorted(
+        _float_list(st.session_state.get("configured_split_times_text", "")) or []
+    ) if multi_trajectory and split_mode == "I know the timestamps" else []
+
+    # Process run settings overrides.
     reset_threshold: Optional[Any] = None
     parsed_reset = _float_list(reset_threshold_text)
     if parsed_reset:
@@ -637,11 +1072,12 @@ def render_configure() -> tuple[Optional[SysIDOptions], bool]:
     if _i(ov_patience) is not None:
         overrides["early_stop_patience"] = _i(ov_patience)
 
+    # 3. Finalize Options
     options = SysIDOptions(
-        data_path=data_path,
+        data_path=st.session_state.get("data_path"),
         run_mode=run_mode,
-        output_dir=output_dir or "artifacts_sysid",
-        interactive=False,  # a web UI must never block on input()
+        output_dir=output_dir,
+        interactive=False,
         max_cycles=_i(max_cycles),
         epochs=_i(epochs),
         customer_description=customer_description,
@@ -694,10 +1130,9 @@ def render_configure() -> tuple[Optional[SysIDOptions], bool]:
         api_provider=api_provider,
         llm_model=llm_model or None,
         llm_temperature=float(llm_temperature),
-        save_plot=bool(save_plot),
+        save_plot=True,
     )
     return options, True
-
 
 @st.cache_data(show_spinner=False)
 def _peek(path: str, mtime: float) -> Dict[str, Any]:
@@ -757,6 +1192,99 @@ def render_data_preview(data_path: str) -> None:
 # ---------------------------------------------------------------------------
 # Charts
 # ---------------------------------------------------------------------------
+def angle_wrap_example_chart():
+    """Show the discontinuity created when a wrapped angle crosses +pi."""
+    import altair as alt
+
+    angle_data = pd.DataFrame({
+        "Time": list(range(7)),
+        "Angle": [2.1, 2.5, 2.85, math.pi, -math.pi, -2.75, -2.35],
+    })
+    boundaries = pd.DataFrame({"Angle": [-math.pi, math.pi]})
+    limits = alt.Chart(boundaries).mark_rule(
+        color=T.TEXT_FAINT, strokeDash=[4, 4], strokeWidth=1,
+    ).encode(y="Angle:Q")
+    wrapped_line = alt.Chart(angle_data).mark_line(
+        color=T.SERIES_A,
+        strokeWidth=2.5,
+        point=alt.OverlayMarkDef(size=48, filled=True, color=T.SERIES_A),
+    ).encode(
+        x=alt.X("Time:Q", title="Time"),
+        y=alt.Y(
+            "Angle:Q",
+            title="Angle (radians)",
+            scale=alt.Scale(domain=[-math.pi * 1.12, math.pi * 1.12]),
+            axis=alt.Axis(values=[-math.pi, 0, math.pi], format=".2f"),
+        ),
+        tooltip=[
+            alt.Tooltip("Time:Q", title="Time"),
+            alt.Tooltip("Angle:Q", title="Stored angle", format=".2f"),
+        ],
+    )
+    return _style(limits + wrapped_line, height=205)
+
+
+def trajectory_structure_examples():
+    """Return paired examples of one continuous run and stacked runs."""
+    import altair as alt
+
+    single_data = pd.DataFrame({
+        "Time": list(range(11)),
+        "State": [0.0, 0.6, 1.1, 1.45, 1.55, 1.5, 1.7, 2.15, 2.65, 3.0, 3.2],
+    })
+    single_line = alt.Chart(single_data).mark_line(
+        color=T.SERIES_A,
+        strokeWidth=2.5,
+        point=alt.OverlayMarkDef(size=32, filled=True, color=T.SERIES_A),
+    ).encode(
+        x=alt.X("Time:Q", title="Time (s)"),
+        y=alt.Y("State:Q", title="Example state"),
+        tooltip=[alt.Tooltip("Time:Q"), alt.Tooltip("State:Q", format=".2f")],
+    )
+    single_chart = _style(single_line, height=195)
+
+    stacked_rows = []
+    examples = [
+        ("Run 1", [0.0, 0.8, 1.45, 1.9, 2.2]),
+        ("Run 2", [0.0, 0.55, 1.25, 1.7, 2.0]),
+        ("Run 3", [0.0, 0.65, 1.05, 1.55, 2.25]),
+    ]
+    for run_index, (run_name, states) in enumerate(examples):
+        for local_time, state_value in enumerate(states):
+            stacked_rows.append({
+                "Time": run_index * len(states) + local_time,
+                "State": state_value,
+                "Run": run_name,
+            })
+    stacked_data = pd.DataFrame(stacked_rows)
+    run_lines = alt.Chart(stacked_data).mark_line(
+        strokeWidth=2.5,
+        point=alt.OverlayMarkDef(size=30, filled=True),
+    ).encode(
+        x=alt.X("Time:Q", title="Time (s)"),
+        y=alt.Y("State:Q", title="Example state"),
+        color=alt.Color(
+            "Run:N",
+            title=None,
+            scale=alt.Scale(
+                domain=["Run 1", "Run 2", "Run 3"],
+                range=[T.SERIES_A, "#569cd6", "#c586c0"],
+            ),
+            legend=alt.Legend(orient="top", labelColor=T.TEXT_DIM),
+        ),
+        tooltip=[
+            alt.Tooltip("Run:N"),
+            alt.Tooltip("Time:Q"),
+            alt.Tooltip("State:Q", format=".2f"),
+        ],
+    )
+    split_rules = alt.Chart(pd.DataFrame({"Time": [5, 10]})).mark_rule(
+        color=T.WARN, strokeDash=[4, 4], strokeWidth=1,
+    ).encode(x="Time:Q")
+    stacked_chart = _style(split_rules + run_lines, height=195)
+    return single_chart, stacked_chart
+
+
 def convergence_chart(history: List[Dict[str, Any]]):
     """
     Train vs validation MSE across tuning cycles.
@@ -841,32 +1369,116 @@ def latency_chart(history: List[Dict[str, Any]], max_latency: float):
 
 
 def _style(chart, height: int):
-    return chart.properties(height=height).configure_view(
+    return chart.properties(
+        height=height,
+        padding={"top": 12, "bottom": 18, "left": 22, "right": 14},
+    ).configure_view(
         stroke=T.BORDER, fill=T.BG_CARD
     ).configure_axis(
         grid=True, gridColor=T.BORDER, gridOpacity=0.5,
         labelColor=T.TEXT_DIM, titleColor=T.TEXT_DIM,
         domainColor=T.BORDER, tickColor=T.BORDER,
-    ).configure_legend(labelColor=T.TEXT_DIM).configure(background=T.BG_CARD)
+    ).configure_legend(labelColor=T.TEXT_DIM).configure_title(
+        color=T.TEXT_DIM, fontSize=12, anchor="start",
+    ).configure(background=T.BG_CARD)
 
 
 # ---------------------------------------------------------------------------
 # Monitor
 # ---------------------------------------------------------------------------
-def render_stage_rail(current_stage: str, finished: bool) -> None:
-    done = True
+def render_stage_rail(current_stage: str, progress: float, finished: bool) -> None:
+    """Render the pipeline as connected, instrument-style process blocks."""
+    blocks = [
+        {
+            "title": "Prepare data",
+            "stages": ["Questionnaire", "Loading dataset", "Data Inspector", "Splitting trajectories"],
+            "route": "QUESTIONNAIRE · LOAD · INSPECT · SPLIT",
+            "description": "Checks the data contract, prepares derivatives, and separates independent runs.",
+            "tags": ["time + states", "derivatives", "trajectories"],
+            "signal": "clean runs",
+        },
+        {
+            "title": "Initialize model",
+            "stages": ["Initializer Agent"],
+            "route": "SYSTEM CONTEXT · MODEL SEED",
+            "description": "Builds a starting dynamics model from the system description and search limits.",
+            "tags": ["architecture", "parameters", "constraints"],
+            "signal": "candidate",
+        },
+        {
+            "title": "Tune dynamics",
+            "stages": ["Tuning cycles"],
+            "route": "TRAIN ↔ CRITIC ↔ EXPLORER",
+            "description": "Refines the model using validation error, stability checks, and bounded search.",
+            "tags": ["fit", "validate", "iterate"],
+            "signal": "best model",
+        },
+        {
+            "title": "Verify + package",
+            "stages": ["Held-out verification", "Report & packaging"],
+            "route": "ROLLOUT · SCORE · EXPORT",
+            "description": "Tests unseen trajectories and prepares the report, model, and inference code.",
+            "tags": ["held-out test", "report", "artifacts"],
+            "signal": "deliverables",
+        },
+    ]
+    current_index = STAGES.index(current_stage) if current_stage in STAGES else 0
+    stage_position = {name: index for index, name in enumerate(STAGES)}
     parts = []
-    for name in STAGES:
-        if finished:
-            cls, icon = "rail-done", "✓"
-        elif name == current_stage:
-            cls, icon, done = "rail-active", "●", False
-        elif done:
-            cls, icon = "rail-done", "✓"
-        else:
-            cls, icon = "rail-todo", "○"
-        parts.append(f"<span class='rail-step {cls}'>{icon} {name}</span>")
-    st.markdown(f"<div class='rail'>{''.join(parts)}</div>", unsafe_allow_html=True)
+    for index, block in enumerate(blocks):
+        block_positions = [stage_position[name] for name in block["stages"]]
+        active = not finished and current_index in block_positions
+        complete = finished or current_index > max(block_positions)
+        state_class = "done" if complete else "active" if active else "pending"
+        state_label = "✓ COMPLETE" if complete else "● RUNNING" if active else "○ QUEUED"
+        route = block["route"]
+        if active:
+            route = f"CURRENT · {current_stage.upper()}"
+        tags = "".join(f"<span>{tag}</span>" for tag in block["tags"])
+        parts.append(
+            f"<article class='pipeline-block {state_class}'>"
+            f"<div class='pipe-block-meta'><span class='pipe-index'>BLOCK {index + 1:02d}</span>"
+            f"<span class='pipe-state'>{state_label}</span></div>"
+            f"<div class='pipe-title'>{block['title']}</div>"
+            f"<div class='pipe-subtitle'>{route}</div>"
+            f"<p class='pipe-description'>{block['description']}</p>"
+            f"<div class='pipe-tags'>{tags}</div>"
+            "</article>"
+        )
+        if index < len(blocks) - 1:
+            parts.append(
+                f"<div class='pipeline-link' aria-hidden='true'>"
+                f"<span class='pipeline-link-icon'>›</span>"
+                f"<span class='pipeline-link-label'>{block['signal']}</span></div>"
+            )
+
+    progress_value = 1.0 if finished else min(max(float(progress or 0.0), 0.0), 1.0)
+    progress_percent = round(progress_value * 100)
+    current_label = "Run complete" if finished else (current_stage or "Preparing run")
+    st.html(
+        f"""
+        <section class="pipeline-board" aria-label="System identification pipeline status">
+          <header class="pipeline-board-head">
+            <div>
+              <div class="pipeline-kicker">Signal flow / execution map</div>
+              <div class="pipeline-heading">From observed data to validated dynamics</div>
+            </div>
+            <div class="pipeline-current">
+              <div class="pipeline-current-label">Current stage</div>
+              <div class="pipeline-current-value">{current_label}</div>
+            </div>
+          </header>
+          <div class="pipeline-flow">{''.join(parts)}</div>
+          <footer class="pipeline-board-footer">
+            <span class="pipeline-progress-label">RUN PROGRESS&nbsp; {progress_percent:02d}%</span>
+            <span class="pipeline-progress-track">
+              <span class="pipeline-progress-fill" style="width:{progress_percent}%"></span>
+            </span>
+            <span class="pipeline-progress-label">{len(STAGES)} stages</span>
+          </footer>
+        </section>
+        """,
+    )
 
 
 def render_monitor(state, options: Optional[SysIDOptions], running: bool) -> None:
@@ -874,8 +1486,11 @@ def render_monitor(state, options: Optional[SysIDOptions], running: bool) -> Non
         st.info("No active run. Configure a run and press **Start** to watch it here.")
         return
 
-    render_stage_rail(state["stage"], finished=not running and state["result"] is not None)
-    st.progress(min(max(state["progress"], 0.0), 1.0))
+    render_stage_rail(
+        state["stage"],
+        state["progress"],
+        finished=not running and state["result"] is not None,
+    )
 
     history = state["history"]
     if history:
@@ -1219,21 +1834,23 @@ def main() -> None:
         state["output_dir"] = options.output_dir
 
     with act_col:
-        a1, a2 = st.columns(2)
-        if a1.button("▶  Start", type="primary", disabled=running or not ready,
-                     width="stretch"):
+        if section == "Configure" and ready and not running:
+            start_clicked = st.button(
+                "Start run", type="primary", icon=":material/play_arrow:",
+                width="stretch",
+            )
+        else:
+            start_clicked = False
+        if start_clicked:
             state.update(log="", stage=STAGES[0], progress=0.0, history=[],
                          result=None, critic=[], viewing=None)
             state["runner"] = PipelineRunner(options)
             state["runner"].start()
             goto("Monitor")
             st.rerun()
-        if a2.button("■  Stop", disabled=not running, width="stretch"):
+        if running and st.button("Stop run", icon=":material/stop:", width="stretch"):
             request_stop()
             st.toast("Stop requested — finishing the current step and compiling results.")
-
-    if section == "Configure" and not ready:
-        st.info("Upload a dataset, or tick **Use the bundled example dataset**, to enable Start.")
 
     # --- Drain the worker's queues ---------------------------------------
     if runner is not None and section != "Monitor":

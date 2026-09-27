@@ -4,11 +4,37 @@
 
 [theme]
 base = "dark"
-primaryColor = "#6e79f0"           # indigo accent — active controls only
-backgroundColor = "#0b0b0d"        # app surface
-secondaryBackgroundColor = "#131316"  # cards, sidebar, inputs
-textColor = "#e9e8e4"
+primaryColor = "#4ec9b0"              # terminal teal accent
+backgroundColor = "#080a0d"           # deep charcoal workspace
+secondaryBackgroundColor = "#12161b" # panels, cards, and inputs
+textColor = "#d4d4d4"
 font = "sans serif"
+headingFont = "monospace"
+codeFont = "monospace"
+codeFontSize = "13px"
+codeTextColor = "#9cdcfe"
+codeBackgroundColor = "#0b0e12"
+borderColor = "#262c33"
+linkColor = "#4ec9b0"
+baseRadius = "6px"
+buttonRadius = "6px"
+showWidgetBorder = true
+showSidebarBorder = true
+redColor = "#f48771"
+orangeColor = "#ce9178"
+yellowColor = "#dcdcaa"
+greenColor = "#4ec9b0"
+blueColor = "#569cd6"
+violetColor = "#c586c0"
+chartCategoricalColors = ["#4ec9b0", "#ce9178", "#569cd6", "#dcdcaa", "#c586c0", "#6a9955", "#f48771"]
+
+[theme.sidebar]
+backgroundColor = "#0e1115"
+secondaryBackgroundColor = "#12161b"
+codeBackgroundColor = "#0b0e12"
+textColor = "#d4d4d4"
+borderColor = "#262c33"
+primaryColor = "#4ec9b0"
 
 [server]
 headless = true
