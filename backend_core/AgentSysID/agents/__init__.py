@@ -6,6 +6,7 @@ from .explorer import ExplorerAgent
 from .report_agent import ReportAgent
 from .llm_base import get_chat_model, invoke_llm, strip_code_fences
 from .prompt_library import load_prompt, render, system_prompt
+from .run_diagnostic import RunDiagnosticAgent, DiagnosticSettings
 
 __all__ = [
     "run_data_inspector_agent",
@@ -21,4 +22,6 @@ __all__ = [
     "load_prompt",
     "render",
     "system_prompt",
+    "RunDiagnosticAgent",
+    "DiagnosticSettings",
 ]

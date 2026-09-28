@@ -184,12 +184,15 @@ def test_cli_builds_options_from_argv():
     assert options.interactive is True  # legacy default
 
 
-def test_missing_dataset_is_reported_not_raised():
+def test_missing_dataset_is_reported_not_raised(tmp_path):
     result = run_pipeline(
-        SysIDOptions(data_path="/nonexistent/nope.csv"), install_signal_handler=False
+        SysIDOptions(data_path="/nonexistent/nope.csv", output_dir=str(tmp_path)), install_signal_handler=False
     )
     assert result.status == "failed"
     assert "not found" in result.message
+    assert result.run_dir and (result.run_dir / "run_context.json").is_file()
+    assert (result.run_dir / "diagnostic_state.json").is_file()
+    assert (result.run_dir / "run_manifest.json").is_file()
 
 
 # ---------------------------------------------------------------------------
@@ -199,11 +202,14 @@ def test_missing_dataset_is_reported_not_raised():
 def test_end_to_end_run_emits_events_and_artifacts(tmp_path):
     seen_kinds = []
     stages_seen = []
+    training_times = []
 
     def on_event(kind, payload):
         seen_kinds.append(kind)
         if kind == "stage":
             stages_seen.append(payload["name"])
+        elif kind == "cycle":
+            training_times.append(payload["training_seconds"])
 
     result = run_pipeline(
         SysIDOptions(
@@ -243,3 +249,18 @@ def test_end_to_end_run_emits_events_and_artifacts(tmp_path):
     assert result.model_status
     assert result.cycles_run == 1
     assert result.elapsed_seconds > 0
+    assert result.training_seconds and result.training_seconds > 0
+    assert result.training_seconds <= result.elapsed_seconds
+    assert result.training_seconds == pytest.approx(sum(training_times))
+    assert result.to_dict()["training_seconds"] == result.training_seconds
+    import json
+    context = json.loads((result.run_dir / "run_context.json").read_text(encoding="utf-8"))
+    verification = json.loads((result.run_dir / "verification_summary.json").read_text(encoding="utf-8"))
+    assert context["options"]["epochs"] == 8
+    assert len(context["prompts"]) == 6
+    assert context["phase"] == "initialized"
+    assert context["data_summary"]["state_columns"]
+    assert verification["aligned_samples"] > 0
+    assert verification["states"]
+    assert verification["protocol"]["selected_test_trajectory_index"] == 0
+    assert verification["protocol"]["target_chunk_horizon_seconds"] == 10.0

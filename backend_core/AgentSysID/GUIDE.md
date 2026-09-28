@@ -236,3 +236,70 @@ estimators against known analytical derivatives, trajectory splitting, rollout
 windowing, the PINN hook, every agent's parsing *and* fallback path, the
 scoring pillars, the PDF's nine sections, and a subprocess check that the
 exported controller runs standalone.
+
+---
+
+## 11. Ask about a run
+
+In Streamlit, open **Ask run**, or choose a run in history and click
+**Ask about this run** in Results. Questions and answers are saved separately
+for each run in `run_chat.json`. The results preview can remain open beside
+the conversation. Quick questions, model settings, evidence details, export
+and clear controls are available in the chat workspace.
+
+`agents/run_diagnostic.py` implements a dedicated `RunDiagnosticAgent` with
+two model calls: an investigator audits the run, then an evidence reviewer
+challenges the proposed diagnosis. Findings identify recorded observations or
+hypotheses, show confidence, and include quotations whose source IDs and exact
+text are checked locally. Suggested experiments explain what outcome would
+support or falsify a hypothesis. Failed citation locations are sent to the
+reviewer; if its answer still fails local format/citation checks, one repair
+attempt is allowed. Only source text is accepted, including when harmless
+formatting or added sentence-ending punctuation is recovered. A failed review
+keeps a validated first pass as an unreviewed draft. Otherwise local checks are
+shown with the specific cause, distinguishing rejected answers from API failures.
+
+The agent reads measured results, training cycles, recorded agent prompts and
+replies, runtime errors, the activity feed, and a system identification reference
+covering excitation, temporal splits, derivative error versus rollout drift,
+MLP/LSTM, optimization, physics constraints, and deployment. Sources are bounded
+and selected for relevance; omissions and unavailable evidence are disclosed.
+It treats other agents' prompts as evidence to audit, never as instructions to
+obey. It does not execute generated code, retrain, or change a run's settings.
+
+New pipeline runs save `run_context.json` with original options, initial and
+effective configuration, six agent prompt templates, relevant implementation
+excerpts, and data-split details. `verification_summary.json` records held-out
+state errors separately from derivative MSE, with the recorded chunk horizon,
+initialization/warm-up, selected test trajectory, and integration method.
+Streamlit also saves a bounded
+`runtime_console.log` and `diagnostic_state.json`, including failures. Preflight
+failures remain visible in history. Older runs use their actual recorded agent
+turns, with today's templates/code explicitly marked as unverified historical
+references. Plot pixels and model weights are not analyzed by the text agent;
+neither its diagnosis nor the composite score certifies physical stability.
+
+Diagnostics follow the current `config.API_PROVIDER` and `config.LLM_MODEL`
+used by the other agents (currently OpenAI / `gpt-4o-mini`), with a separate
+client that does not change training settings or their cost tracker. Each
+question normally makes two model calls, with at most one additional repair
+call for format/citation failures. Calls are billed by the provider using the corresponding existing environment credential
+(`OPENAI_API_KEY`, `GROQ_API_KEY`, or `OPENROUTER_API_KEY`). The Diagnostic model
+popover shows the current configuration. Provider/model changes for the other
+agents automatically apply to new diagnostic questions. Configure the main API
+through the existing controls or environment variables:
+
+```text
+LABCD_SYSID_API_PROVIDER=openai
+LABCD_SYSID_LLM_MODEL=gpt-4o-mini
+```
+
+OpenAI requests use `store=False`. Common credentials are redacted from evidence
+and saved diagnostic files. Model calls run on a background worker so the UI
+remains usable. Diagnose a training run after it finishes, or investigate an
+earlier run while training continues.
+
+The offline diagnostic tests cover citation rejection, historical provenance,
+prompt handling, bounded retrieval, failure labels, verification metrics, and
+run-scoped conversations. Streamlit AppTests also exercise run switching,
+submission, clearing, current-run gating, and the Results entry point.

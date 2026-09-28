@@ -12,7 +12,7 @@ pipeline proceeds, exactly as the Streamlit and API adapters require.
 from __future__ import annotations
 
 import json
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from backend_core.AgentSysID.agents.llm_base import invoke_llm, strip_code_fences
 from backend_core.AgentSysID.agents.prompt_library import render, system_prompt
@@ -23,6 +23,7 @@ def run_data_inspector_agent(
     loader: ExcelDataLoader,
     interactive: bool = True,
     log_filename: Optional[str] = None,
+    on_review: Optional[Callable[[str, str], None]] = None,
 ) -> Tuple[str, List[str]]:
     """
     Run the Data Inspector HIL step.
@@ -66,6 +67,8 @@ def run_data_inspector_agent(
     ).strip()
 
     if not agent_reply:
+        if on_review:
+            on_review("unavailable", "The Inspector returned no response; loader checks remain available.")
         print("  ⚠️ Inspector unavailable. Defaulting to [PROCEED].")
         print("=" * 80 + "\n")
         return "", []
@@ -81,6 +84,8 @@ def run_data_inspector_agent(
         print("⚠️ " * 30)
 
         if not interactive:
+            if on_review:
+                on_review("clarification_skipped", question)
             print("  ℹ️ Headless mode: skipping the clarification prompt and proceeding.")
             print("=" * 80 + "\n")
             return "", []
@@ -117,4 +122,6 @@ def run_data_inspector_agent(
         print("  ✅ LLM confirms dataset is healthy. Proceeding...")
 
     print("=" * 80 + "\n")
+    if on_review:
+        on_review("reviewed", agent_reply)
     return engineer_notes, cols_to_drop

@@ -18,7 +18,8 @@ langchain-groq
 # Reporting & UI
 matplotlib
 fpdf2
-streamlit
+streamlit[pdf]>=1.57
+streamlit-pdf>=1,<2
 altair
 tqdm
 

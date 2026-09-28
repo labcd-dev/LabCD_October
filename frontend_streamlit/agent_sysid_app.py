@@ -26,9 +26,14 @@ Layout
 
 from __future__ import annotations
 
+import hashlib
+from collections import deque
+import datetime as dt
+import importlib
 import json
 import math
 import queue
+import re
 import sys
 import threading
 import time
@@ -52,9 +57,17 @@ from backend_core.AgentSysID.pipeline import (  # noqa: E402
     run_pipeline,
 )
 from backend_core.AgentSysID.utils import request_stop, reset_stop_flag  # noqa: E402
+from backend_core.AgentSysID.agents.run_evidence import write_json, redact  # noqa: E402
 
 import ui_history as hist  # noqa: E402
+import ui_activity as activity  # noqa: E402
+import ui_results_workspace as workspace  # noqa: E402
+import ui_run_chat as run_chat  # noqa: E402
 import ui_theme as T  # noqa: E402
+
+# Theme helpers are pure constants/functions; refresh them when the app reruns
+# so styling edits appear even when the server keeps imported modules cached.
+T = importlib.reload(T)
 
 # ---------------------------------------------------------------------------
 # Pristine config snapshot.
@@ -79,12 +92,13 @@ def D(name: str, fallback=None):
 
 UPLOAD_DIR = _REPO_ROOT / ".streamlit_uploads"
 DEFAULT_EXAMPLE = _REPO_ROOT / "backend_core/AgentSysID/data/examples/synthetic_oscillator.csv"
-SECTIONS = ["Configure", "Monitor", "Results"]
+SECTIONS = ["Configure", "Monitor", "Results", "Compare", "Ask run"]
 
 st.set_page_config(
     page_title="LabCD · System Identification",
     page_icon="◆",
     layout="wide",
+    # History starts open; the native panel icon lets users hide and reopen it.
     initial_sidebar_state="expanded",
 )
 st.markdown(T.CSS, unsafe_allow_html=True)
@@ -100,11 +114,17 @@ class _ThreadRouter:
         self._target = target_thread
         self._sink = sink
         self._original = original
+        self.captured = deque()
+        self.captured_size = 0
 
     def write(self, text: str) -> int:
         if threading.get_ident() == self._target:
             if text:
                 self._sink.put(text)
+                self.captured.append(text)
+                self.captured_size += len(text)
+                while self.captured_size > 2_000_000 and len(self.captured) > 1:
+                    self.captured_size -= len(self.captured.popleft())
             return len(text)
         return self._original.write(text)
 
@@ -128,13 +148,20 @@ class PipelineRunner:
         self.result: Optional[SysIDResult] = None
         self.error: Optional[str] = None
         self.thread: Optional[threading.Thread] = None
+        self.run_dir: Optional[Path] = None
+        self.last_stage = "Preparing run"
 
     def _on_event(self, kind: str, payload: Dict[str, Any]) -> None:
-        self.events.put((kind, payload))
+        if kind == "run_started":
+            self.run_dir = Path(payload["run_dir"])
+        elif kind == "stage":
+            self.last_stage = payload["name"]
+        self.events.put((kind, {**payload, "_timestamp": dt.datetime.now(dt.timezone.utc).isoformat()}))
 
     def _run(self) -> None:
         original = sys.stdout
-        sys.stdout = _ThreadRouter(threading.get_ident(), self.logs, original)
+        router = _ThreadRouter(threading.get_ident(), self.logs, original)
+        sys.stdout = router
         try:
             self.result = run_pipeline(
                 self.options, on_event=self._on_event, install_signal_handler=False
@@ -143,10 +170,21 @@ class PipelineRunner:
             import traceback
 
             self.error = f"{exc}\n\n{traceback.format_exc()}"
-            self.events.put(("error", {"message": str(exc)}))
+            self._on_event("error", {"message": str(exc)})
         finally:
             sys.stdout = original
-            self.events.put(("finished", {}))
+            run_dir = self.run_dir or (self.result.run_dir if self.result else None)
+            if run_dir:
+                try:
+                    (Path(run_dir) / "runtime_console.log").write_text(redact("".join(router.captured)), encoding="utf-8")
+                    write_json(Path(run_dir) / "diagnostic_state.json", {
+                        "status": self.result.status if self.result else "failed",
+                        "last_stage": self.last_stage, "error": self.error,
+                        "message": self.result.message if self.result else "The pipeline raised an exception.",
+                    })
+                except OSError:
+                    pass
+            self._on_event("finished", {})
 
     def start(self) -> None:
         reset_stop_flag()
@@ -219,6 +257,77 @@ def goto(section: str) -> None:
 # ---------------------------------------------------------------------------
 # Sidebar — run history
 # ---------------------------------------------------------------------------
+def _history_key(entry: Dict[str, Any]) -> str:
+    return hashlib.sha1(str(Path(entry["run_dir"]).resolve()).encode()).hexdigest()[:12]
+
+
+def _history_text(text: str) -> str:
+    """Display names as literal text inside Streamlit's Markdown labels."""
+    return re.sub(r"([\\`*_{}\[\]()<>#+.!|:~-])", r"\\\1", str(text).replace("\n", " "))
+
+
+def _open_history(entry: Dict[str, Any]) -> None:
+    st.session_state["viewing"] = entry
+    st.session_state["preview_run"] = workspace.run_id(entry)
+    st.session_state["preview_run_choice"] = workspace.run_id(entry)
+    goto("Results")
+
+
+def _toggle_results_panel() -> None:
+    st.session_state["results_panel_open"] = not st.session_state.get("results_panel_open", False)
+
+
+def _ask_run(entry: Dict[str, Any]) -> None:
+    st.session_state["diagnostic_run"] = workspace.run_id(entry)
+    st.session_state["diagnostic_run_choice"] = workspace.run_id(entry)
+    goto("Ask run")
+
+
+def _save_history_change(entry: Dict[str, Any], field: str, value: Any) -> None:
+    if not hist.update_metadata(entry["run_dir"], **{field: value}):
+        st.session_state["history_error"] = "Couldn't save this change. Check that the run folder is writable."
+        return
+    viewed = st.session_state.get("viewing")
+    if viewed and viewed.get("run_dir") == entry["run_dir"]:
+        st.session_state["viewing"] = {**viewed, field: value}
+    message = {
+        "pinned": "Run pinned." if value else "Run unpinned.",
+        "archived": "Run archived. Find it in Archived runs." if value else "Run restored.",
+    }[field]
+    st.toast(message)
+
+
+def _cancel_history_rename() -> None:
+    st.session_state.pop("history_renaming", None)
+
+
+def _begin_history_rename(entry: Dict[str, Any]) -> None:
+    st.session_state["history_renaming"] = entry
+
+
+@st.dialog("Rename run", icon=":material/edit:", on_dismiss=_cancel_history_rename)
+def rename_history_run(entry: Dict[str, Any]) -> None:
+    run_key = _history_key(entry)
+    with st.form(f"history_rename_form_{run_key}"):
+        title = st.text_input("Run name", value=hist.display_name(entry), max_chars=120)
+        save = st.form_submit_button("Save name", type="primary", width="stretch")
+    if save:
+        if not title.strip():
+            st.error("Enter a name for this run.")
+        elif hist.update_metadata(entry["run_dir"], title=title):
+            viewed = st.session_state.get("viewing")
+            if viewed and viewed.get("run_dir") == entry["run_dir"]:
+                st.session_state["viewing"] = {**viewed, "title": title.strip()}
+            _cancel_history_rename()
+            st.toast("Run renamed.")
+            st.rerun()
+        else:
+            st.error("Couldn't save the name. Check that the run folder is writable.")
+    if st.button("Cancel", key=f"history_rename_cancel_{run_key}", width="stretch"):
+        _cancel_history_rename()
+        st.rerun()
+
+
 def render_sidebar(output_dir: str, running: bool) -> None:
     sb = st.sidebar
     sb.markdown(
@@ -229,16 +338,18 @@ def render_sidebar(output_dir: str, running: bool) -> None:
         unsafe_allow_html=True,
     )
 
-    if sb.button("＋  New run", width="stretch", type="primary", disabled=running):
+    if sb.button("New run", icon=":material/add:", width="stretch", type="primary", disabled=running):
         st.session_state["viewing"] = None
         st.session_state["result"] = None
+        st.session_state.update(runner=None, log="", history=[], critic=[], activity=[])
         st.session_state["config_step"] = 1
         goto("Configure")
         st.rerun()
 
     sb.markdown("<div class='side-heading'>Run history</div>", unsafe_allow_html=True)
 
-    runs = hist.load_history(output_dir)
+    # Load all summaries so old pins and archived runs remain discoverable.
+    runs = hist.load_history(output_dir, limit=None)
     if not runs:
         sb.markdown(
             "<div class='hist-empty'>No runs yet.<br>Configure a run and press "
@@ -248,51 +359,74 @@ def render_sidebar(output_dir: str, running: bool) -> None:
         return
 
     query = sb.text_input(
-        "Search", "", placeholder="filter by dataset or architecture…",
+        "Search runs", placeholder="Search runs…", key="history_search",
         label_visibility="collapsed",
-    ).strip().lower()
+    )
+    archived_count = sum(bool(entry.get("archived")) for entry in runs)
+    archived = sb.toggle(f"Archived runs · {archived_count}", key="history_archived")
+    if error := st.session_state.pop("history_error", None):
+        sb.error(error)
 
-    shown = 0
-    for entry in runs:
-        label = entry.get("env_name") or entry.get("name", "run")
-        summary = hist.summarise(entry)
-        if query and query not in f"{label} {summary}".lower():
-            continue
-        shown += 1
-
-        score = entry.get("success_score")
-        age = hist.relative_age(entry.get("started"))
-        if entry.get("complete") and score is not None:
-            badge = f"{float(score):.0f}"
-            colour = T.score_color(float(score))
+    groups = hist.group_history(runs, archived=archived, query=query)
+    if not groups:
+        if query.strip():
+            sb.caption("No runs match that search.")
         else:
-            badge = "—"
-            colour = T.TEXT_FAINT
+            sb.caption("No archived runs." if archived else "All runs are archived. Switch on Archived runs to restore one.")
+        return
 
-        sb.markdown(
-            f"<div class='hist-row'>"
-            f"<div class='hist-line'>"
-            f"<span class='hist-score' style='color:{colour}'>{badge}</span>"
-            f"<span class='hist-name'>{label}</span>"
-            f"<span class='hist-age'>{age}</span>"
-            f"</div>"
-            f"<div class='hist-meta'>{summary}</div>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-        col_open, col_del = sb.columns([4, 1])
-        if col_open.button("Open", key=f"open_{entry['name']}", width="stretch"):
-            st.session_state["viewing"] = entry
-            goto("Results")
-            st.rerun()
-        if col_del.button("🗑", key=f"del_{entry['name']}", help="Delete this run"):
-            hist.delete_run(entry["run_dir"])
-            if (st.session_state.get("viewing") or {}).get("run_dir") == entry["run_dir"]:
-                st.session_state["viewing"] = None
-            st.rerun()
-
-    if shown == 0:
-        sb.caption("No runs match that filter.")
+    viewed_dir = (st.session_state.get("viewing") or {}).get("run_dir")
+    with sb.container(key="history_list", gap="xxsmall"):
+        for heading, entries in groups:
+            st.caption(heading)
+            for entry in entries:
+                label = hist.display_name(entry)
+                summary = hist.summarise(entry)
+                age = hist.relative_age(entry.get("started"))
+                try:
+                    score = float(entry.get("success_score"))
+                except (TypeError, ValueError):
+                    score = float("nan")
+                badge = f"{score:.0f}" if entry.get("complete") and math.isfinite(score) else "—"
+                detail = f"{badge} · {summary} · {age}"
+                run_key = _history_key(entry)
+                selected = entry["run_dir"] == viewed_dir
+                row_key = f"history-row-{'selected-' if selected else ''}{run_key}"
+                menu_key = f"history-menu-{run_key}"
+                with st.container(key=row_key, gap=None):
+                    col_run, col_menu = st.columns([1, 0.16], gap=None, vertical_alignment="center", wrap=False)
+                    col_run.button(
+                        f"**{_history_text(label)}**\n\n{_history_text(detail)}",
+                        key=f"history_open_{run_key}", width="stretch", wrap=True,
+                        icon=":material/push_pin:" if entry.get("pinned") else None,
+                        help=f"{_history_text(label)} · {_history_text(detail)}",
+                        on_click=_open_history, args=(entry,),
+                    )
+                    with col_menu.popover(
+                        f"Actions for {_history_text(label)}", icon=":material/more_horiz:",
+                        key=menu_key, width="stretch",
+                        help="Run actions", disabled=running,
+                    ):
+                        st.button(
+                            "Unpin" if entry.get("pinned") else "Pin to top",
+                            icon=":material/keep_off:" if entry.get("pinned") else ":material/push_pin:",
+                            key=f"history_pin_{run_key}", width="stretch",
+                            on_click=_save_history_change,
+                            args=(entry, "pinned", not entry.get("pinned", False)),
+                        )
+                        st.button(
+                            "Rename", icon=":material/edit:", key=f"history_rename_{run_key}", width="stretch",
+                            on_click=_begin_history_rename, args=(entry,),
+                        )
+                        st.button(
+                            "Restore run" if archived else "Archive run",
+                            icon=":material/unarchive:" if archived else ":material/archive:",
+                            key=f"history_archive_{run_key}", width="stretch",
+                            on_click=_save_history_change,
+                            args=(entry, "archived", not archived),
+                        )
+    if renaming := st.session_state.get("history_renaming"):
+        rename_history_run(renaming)
 
 
 # ---------------------------------------------------------------------------
@@ -1482,8 +1616,14 @@ def render_stage_rail(current_stage: str, progress: float, finished: bool) -> No
 
 
 def render_monitor(state, options: Optional[SysIDOptions], running: bool) -> None:
-    if not state["log"] and not running:
+    viewed = state.get("viewing")
+    if viewed is not None and not running:
+        st.caption(f"Viewing a past run — {_history_text(hist.display_name(viewed))}")
+        activity.render(activity.load(viewed["run_dir"]), historical=True, scope=viewed["run_dir"])
+        return
+    if not state["log"] and not running and not state.get("activity"):
         st.info("No active run. Configure a run and press **Start** to watch it here.")
+        activity.render([])
         return
 
     render_stage_rail(
@@ -1491,6 +1631,10 @@ def render_monitor(state, options: Optional[SysIDOptions], running: bool) -> Non
         state["progress"],
         finished=not running and state["result"] is not None,
     )
+
+    activity.render(state.get("activity", []))
+    if state.get("activity_save_error"):
+        st.warning("The activity feed could not be saved to this run's history folder.")
 
     history = state["history"]
     if history:
@@ -1505,12 +1649,12 @@ def render_monitor(state, options: Optional[SysIDOptions], running: bool) -> Non
         chart = convergence_chart(history)
         if chart is not None:
             c1.markdown("##### Identification error per cycle")
-            c1.altair_chart(chart, use_container_width=True)
+            c1.altair_chart(chart, width="stretch")
         max_lat = float(options.customer_max_latency_ms) if options else cfg.CUSTOMER_MAX_LATENCY_MS
         lat = latency_chart(history, max_lat)
         if lat is not None:
             c2.markdown("##### Latency against the customer limit")
-            c2.altair_chart(lat, use_container_width=True)
+            c2.altair_chart(lat, width="stretch")
         else:
             c2.markdown("##### Latency against the customer limit")
             c2.caption(
@@ -1536,19 +1680,8 @@ def render_monitor(state, options: Optional[SysIDOptions], running: bool) -> Non
                 width="stretch", hide_index=True,
             )
 
-    if state["critic"]:
-        with st.expander("Critic decisions"):
-            for c in state["critic"]:
-                st.markdown(
-                    f"**Cycle {c['cycle']} — `{c.get('diagnosis')}`** "
-                    f"(LR {c.get('lr_dir')} by {c.get('lr_step')}, next {c.get('hidden_layers')})"
-                    f"  \n{c.get('reasoning', '')}"
-                )
-
     if state["log"]:
-        st.markdown("##### Agent log")
-        st.caption("Live console output from the core — the same text the terminal prints.")
-        with st.container(height=380, border=True):
+        with st.expander("Console output", icon=":material/terminal:"):
             st.code(state["log"][-14000:], language="text")
 
 
@@ -1558,10 +1691,12 @@ def render_monitor(state, options: Optional[SysIDOptions], running: bool) -> Non
 def render_results_from_entry(entry: Dict[str, Any]) -> None:
     """Render a past run, read back from its manifest."""
     if not entry.get("complete"):
-        st.warning(
-            f"`{entry.get('name')}` has no manifest — it was interrupted before packaging. "
-            "Any artefacts it did write are below."
-        )
+        if entry.get("status") == "failed":
+            st.warning(entry.get("message") or "This run recorded an execution failure. Ask about this run to investigate its evidence.")
+        else:
+            st.warning(
+                f"`{entry.get('name')}` did not complete packaging. Any artefacts it wrote are below."
+            )
     _render_result_body(
         env_name=entry.get("env_name", "—"),
         score=float(entry.get("success_score") or 0.0),
@@ -1729,6 +1864,7 @@ def drain(runner: "PipelineRunner", state) -> bool:
             kind, payload = runner.events.get_nowait()
         except queue.Empty:
             break
+        activity.record(state.setdefault("activity", []), kind, payload)
         if kind == "stage":
             state["stage"] = payload["name"]
         elif kind == "progress":
@@ -1748,7 +1884,15 @@ def drain(runner: "PipelineRunner", state) -> bool:
 
     if runner.result is not None and state["result"] is None:
         state["result"] = runner.result
+        activity.record(state.setdefault("activity", []), "done", {"result": runner.result})
         just_finished = True
+    result = state["result"]
+    if not runner.running and not state.get("activity_saved"):
+        run_dir = result.run_dir if result is not None else runner.run_dir
+        if run_dir:
+            saved = activity.save(run_dir, state.get("activity", []))
+            state["activity_saved"] = True
+            state["activity_save_error"] = not saved
     return just_finished
 
 
@@ -1787,10 +1931,12 @@ def main() -> None:
     state.setdefault("history", [])
     state.setdefault("result", None)
     state.setdefault("critic", [])
+    state.setdefault("activity", [])
     state.setdefault("viewing", None)
     state.setdefault("section", "Configure")
     state.setdefault("nav_epoch", 0)
     state.setdefault("output_dir", "artifacts_sysid")
+    state.setdefault("results_panel_open", False)
 
     runner: Optional[PipelineRunner] = state["runner"]
     running = bool(runner and runner.running)
@@ -1809,7 +1955,7 @@ def main() -> None:
     render_sidebar(state["output_dir"], running)
 
     # --- Navigation -------------------------------------------------------
-    nav_col, act_col = st.columns([3, 2])
+    nav_col, act_col, preview_control = st.columns([4, 1.6, 2], gap="small")
     with nav_col:
         # A segmented control reads as product navigation; a radio reads as a form field.
         choice = st.segmented_control(
@@ -1820,15 +1966,26 @@ def main() -> None:
         if choice and choice != state["section"]:
             state["section"] = choice
     section = state["section"]
+    with preview_control:
+        st.button("Hide results" if state["results_panel_open"] else "Show results",
+                  icon=":material/dock_to_right:", key="toggle_results_panel",
+                  on_click=_toggle_results_panel, width="stretch",
+                  help="Show or hide plots, reports, and generated code beside the workspace.")
+
+    if state["results_panel_open"]:
+        main_workspace, results_panel = st.columns([1.8, 1], gap="medium")
+    else:
+        main_workspace, results_panel = st.container(), None
 
     options: Optional[SysIDOptions] = None
     ready = False
-    if section == "Configure":
-        options, ready = render_configure()
-        state["pending_options"] = options
-    else:
-        options = state.get("pending_options")
-        ready = options is not None
+    with main_workspace:
+        if section == "Configure":
+            options, ready = render_configure()
+            state["pending_options"] = options
+        else:
+            options = state.get("pending_options")
+            ready = options is not None
 
     if options is not None:
         state["output_dir"] = options.output_dir
@@ -1843,13 +2000,15 @@ def main() -> None:
             start_clicked = False
         if start_clicked:
             state.update(log="", stage=STAGES[0], progress=0.0, history=[],
-                         result=None, critic=[], viewing=None)
+                         result=None, critic=[], viewing=None, activity=[],
+                         activity_saved=False, activity_save_error=False)
             state["runner"] = PipelineRunner(options)
             state["runner"].start()
             goto("Monitor")
             st.rerun()
         if running and st.button("Stop run", icon=":material/stop:", width="stretch"):
             request_stop()
+            activity.record(state["activity"], "stop_requested", {})
             st.toast("Stop requested — finishing the current step and compiling results.")
 
     # --- Drain the worker's queues ---------------------------------------
@@ -1857,31 +2016,49 @@ def main() -> None:
         drain(runner, state)
 
     # --- Sections ---------------------------------------------------------
-    if section == "Monitor":
-        if running:
-            live_monitor(options)     # refreshes itself, no page-wide flicker
-        else:
-            render_monitor(state, options, running)
-
-    elif section == "Results":
-        viewing = state["viewing"]
-        result: Optional[SysIDResult] = state["result"]
-        if viewing is not None:
-            st.caption(f"Viewing a past run — {viewing.get('name')}")
-            render_results_from_entry(viewing)
-        elif result is not None and not running:
-            if result.status == "completed":
-                render_results(result)
+    with main_workspace:
+        if section == "Monitor":
+            if running:
+                live_monitor(options)     # refreshes itself, no page-wide flicker
             else:
-                st.error(result.message or "The run did not complete.")
-        elif running:
-            st.info("The run is still going — see **Monitor** for live progress.")
-        else:
-            st.info("No result yet. Start a run, or open one from the history sidebar.")
+                render_monitor(state, options, running)
 
-        if runner is not None and runner.error and not running and viewing is None:
-            st.error("The pipeline raised an exception.")
-            st.code(runner.error)
+        elif section == "Results":
+            viewing = state["viewing"]
+            result: Optional[SysIDResult] = state["result"]
+            ask_entry = viewing or (result.to_dict() if result is not None and result.run_dir else None)
+            if ask_entry:
+                st.button("Ask about this run", icon=":material/chat:",
+                          on_click=_ask_run, args=(ask_entry,), key="ask_selected_run")
+            if viewing is not None:
+                st.caption(f"Viewing a past run — {_history_text(hist.display_name(viewing))}")
+                render_results_from_entry(viewing)
+            elif result is not None and not running:
+                if result.status == "completed":
+                    render_results(result)
+                else:
+                    st.error(result.message or "The run did not complete.")
+            elif running:
+                st.info("The run is still going — see **Monitor** for live progress.")
+            else:
+                st.info("No result yet. Start a run, or open one from the history sidebar.")
+
+            if runner is not None and runner.error and not running and viewing is None:
+                st.error("The pipeline raised an exception.")
+                st.code(runner.error)
+
+        elif section == "Compare":
+            preferred = workspace.run_id(state["viewing"]) if state["viewing"] else None
+            workspace.render_compare(state["output_dir"], preferred=preferred)
+
+        elif section == "Ask run":
+            preferred = workspace.run_id(state["viewing"]) if state["viewing"] else None
+            run_chat.render_run_chat(state["output_dir"], preferred=preferred, runner=runner)
+
+    if results_panel is not None:
+        with results_panel:
+            workspace.render_panel(state["output_dir"], viewed=state["viewing"],
+                                   result=state["result"], running=running)
 
     # --- Keep non-Monitor sections fresh while a run is in flight --------
     # The Monitor refreshes itself via the fragment above; elsewhere a slow

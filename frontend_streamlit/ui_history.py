@@ -11,8 +11,97 @@ JSON summary and the artefact paths it names.
 from __future__ import annotations
 
 import datetime
+import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+_METADATA_FILE = "history_metadata.json"
+
+
+def _load_metadata(run_dir: Path) -> Dict[str, Any]:
+    """Read sidebar preferences separately from the pipeline's manifest."""
+    try:
+        data = json.loads((run_dir / _METADATA_FILE).read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {}
+        title = data.get("title")
+        return {
+            "title": title.strip()[:120] if isinstance(title, str) else "",
+            "pinned": data.get("pinned") is True,
+            "archived": data.get("archived") is True,
+        }
+    except (OSError, ValueError):
+        return {}
+
+
+def update_metadata(run_dir: str | Path, **changes: Any) -> bool:
+    """Atomically save a display name, pin or archive flag; never move a run."""
+    path = Path(run_dir)
+    if not path.is_dir() or set(changes) - {"title", "pinned", "archived"}:
+        return False
+    if "title" in changes:
+        title = changes["title"]
+        if not isinstance(title, str) or not title.strip() or len(title.strip()) > 120:
+            return False
+        changes["title"] = title.strip()
+    if any(type(changes[key]) is not bool for key in ("pinned", "archived") if key in changes):
+        return False
+    data = _load_metadata(path)
+    data.update(changes)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path, prefix=".history-", suffix=".tmp", delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            json.dump(data, handle, ensure_ascii=False, indent=2)
+        os.replace(temporary, path / _METADATA_FILE)
+        return True
+    except OSError:
+        return False
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
+def display_name(entry: Dict[str, Any]) -> str:
+    return entry.get("title") or entry.get("env_name") or entry.get("name", "run")
+
+
+def group_history(
+    runs: List[Dict[str, Any]], *, archived: bool = False, query: str = "",
+    today: Optional[datetime.date] = None,
+) -> List[tuple[str, List[Dict[str, Any]]]]:
+    """Filter first, then keep favorites above runs grouped by local date."""
+    today = today or datetime.date.today()
+    yesterday = today - datetime.timedelta(days=1)
+    query = query.strip().casefold()
+    groups: Dict[str, List[Dict[str, Any]]] = {
+        label: [] for label in ("Pinned", "Today", "Yesterday", "Older")
+    }
+    for entry in runs:
+        if bool(entry.get("archived")) != archived:
+            continue
+        searchable = f"{display_name(entry)} {entry.get('env_name', '')} {entry.get('name', '')} {summarise(entry)}"
+        if query and query not in searchable.casefold():
+            continue
+        when = entry.get("started")
+        day = when.date() if isinstance(when, datetime.datetime) else None
+        if entry.get("pinned") and not archived:
+            group = "Pinned"
+        elif day == today:
+            group = "Today"
+        elif day == yesterday:
+            group = "Yesterday"
+        else:
+            group = "Older"
+        groups[group].append(entry)
+    return [(label, entries) for label, entries in groups.items() if entries]
 
 
 def _parse_stamp(run_dir: Path) -> Optional[datetime.datetime]:
@@ -26,7 +115,7 @@ def _parse_stamp(run_dir: Path) -> Optional[datetime.datetime]:
     return None
 
 
-def load_history(output_dir: str | Path, limit: int = 60) -> List[Dict[str, Any]]:
+def load_history(output_dir: str | Path, limit: Optional[int] = 60) -> List[Dict[str, Any]]:
     """
     Return past runs, newest first.
 
@@ -34,8 +123,6 @@ def load_history(output_dir: str | Path, limit: int = 60) -> List[Dict[str, Any]
     packaging) still appears, marked incomplete, so nothing silently vanishes
     from the list.
     """
-    import json
-
     base = Path(output_dir)
     if not base.is_dir():
         return []
@@ -70,10 +157,14 @@ def load_history(output_dir: str | Path, limit: int = 60) -> List[Dict[str, Any]
             entry["pdf_path"] = str(pdfs[0]) if pdfs else None
             entry["zip_path"] = str(zips[0]) if zips else None
 
+        entry.update(_load_metadata(run_dir))
+        # The folder identifies the run even when a manifest has a stale name.
+        entry["name"] = run_dir.name
+        entry["started"] = stamp
         runs.append(entry)
 
     runs.sort(key=lambda r: (r.get("started") or datetime.datetime.min), reverse=True)
-    return runs[:limit]
+    return runs if limit is None else runs[:limit]
 
 
 def relative_age(when: Optional[datetime.datetime]) -> str:

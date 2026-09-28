@@ -70,13 +70,58 @@ h1, h2, h3, h4 {{
 }}
 
 /* Streamlit chrome */
-header[data-testid="stHeader"] {{ background:transparent; height:0; }}
+header[data-testid="stHeader"] {{
+  background:transparent; height:0; overflow:visible; pointer-events:none;
+}}
 div.block-container {{ padding-top:1.2rem; padding-bottom:3rem; max-width:1500px; }}
 #MainMenu, footer {{ visibility:hidden; }}
-/* Streamlit's Deploy button sits on top of the brand bar */
-div[data-testid="stToolbar"], div[data-testid="stDecoration"],
-button[data-testid="stBaseButton-headerNoPadding"] {{ display:none !important; }}
-[data-testid="stAppDeployButton"] {{ display:none !important; }}
+/* Keep the native sidebar controls available while hiding the other chrome. */
+div[data-testid="stDecoration"], [data-testid="stToolbarActions"],
+[data-testid="stStatusWidget"], [data-testid="stAppDeployButton"] {{
+  display:none !important;
+}}
+div[data-testid="stToolbar"] {{ height:0; overflow:visible; }}
+
+/* Panel icon on Streamlit's own buttons: toggling stays entirely client-side. */
+[data-testid="stSidebarCollapseButton"] {{ visibility:visible !important; }}
+[data-testid="stSidebarCollapseButton"] button,
+button[data-testid="stExpandSidebarButton"] {{
+  display:inline-flex !important; align-items:center; justify-content:center;
+  width:34px; height:34px; padding:0; border:1px solid {BORDER};
+  border-radius:6px; background:{BG_CARD}; color:{TEXT_DIM};
+  pointer-events:auto; cursor:pointer;
+  transition:background 150ms ease, border-color 150ms ease, color 150ms ease;
+}}
+button[data-testid="stExpandSidebarButton"] {{
+  position:fixed; top:12px; left:16px; z-index:1001;
+}}
+/* Leave room above the brand mark for the reopen control on narrow screens. */
+.stApp:has(button[data-testid="stExpandSidebarButton"]) div.block-container {{
+  padding-top:2.2rem;
+}}
+[data-testid="stSidebarCollapseButton"] button:hover,
+button[data-testid="stExpandSidebarButton"]:hover {{
+  background:{ACCENT_SOFT}; border-color:{ACCENT}; color:{ACCENT};
+}}
+[data-testid="stSidebarCollapseButton"] button:focus-visible,
+button[data-testid="stExpandSidebarButton"]:focus-visible {{
+  outline:2px solid {ACCENT}; outline-offset:3px;
+}}
+[data-testid="stSidebarCollapseButton"] button > *,
+button[data-testid="stExpandSidebarButton"] > * {{ display:none; }}
+[data-testid="stSidebarCollapseButton"] button::before,
+button[data-testid="stExpandSidebarButton"]::before {{
+  content:""; width:19px; height:19px; background:currentColor;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cpath d='M9 4v16'/%3E%3C/svg%3E") center / contain no-repeat;
+}}
+/* Visually hidden names also make the icon buttons understandable to readers. */
+[data-testid="stSidebarCollapseButton"] button::after,
+button[data-testid="stExpandSidebarButton"]::after {{
+  position:absolute; width:1px; height:1px; overflow:hidden;
+  clip-path:inset(50%); white-space:nowrap;
+}}
+[data-testid="stSidebarCollapseButton"] button::after {{ content:"Hide run history"; }}
+button[data-testid="stExpandSidebarButton"]::after {{ content:"Show run history"; }}
 
 /* ---------- Brand bar ---------- */
 .brandbar {{
@@ -127,18 +172,59 @@ div[data-testid="stCaptionContainer"] {{ color:{TEXT_DIM} !important; }}
   font-family:{MONO}; font-size:10.5px; color:{TEXT_FAINT};
   text-transform:uppercase; letter-spacing:0.12em; margin:14px 0 6px;
 }}
-.hist-row {{ margin:14px 0 4px; }}
-.hist-line {{ display:flex; align-items:baseline; gap:8px; }}
-.hist-score {{ font-family:{MONO}; font-size:13px; font-weight:500; flex:none; }}
-.hist-name {{
-  font-size:12.5px; color:{TEXT}; flex:1;
-  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+.st-key-history_list [data-testid="stCaptionContainer"] p {{
+  font-family:{MONO}; font-size:9.5px; color:{TEXT_FAINT};
+  text-transform:uppercase; letter-spacing:0.1em; padding:10px 8px 0;
 }}
-.hist-age {{ font-family:{MONO}; font-size:10px; color:{TEXT_FAINT}; flex:none; }}
-.hist-meta {{
-  font-family:{MONO}; font-size:10px; color:{TEXT_FAINT};
-  margin:2px 0 6px 25px;
+/* Scope row styling to public widget/container keys. */
+[class*="st-key-history-row-"] {{
+  border-radius:7px; transition:background 140ms ease; overflow:hidden;
 }}
+[class*="st-key-history-row-"]:hover {{ background:rgba(255,255,255,0.035); }}
+[class*="st-key-history-row-selected-"] {{
+  background:{ACCENT_SOFT}; box-shadow:inset 3px 0 {ACCENT};
+}}
+[class*="st-key-history-row-selected-"]:hover {{ background:{ACCENT_SOFT_2}; }}
+[class*="st-key-history-row-"] [data-testid="stColumn"] {{ min-width:0 !important; }}
+[class*="st-key-history-row-"] [data-testid="stColumn"]:last-child {{
+  flex:0 0 34px; width:34px;
+}}
+[class*="st-key-history-row-"] .stButton button {{
+  width:100%; height:58px; border:0; border-radius:0; padding:8px 10px;
+  background:transparent; color:{TEXT}; justify-content:flex-start;
+  text-align:left; box-shadow:none;
+}}
+[class*="st-key-history-row-"] .stButton button:focus-visible {{
+  outline:2px solid {ACCENT}; outline-offset:-2px;
+}}
+[class*="st-key-history-row-"] .stButton [data-testid="stMarkdownContainer"] {{
+  width:100%; overflow:hidden; text-align:left;
+}}
+[class*="st-key-history-row-"] .stButton [data-testid="stMarkdownContainer"] p {{
+  margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-family:{SANS}; font-size:12.5px; line-height:1.55;
+}}
+[class*="st-key-history-row-"] .stButton [data-testid="stMarkdownContainer"] p + p {{
+  font-family:{MONO}; font-size:9.5px; color:{TEXT_FAINT}; font-weight:400;
+}}
+[class*="st-key-history-row-"] .stButton [data-testid="stIconMaterial"] {{
+  color:{ACCENT}; font-size:16px;
+}}
+[class*="st-key-history-menu-"] [data-testid="stPopoverButton"] {{
+  padding:0; min-height:34px; height:34px; border:0; background:transparent;
+  color:{TEXT_DIM}; opacity:0.6;
+}}
+[class*="st-key-history-row-"]:hover [data-testid="stPopoverButton"],
+[class*="st-key-history-row-"]:focus-within [data-testid="stPopoverButton"] {{ opacity:1; }}
+[class*="st-key-history-menu-"] [data-testid="stPopoverButton"]:hover {{
+  color:{ACCENT}; background:{ACCENT_SOFT};
+}}
+/* Hide the visible menu label and chevron; retain its accessible action name. */
+[class*="st-key-history-menu-"] [data-testid="stPopoverButton"] [data-testid="stMarkdownContainer"] {{
+  position:absolute; width:1px; height:1px; overflow:hidden;
+  clip-path:inset(50%); white-space:nowrap;
+}}
+[class*="st-key-history-menu-"] [data-testid="stPopoverButton"] [aria-hidden="true"] {{ display:none; }}
 .hist-empty {{
   color:{TEXT_FAINT}; font-size:12.5px; line-height:1.6;
   border:1px dashed {BORDER}; border-radius:10px; padding:14px; text-align:center;

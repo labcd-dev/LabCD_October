@@ -65,6 +65,7 @@ from backend_core.AgentSysID.utils import (
     setup_run_dir,
     stop_requested,
 )
+from backend_core.AgentSysID.agents.run_evidence import snapshot_run, save_verification, write_json
 
 #: Penalty MSE for a cycle rejected for severe overfitting, so the
 #: configuration can never win and the Critic registers a hard failure.
@@ -324,6 +325,7 @@ class SysIDResult:
     llm_calls: int = 0
     llm_cost_usd: float = 0.0
     elapsed_seconds: float = 0.0
+    training_seconds: Optional[float] = None  # Older manifests did not record training separately.
     message: str = ""
 
     #: What produced this run — echoed into the manifest so a past run can be
@@ -574,6 +576,11 @@ def run_pipeline(
 
     ``on_event(kind, payload)`` receives:
       ``stage``     {name, index, total}
+      ``inspector`` {outcome, response}
+      ``inspector_data`` {state_dim, action_dim, quality_issues, dropped_columns, engineer_notes}
+      ``initializer`` {mode, config}
+      ``cycle_started`` {cycle, max_cycles, config}
+      ``critic_started`` / ``explorer_started`` {cycle}
       ``cycle``     {cycle, max_cycles, config, train_mse, val_mse, rmse, is_best, best_mse}
       ``latency``   {cycle, latency_ms, max_latency_ms}
       ``critic``    {cycle, diagnosis, status, lr_dir, lr_step, hidden_layers, reasoning}
@@ -591,9 +598,27 @@ def run_pipeline(
         _emit(on_event, "progress", value=idx / len(STAGES))
 
     data_path = options.data_path
+    def preserve_preflight_failure():
+        """Keep a diagnosable history entry even when training cannot start."""
+        try:
+            result.env_name = cfg.ENV_NAME
+            result.run_dir = setup_run_dir(base_dir=options.output_dir, env_name=cfg.ENV_NAME)
+            result.elapsed_seconds = time.time() - started
+            _emit(on_event, "run_started", run_dir=str(result.run_dir.resolve()))
+            stage("Preflight")
+            snapshot_run(result.run_dir, options, cfg, phase="preflight_failed")
+            write_json(result.run_dir / "diagnostic_state.json", {
+                "status": "failed", "last_stage": "Preflight", "error": result.message,
+                "note": "Training did not start; options may not have been applied to configuration.",
+            })
+            result.save_manifest()
+        except Exception:
+            print("The preflight failure could not be saved to run history.")
+
     if not Path(data_path).is_file():
         result.status = "failed"
         result.message = f"Dataset not found: {data_path}"
+        preserve_preflight_failure()
         _emit(on_event, "error", message=result.message)
         return result
 
@@ -611,6 +636,7 @@ def run_pipeline(
             f"PINN is enabled and a fresh template was written to "
             f"'{cfg.PINN_EQUATION_FILE}'. Define compute_analytical_xdot, then run again."
         )
+        preserve_preflight_failure()
         _emit(on_event, "error", message=result.message)
         return result
 
@@ -627,6 +653,16 @@ def run_pipeline(
     log_file = setup_logging(run_dir)
     result.run_dir = run_dir
     result.log_path = str(log_file)
+    _emit(on_event, "run_started", run_dir=str(run_dir.resolve()))
+
+    def capture_context(phase, data_summary=None):
+        try:
+            if not snapshot_run(run_dir, options, cfg, phase=phase, data_summary=data_summary):
+                print("Diagnostic context could not be saved; training will continue.")
+        except Exception:
+            print("Diagnostic context could not be captured; training will continue.")
+
+    capture_context("initial")
 
     print(describe_device())
     print(f"📂 Dataset: {data_path}")
@@ -657,12 +693,16 @@ def run_pipeline(
 
     stage("Data Inspector")
     engineer_notes, cols_to_drop = run_data_inspector_agent(
-        loader, interactive=options.interactive, log_filename=str(log_file)
+        loader, interactive=options.interactive, log_filename=str(log_file),
+        on_review=lambda outcome, response: _emit(on_event, "inspector", outcome=outcome, response=response),
     )
     if cols_to_drop:
         loader.drop_columns(cols_to_drop)
         result.state_dim = loader.state_dim
         result.action_dim = loader.action_dim
+
+    _emit(on_event, "inspector_data", state_dim=loader.state_dim, action_dim=loader.action_dim,
+          quality_issues=list(loader.quality_issues), dropped_columns=list(cols_to_drop), engineer_notes=engineer_notes)
 
     if engineer_notes and engineer_notes.lower() != "skip":
         if str(getattr(cfg, "CUSTOMER_SYSTEM_DESCRIPTION", "")).strip():
@@ -743,6 +783,8 @@ def run_pipeline(
         )
 
     result.activation = chosen_activation
+    _emit(on_event, "initializer", mode="agent" if cfg.CHOOSE_VIA_LLM_INITIALIZER else "manual",
+          config=dict(setup_config))
 
     # The Initializer can change how derivatives are reconstructed. When it
     # does, re-extract so the agent's choice actually reaches the data.
@@ -757,6 +799,13 @@ def run_pipeline(
         )
         describe_split(train_trajs, val_trajs, test_trajs, len(trajectories))
 
+    capture_context("initialized", {
+        "state_columns": loader.state_cols, "action_columns": loader.action_cols,
+        "rows": len(loader.df), "quality_issues": list(loader.quality_issues),
+        "training_trajectory_lengths": [len(t["states"]) for t in train_trajs],
+        "validation_trajectory_lengths": [len(t["states"]) for t in val_trajs],
+        "test_trajectory_lengths": [len(t["states"]) for t in test_trajs],
+    })
     starting_config = {
         "learning_rate": setup_config.get("learning_rate", 0.001),
         "hidden_layers": setup_config.get("hidden_layers", [64]),
@@ -783,6 +832,7 @@ def run_pipeline(
     explorer = ExplorerAgent(initial_config=starting_config, log_filename=str(log_file))
 
     perf_history: List[Dict[str, Any]] = []
+    result.training_seconds = 0.0
     best_model = None
     stagnation_count = 0
     tuning_span = 1.0 / len(STAGES)
@@ -804,6 +854,8 @@ def run_pipeline(
 
         current_lr = actor.current_config["learning_rate"]
         current_hl = actor.current_config["hidden_layers"]
+        _emit(on_event, "cycle_started", cycle=cycle_num, max_cycles=max_cycles,
+              config=dict(actor.current_config))
 
         print("    🛠️  Active Architecture Configurations:")
         print(f"        ├── Learning Rate (η)   : {current_lr:.6f}")
@@ -812,6 +864,7 @@ def run_pipeline(
         print(f"        ├── Hidden Layers Count : {len(current_hl)} layer(s)")
         print(f"        └── Neurons per Layer   : {current_hl}")
 
+        training_started = time.perf_counter()
         model_trained, final_train_mse, final_mse, final_rmse, _X, _y = train_dynamics_model(
             train_trajs,
             val_trajs,
@@ -828,6 +881,8 @@ def run_pipeline(
             lr_min=cfg.LR_SCHEDULE_MIN_FLOOR,
             architecture=arch,
         )
+        cycle_training_seconds = time.perf_counter() - training_started
+        result.training_seconds += cycle_training_seconds
 
         # --- Generalization gap check -------------------------------------
         if final_train_mse > 1e-8:
@@ -851,6 +906,7 @@ def run_pipeline(
                 "train_mse": final_train_mse,
                 "val_mse": final_mse,
                 "rmse": final_rmse,
+                "training_seconds": cycle_training_seconds,
                 "performance": {"mse": final_mse, "rmse": final_rmse},
             }
         )
@@ -881,6 +937,7 @@ def run_pipeline(
             is_best=is_new_best,
             best_mse=tracker.best_mse,
             best_rmse=tracker.best_rmse,
+            training_seconds=cycle_training_seconds,
         )
         _emit(
             on_event, "progress", value=tuning_base + tuning_span * (cycle_num / max(max_cycles, 1))
@@ -913,6 +970,7 @@ def run_pipeline(
             max_latency_ms=cfg.CUSTOMER_MAX_LATENCY_MS,
         )
 
+        _emit(on_event, "critic_started", cycle=cycle_num)
         critic_output = critic.evaluate(
             train_mse=final_train_mse,
             val_mse=final_mse,
@@ -947,6 +1005,7 @@ def run_pipeline(
             )
             print("    🌌 Summoning Explorer Agent to force a repulsive architectural shift...")
 
+            _emit(on_event, "explorer_started", cycle=cycle_num)
             new_config, explorer_reasoning = explorer.generate_radical_escape(
                 tracker=tracker,
                 stuck_config=actor.current_config,
@@ -978,6 +1037,8 @@ def run_pipeline(
         print("\n❌ No model was trained; nothing to report.")
         result.status = "no_model"
         result.message = "No model was trained."
+        result.elapsed_seconds = time.time() - started
+        result.save_manifest()
         _emit(on_event, "error", message=result.message)
         return result
 
@@ -1034,6 +1095,7 @@ def run_pipeline(
         )
 
     stage("Held-out verification")
+    verification_horizon_seconds = 10.0
     true_traj_data, nn_traj_data = plot_test_dataset_verification(
         best_model,
         test_trajs,
@@ -1046,8 +1108,21 @@ def run_pipeline(
         architecture=arch,
         lstm_seq_length=int(cfg.LSTM_SEQ_LENGTH),
         integrator=str(cfg.INTEGRATOR_TYPE),
+        target_horizon_seconds=verification_horizon_seconds,
         save_plot=bool(cfg.SAVE_PLOT),
     )
+
+    try:
+        if not save_verification(run_dir, true_traj_data, nn_traj_data, loader.state_cols, protocol={
+            "available_test_trajectories": len(test_trajs), "selected_test_trajectory_index": 0 if test_trajs else None,
+            "target_chunk_horizon_seconds": verification_horizon_seconds,
+            "initialization": "Reset to measured state at each chunk start; first test trajectory only.",
+            "lstm_warmup": "Measured history preceding each chunk, then predicted states within the chunk.",
+            "architecture": arch, "lstm_seq_length": int(cfg.LSTM_SEQ_LENGTH), "integrator": str(cfg.INTEGRATOR_TYPE),
+        }):
+            print("Diagnostic verification summary could not be saved.")
+    except Exception:
+        print("Diagnostic verification summary could not be captured.")
 
     final_score, model_status = calculate_success_score(
         val_mse=best_mse,
