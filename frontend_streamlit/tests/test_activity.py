@@ -52,7 +52,7 @@ def test_manual_initializer_and_unavailable_inspector_are_truthful():
 
 
 def test_worker_drain_keeps_explorer_feedback_and_saves_replay(tmp_path):
-    from frontend_streamlit.agent_sysid_app import PipelineRunner, drain
+    from frontend_streamlit.ui_pipeline_runtime import PipelineRunner, drain
     from backend_core.AgentSysID.pipeline import SysIDOptions, SysIDResult
 
     runner = PipelineRunner(SysIDOptions(data_path="unused.csv"))
@@ -76,7 +76,7 @@ def test_worker_drain_keeps_explorer_feedback_and_saves_replay(tmp_path):
 
 
 def test_worker_exception_saves_console_failure_and_activity(tmp_path, monkeypatch):
-    from frontend_streamlit import agent_sysid_app as app
+    from frontend_streamlit import ui_pipeline_runtime as app
     from backend_core.AgentSysID.pipeline import SysIDOptions
     from backend_core.AgentSysID.agents.run_evidence import read_json
     def fail(options, on_event, **kwargs):
@@ -103,8 +103,10 @@ def test_monitor_renders_live_details_and_saved_history(tmp_path):
     assert activity.save(tmp_path, items)
     script = '''
 import streamlit as st
-from frontend_streamlit.agent_sysid_app import render_monitor
-render_monitor(st.session_state["test_state"], None, False)
+from frontend_streamlit.ui_activity import render, load
+state = st.session_state["test_state"]
+render(load(state["viewing"]["run_dir"]) if "viewing" in state else state["activity"],
+       historical="viewing" in state)
 '''
     app = AppTest.from_string(script, default_timeout=30)
     app.session_state["test_state"] = dict(log="", stage="Tuning cycles", progress=0.5,

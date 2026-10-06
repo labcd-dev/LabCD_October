@@ -2,6 +2,7 @@
 
 import datetime as dt
 import json
+from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
@@ -66,44 +67,26 @@ def test_invalid_metadata_does_not_hide_runs(tmp_path):
     assert not hist.update_metadata(tmp_path / "missing", title="Missing")
 
 
-def test_sidebar_select_rename_pin_archive_and_restore(tmp_path):
+def test_sidebar_select_rename_pin_archive_and_restore(tmp_path, monkeypatch):
+    from frontend_streamlit import conversation_core as core
+    monkeypatch.setattr(core, "CHAT_DIR", tmp_path / "chats")
+    monkeypatch.setattr(core, "OUTPUT_DIR", tmp_path)
     run = make_run(tmp_path, dt.date.today())
-    script = '''
-import streamlit as st
-from frontend_streamlit.agent_sysid_app import render_sidebar
-st.session_state.setdefault("viewing", None)
-render_sidebar(st.session_state["test_output_dir"], False)
-'''
-    app = AppTest.from_string(script, default_timeout=30)
-    app.session_state["test_output_dir"] = str(tmp_path)
-    app.run()
+    app = AppTest.from_file(str(Path(__file__).parents[1] / "agent_sysid_app.py"), default_timeout=30).run()
+    next(b for b in app.button if (b.key or "").startswith("legacy_run_")).click().run()
     assert not app.exception
-    row = next(button for button in app.button if (button.key or "").startswith("history_open_"))
-    run_key = row.key.removeprefix("history_open_")
-    row.click().run()
+    chat = app.session_state["conversation"]
+    assert Path(chat["run_dir"]) == run
+    next(b for b in app.button if b.label == "Pin conversation").click().run()
+    assert core.read_chat(chat["id"])["pinned"]
+    app.text_input(key=f"title_{chat['id']}").set_value("Spring [test] *v2*")
+    next(b for b in app.button if b.label == "Rename").click().run()
+    assert core.read_chat(chat["id"])["title"] == "Spring [test] *v2*"
+    next(b for b in app.button if b.label == "Archive conversation").click().run()
+    assert core.read_chat(chat["id"])["archived"]
+    app.toggle(key="conversation_archived").set_value(True).run()
+    app.button(key=f"conversation_open_{chat['id']}").click().run()
+    next(b for b in app.button if b.label == "Restore conversation").click().run()
     assert not app.exception
-    assert app.session_state["viewing"]["run_dir"] == str(run)
-    assert app.session_state["section"] == "Results"
-    app.button(key=f"history_pin_{run_key}").click().run()
-    assert not app.exception
-    assert hist.load_history(tmp_path)[0]["pinned"]
-    app.button(key=f"history_rename_{run_key}").click().run()
-    assert not app.exception
-    next(widget for widget in app.text_input if widget.label == "Run name").set_value("Spring [test] *v2*")
-    next(button for button in app.button if button.label == "Save name").click().run()
-    assert not app.exception
-    assert hist.display_name(hist.load_history(tmp_path)[0]) == "Spring [test] *v2*"
-    assert app.session_state["viewing"]["title"] == "Spring [test] *v2*"
-    app.button(key=f"history_archive_{run_key}").click().run()
-    assert not app.exception
-    assert not any((button.key or "").startswith("history_open_") for button in app.button)
-    app.toggle(key="history_archived").set_value(True).run()
-    assert not app.exception
-    assert app.button(key=f"history_archive_{run_key}").label == "Restore run"
-    app.button(key=f"history_archive_{run_key}").click().run()
-    assert not app.exception
-    app.toggle(key="history_archived").set_value(False).run()
-    app.text_input(key="history_search").set_value("Spring").run()
-    assert not app.exception
-    assert app.button(key=f"history_open_{run_key}")
+    assert not core.read_chat(chat["id"])["archived"]
     assert run.is_dir()

@@ -260,9 +260,11 @@ def collect_evidence(run_dir, question="", *, live_state=None, max_chars=MAX_CON
 
     # Prioritize measured data and instructions, then retrieve relevant actual agent turns.
     tokens = set(re.findall(r"[a-z]{3,}", question.lower())) - {"this", "that", "model", "what", "about", "with", "run"}
-    required = [s for s in sources if s.kind in ("results", "settings", "verification", "runtime", "knowledge", "template", "implementation")]
+    required = [s for s in sources if s.kind in ("results", "settings", "verification", "runtime")]
     cycles = [s for s in sources if s.kind == "cycle"]
-    optional = [s for s in sources if s not in required and s not in cycles]
+    templates = [s for s in sources if s.kind == "template"]
+    references = [s for s in sources if s.kind in ("knowledge", "implementation")]
+    optional = [s for s in sources if s not in required and s not in cycles and s not in templates and s not in references]
     def relevance(source):
         text = source.content.lower()
         return sum(text.count(word) for word in tokens) + 15*sum(word in text for word in ("[error]", "traceback", "nan", "overfit", "violation", "ask_human"))
@@ -272,7 +274,9 @@ def collect_evidence(run_dir, question="", *, live_state=None, max_chars=MAX_CON
         group = source.title.split(" · ")[0] if source.kind == "agent_turn" else source.kind
         representative[group] = source
     # A long tuning history must not displace every actual agent prompt.
-    priority = required + list(representative.values()) + sorted(cycles, key=relevance, reverse=True) + sorted(optional, key=relevance, reverse=True)
+    priority = (required + list(representative.values()) + sorted(cycles, key=relevance, reverse=True) +
+                templates + sorted(optional, key=relevance, reverse=True) +
+                sorted(references, key=relevance, reverse=True))
     selected, seen, used = [], set(), 0
     for source in priority:
         if source.id in seen:

@@ -70,6 +70,9 @@ def split_trajectories(
             print("    ⚠️  LSTM ACTIVE: Data shuffling is DISABLED to preserve contiguous temporal memory.")
 
     n_traj = len(trajectories)
+    sequence_length = int(getattr(cfg, "LSTM_SEQ_LENGTH", 1)) if lstm_active else 1
+    rollout_horizon = max(1, int(getattr(cfg, "ROLLOUT_HORIZON", 1)))
+    window_length = max(1, sequence_length + rollout_horizon - 1)
 
     # --- More than two trajectories --------------------------------------
     if n_traj > 2:
@@ -77,7 +80,9 @@ def split_trajectories(
         remaining = list(trajectories[:-2])
         if len(remaining) < 2:
             # Not enough left to split by trajectory: split the first one in time.
-            train_trajs, val_trajs = _chronological_split(remaining[0], 0.80)
+            train_trajs, val_trajs = _chronological_split(
+                remaining[0], 0.80, min_samples=window_length
+            )
             return [train_trajs], [val_trajs], test_trajs
 
         train_trajs, val_trajs = train_test_split(
@@ -90,7 +95,9 @@ def split_trajectories(
         if verbose:
             print("    ⚠️ Only 2 trajectories detected. Holding the second out as the test set.")
         test_trajs = [trajectories[1]]
-        train_part, val_part = _chronological_split(trajectories[0], 0.85)
+        train_part, val_part = _chronological_split(
+            trajectories[0], 0.85, min_samples=window_length
+        )
         return [train_part], [val_part], test_trajs
 
     # --- A single continuous trajectory ----------------------------------
@@ -99,11 +106,18 @@ def split_trajectories(
 
     all_steps = trajectories[0]
     total_len = len(all_steps["states"])
-    if total_len < 10:
-        raise ValueError("Not enough samples to split! Please generate more data.")
+    if total_len < 3 * window_length:
+        raise ValueError(
+            f"A single trajectory needs at least {3 * window_length} samples for "
+            f"train, validation and test windows of length {window_length}. "
+            "Use a shorter sequence or rollout window, or provide more measurements."
+        )
 
-    # Always lock the final 10% away chronologically for the rollout verification.
-    test_split_idx = int(total_len * 0.90)
+    # Keep a ten-percent test tail when it is large enough; small recordings
+    # borrow rows from the training side so all three partitions contain one
+    # complete model window instead of creating an empty validation metric.
+    test_rows = max(window_length, total_len - int(total_len * 0.90))
+    test_split_idx = total_len - test_rows
     temp_train_val = _slice(all_steps, 0, test_split_idx)
     test_trajs = [_slice(all_steps, test_split_idx, total_len)]
 
@@ -115,8 +129,9 @@ def split_trajectories(
 
             n = len(temp_train_val["states"])
             idx = np.arange(n)
+            val_rows = min(n - window_length, max(window_length, int(np.ceil(n * 0.15))))
             train_idx, val_idx = train_test_split(
-                idx, test_size=0.15, random_state=42, shuffle=True
+                idx, test_size=val_rows, random_state=42, shuffle=True
             )
             return (
                 [_take(temp_train_val, np.sort(train_idx))],
@@ -128,7 +143,9 @@ def split_trajectories(
             print("       -> [MODE ACTIVE]: ZERO CHUNKING (Pure Chronological).")
             print("       -> [WARNING]: SHUFFLE=False. VRAM usage may be very high for LSTMs.")
 
-        train_part, val_part = _chronological_split(temp_train_val, 0.88)
+        train_part, val_part = _chronological_split(
+            temp_train_val, 0.88, min_samples=window_length
+        )
         return [train_part], [val_part], test_trajs
 
     # Chunked mode
@@ -144,7 +161,9 @@ def split_trajectories(
             sub_trajectories.append(_slice(temp_train_val, i, end))
 
     if len(sub_trajectories) < 2:
-        train_part, val_part = _chronological_split(temp_train_val, 0.85)
+        train_part, val_part = _chronological_split(
+            temp_train_val, 0.85, min_samples=window_length
+        )
         return [train_part], [val_part], test_trajs
 
     train_trajs, val_trajs = train_test_split(
@@ -153,9 +172,16 @@ def split_trajectories(
     return list(train_trajs), list(val_trajs), test_trajs
 
 
-def _chronological_split(traj: Trajectory, train_fraction: float) -> Tuple[Trajectory, Trajectory]:
+def _chronological_split(
+    traj: Trajectory, train_fraction: float, min_samples: int = 1
+) -> Tuple[Trajectory, Trajectory]:
     n = len(traj["states"])
-    split_idx = max(1, int(n * train_fraction))
+    if n < 2 * min_samples:
+        raise ValueError(
+            f"Cannot make train and validation windows of length {min_samples} "
+            f"from a {n}-sample trajectory. Provide more data or shorten the model window."
+        )
+    split_idx = max(min_samples, min(n - min_samples, int(n * train_fraction)))
     return _slice(traj, 0, split_idx), _slice(traj, split_idx, n)
 
 

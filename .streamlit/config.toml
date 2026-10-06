@@ -4,20 +4,20 @@
 
 [theme]
 base = "dark"
-primaryColor = "#4ec9b0"              # terminal teal accent
-backgroundColor = "#080a0d"           # deep charcoal workspace
-secondaryBackgroundColor = "#12161b" # panels, cards, and inputs
-textColor = "#d4d4d4"
+primaryColor = "#6e7d73"
+backgroundColor = "#212121"
+secondaryBackgroundColor = "#303030"
+textColor = "#ececec"
 font = "sans serif"
-headingFont = "monospace"
+headingFont = "sans serif"
 codeFont = "monospace"
 codeFontSize = "13px"
 codeTextColor = "#9cdcfe"
-codeBackgroundColor = "#0b0e12"
-borderColor = "#262c33"
-linkColor = "#4ec9b0"
-baseRadius = "6px"
-buttonRadius = "6px"
+codeBackgroundColor = "#191919"
+borderColor = "#424242"
+linkColor = "#b7cfc1"
+baseRadius = "12px"
+buttonRadius = "10px"
 showWidgetBorder = true
 showSidebarBorder = true
 redColor = "#f48771"
@@ -29,12 +29,12 @@ violetColor = "#c586c0"
 chartCategoricalColors = ["#4ec9b0", "#ce9178", "#569cd6", "#dcdcaa", "#c586c0", "#6a9955", "#f48771"]
 
 [theme.sidebar]
-backgroundColor = "#0e1115"
-secondaryBackgroundColor = "#12161b"
-codeBackgroundColor = "#0b0e12"
-textColor = "#d4d4d4"
-borderColor = "#262c33"
-primaryColor = "#4ec9b0"
+backgroundColor = "#171717"
+secondaryBackgroundColor = "#292929"
+codeBackgroundColor = "#191919"
+textColor = "#ececec"
+borderColor = "#303030"
+primaryColor = "#6e7d73"
 
 [server]
 headless = true

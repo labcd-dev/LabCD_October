@@ -126,38 +126,44 @@ def test_user_overrides_reach_the_initializer_prompt():
 # ---------------------------------------------------------------------------
 # UI parity
 # ---------------------------------------------------------------------------
-@pytest.mark.skipif(not UI_APP.is_file(), reason="Streamlit UI not present")
 def test_ui_exposes_every_option_field():
-    """'Use all of them in the UI' — enforced, not assumed."""
-    source = UI_APP.read_text(encoding="utf-8")
+    from frontend_streamlit.conversation_core import RunSettings
     knobs = {f.name for f in fields(SysIDOptions)} - _NON_KNOB_FIELDS
-    missing = sorted(k for k in knobs if k not in source)
-    assert not missing, f"SysIDOptions fields absent from the Streamlit UI: {missing}"
+    # Credentials/model and trusted PINN code stay in the current server config;
+    # export and override dictionaries are supplied by the conversation controller.
+    managed = {"pinn_equation_file", "api_provider", "llm_model", "llm_temperature",
+               "save_plot", "user_overrides", "initializer_overrides"}
+    assert knobs - managed <= set(RunSettings.model_fields)
+    assert set(RunSettings.model_fields) <= {f.name for f in fields(SysIDOptions)}
 
 
 @pytest.mark.skipif(not UI_APP.is_file(), reason="Streamlit UI not present")
-def test_ui_exposes_all_fourteen_initializer_overrides():
-    source = UI_APP.read_text(encoding="utf-8")
-    for key in [
-        "learning_rate", "hidden_layers", "activation", "dropout_rate", "weight_decay",
-        "use_state_filter", "auto_filter_percentiles", "derivative_filter_tau",
-        "lr_search_min", "lr_search_max", "hidden_size_search_min",
-        "hidden_size_search_max", "num_layers_search_min", "num_layers_search_max",
-    ]:
-        assert key in source, f"Initializer override missing from the UI: {key}"
+def test_ui_validates_initializer_settings_for_conversation_runs():
+    from frontend_streamlit import conversation_core as core
+    manual = {"epochs": 8, "batch_size": 32, "manual_starting_hidden_layers": [16],
+              "hidden_size_min": 16, "manual_starting_lr": 0.0005,
+              "manual_activation": "tanh", "manual_dropout_rate": 0.1,
+              "manual_weight_decay": 0.002, "use_state_filter": True,
+              "auto_filter_percentiles": [2.0, 98.0], "derivative_filter_tau": 0.01}
+    settings = core.apply_changes(core.RunSettings().model_dump(), manual)
+    assert settings["learning_rate_min"] < settings["learning_rate_max"]
+    assert settings["num_layers_min"] <= len(settings["manual_starting_hidden_layers"]) <= settings["num_layers_max"]
+    assert settings["manual_activation"] == "tanh"
 
 
 @pytest.mark.skipif(not UI_APP.is_file(), reason="Streamlit UI not present")
 def test_ui_never_runs_interactively_and_duplicates_no_core_logic():
     source = UI_APP.read_text(encoding="utf-8")
-    assert "interactive=False" in source, "A web UI must never block on input()"
+    from frontend_streamlit import conversation_core as core
+    assert "interactive=False" in __import__("inspect").getsource(core.make_options), "A web UI must never block on input()"
     for forbidden in ("train_dynamics_model", "BestConfigTracker", "CriticAgent("):
         assert forbidden not in source, f"UI duplicates core logic: {forbidden}"
 
 
 @pytest.mark.skipif(not UI_APP.is_file(), reason="Streamlit UI not present")
 def test_ui_module_parses_and_imports_the_pipeline():
-    tree = ast.parse(UI_APP.read_text(encoding="utf-8"))
+    runtime = REPO_ROOT / "frontend_streamlit" / "ui_pipeline_runtime.py"
+    tree = ast.parse(runtime.read_text(encoding="utf-8"))
     imported: Set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:

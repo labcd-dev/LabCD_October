@@ -9,6 +9,7 @@ import pytest
 import torch
 
 from backend_core.AgentSysID import config as cfg
+from backend_core.AgentSysID.data.splitter import split_trajectories
 from backend_core.AgentSysID.training.trainer import (
     _build_windows,
     compute_rmse,
@@ -157,6 +158,36 @@ def test_pinn_residual_is_applied_when_enabled(monkeypatch):
     assert calls["n"] > 0, "PINN physics function was never called"
 
 
+def test_pinn_enabled_fails_preflight_instead_of_silently_training_without_physics(monkeypatch):
+    monkeypatch.setattr(
+        "backend_core.AgentSysID.training.trainer.load_analytical_xdot",
+        lambda _path: None,
+    )
+    cfg.USE_PINN = True
+    train = [_linear_trajectory(n=100)]
+    with pytest.raises(ValueError, match="could not be loaded"):
+        train_dynamics_model(
+            train, train, state_dim=2, action_encoding_dim=1,
+            hidden_layers=[8], epochs=1, batch_size=32, patience=3,
+            architecture="MLP", verbose=False,
+        )
+
+
+def test_pinn_equation_output_shape_is_checked_before_training(monkeypatch):
+    monkeypatch.setattr(
+        "backend_core.AgentSysID.training.trainer.load_analytical_xdot",
+        lambda _path: lambda states, _actions: torch.zeros((len(states), 1), device=states.device),
+    )
+    cfg.USE_PINN = True
+    train = [_linear_trajectory(n=100)]
+    with pytest.raises(ValueError, match="must return a tensor with shape"):
+        train_dynamics_model(
+            train, train, state_dim=2, action_encoding_dim=1,
+            hidden_layers=[8], epochs=1, batch_size=32, patience=3,
+            architecture="MLP", verbose=False,
+        )
+
+
 def test_training_raises_when_no_window_fits():
     tiny = [_linear_trajectory(n=3)]
     cfg.LSTM_SEQ_LENGTH = 50
@@ -216,6 +247,24 @@ def test_empty_validation_set_raises_instead_of_reporting_a_perfect_score():
             batch_size=32, patience=5, activation="relu", architecture="LSTM",
             verbose=False,
         )
+
+
+def test_small_lstm_recording_trains_with_automatically_sized_windows():
+    cfg.NETWORK_ARCHITECTURE = "LSTM"
+    cfg.LSTM_SEQ_LENGTH = 3
+    cfg.ROLLOUT_HORIZON = 1
+    train, validation, _ = split_trajectories(
+        [_linear_trajectory(n=10)], architecture="LSTM", chunk_size=0, shuffle=False, verbose=False
+    )
+
+    model, train_mse, val_mse, val_rmse, _, _ = train_dynamics_model(
+        train, validation, state_dim=2, action_encoding_dim=1,
+        hidden_layers=[8], learning_rate=1e-3, epochs=1, batch_size=8,
+        patience=1, activation="relu", architecture="LSTM", verbose=False,
+    )
+
+    assert model is not None
+    assert np.isfinite(train_mse) and np.isfinite(val_mse) and np.isfinite(val_rmse)
 
 
 def test_empty_validation_error_names_the_offending_settings():

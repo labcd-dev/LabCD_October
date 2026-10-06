@@ -81,26 +81,26 @@ render_panel(st.session_state["test_output_dir"])
     assert app.session_state["preview_run"] == str(run.resolve())
 
 
-def test_main_panel_toggle_preserves_run_choice(tmp_path):
+def test_main_panel_toggle_preserves_run_choice(tmp_path, monkeypatch):
+    from frontend_streamlit import conversation_core as core
+    monkeypatch.setattr(core, "CHAT_DIR", tmp_path / "chats")
+    monkeypatch.setattr(core, "OUTPUT_DIR", tmp_path)
     first, second = make_run(tmp_path, "1"), make_run(tmp_path, "2")
+    chat = core.new_chat()
+    chat["run_dir"] = str(first.resolve())
     app = AppTest.from_file(str(Path(__file__).parents[1] / "agent_sysid_app.py"), default_timeout=30)
-    app.session_state["output_dir"] = str(tmp_path)
-    app.session_state["section"] = "Compare"
+    app.session_state["conversation"] = chat
     app.run()
+    app.button(key="conversation_files_toggle").click().run()
+    app.button_group(key=f"files_type_{chat['id']}").set_value("Code").run()
     assert not app.exception
-    assert not any(box.key == "preview_run" for box in app.selectbox)
-    app.button(key="toggle_results_panel").click().run()
-    assert not app.exception
-    assert app.session_state["results_panel_open"]
-    app.selectbox(key="preview_run").set_value(str(first.resolve())).run()
-    app.button_group(key="preview_type").set_value("Code").run()
-    app.button(key="toggle_results_panel").click().run()
-    assert not app.session_state["results_panel_open"]
-    app.button(key="toggle_results_panel").click().run()
-    assert not app.exception
-    assert app.session_state["preview_run"] == str(first.resolve())
-    assert app.button_group(key="preview_type").value == "Code"
     assert app.code[0].value.splitlines()[0] == "# Run 1"
+    app.button(key="conversation_files_toggle").click().run()
+    app.button(key="conversation_files_toggle").click().run()
+    assert not app.exception
+    assert app.button_group(key=f"files_type_{chat['id']}").value == "Code"
+    assert app.code[0].value.splitlines()[0] == "# Run 1"
+    assert app.session_state["conversation"]["run_dir"] == str(first.resolve())
 
 
 def test_empty_comparison_and_panel_are_usable(tmp_path):

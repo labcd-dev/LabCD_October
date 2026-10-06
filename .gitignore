@@ -25,6 +25,7 @@ __pycache__/
 logs/
 artifacts_sysid/
 .streamlit_uploads/
+.streamlit_chats/
 figures/
 _legacy/*.pth
 

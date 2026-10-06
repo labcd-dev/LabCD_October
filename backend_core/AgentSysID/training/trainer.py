@@ -148,21 +148,23 @@ def _rollout_losses(
 
         # --- Physics-informed residual -----------------------------------
         if physics_fn is not None:
-            try:
-                if arch == "LSTM":
-                    phys_states = current_inputs[:, -1, :]
-                    phys_actions = curr_action[:, -1, :]
-                else:
-                    phys_states = current_inputs
-                    phys_actions = curr_action
+            if arch == "LSTM":
+                phys_states = current_inputs[:, -1, :]
+                phys_actions = curr_action[:, -1, :]
+            else:
+                phys_states = current_inputs
+                phys_actions = curr_action
 
-                physics_xdot_pred = physics_fn(phys_states, phys_actions)
-                norm_physics_target = (
-                    physics_xdot_pred - dyn_model.output_mean
-                ) / dyn_model.output_scale
-                physics_loss_accum = physics_loss_accum + criterion(out_norm, norm_physics_target)
-            except Exception:
-                pass
+            physics_xdot_pred = physics_fn(phys_states, phys_actions)
+            expected_shape = (phys_states.shape[0], phys_states.shape[1])
+            if not torch.is_tensor(physics_xdot_pred) or tuple(physics_xdot_pred.shape) != expected_shape:
+                raise ValueError(f"PINN equation must return a tensor with shape {expected_shape}.")
+            if not torch.isfinite(physics_xdot_pred).all():
+                raise ValueError("PINN equation returned a non-finite derivative during training.")
+            norm_physics_target = (
+                physics_xdot_pred - dyn_model.output_mean
+            ) / dyn_model.output_scale
+            physics_loss_accum = physics_loss_accum + criterion(out_norm, norm_physics_target)
 
         # --- Advance the rollout ------------------------------------------
         if arch == "LSTM":
@@ -339,8 +341,20 @@ def train_dynamics_model(
     physics_fn = None
     if getattr(cfg, "USE_PINN", False):
         physics_fn = load_analytical_xdot(getattr(cfg, "PINN_EQUATION_FILE", "physics_env.py"))
-        if physics_fn is None and verbose:
-            print("      ⚠️ USE_PINN is on but no compute_analytical_xdot was found; training data-driven.")
+        if physics_fn is None:
+            raise ValueError("PINN is enabled, but compute_analytical_xdot could not be loaded. Check the validated equation file before training.")
+        probe_states = X_train_states_t[:min(16, len(X_train_states_t)), -1, :].to(DEVICE)
+        probe_actions = X_train_acts_t[:min(16, len(X_train_acts_t)), -1, :].to(DEVICE)
+        try:
+            with torch.no_grad():
+                probe = physics_fn(probe_states, probe_actions)
+        except Exception as exc:
+            raise ValueError("The PINN equation failed its training-data preflight check.") from exc
+        expected_probe_shape = (len(probe_states), state_dim)
+        if not torch.is_tensor(probe) or tuple(probe.shape) != expected_probe_shape:
+            raise ValueError(f"PINN equation must return a tensor with shape {expected_probe_shape}.")
+        if not torch.isfinite(probe).all():
+            raise ValueError("PINN equation returned a non-finite derivative during preflight.")
     pinn_weight = float(getattr(cfg, "PINN_LOSS_WEIGHT", 0.5))
 
     train_losses: List[float] = []

@@ -150,14 +150,15 @@ def test_background_progress_disables_duplicate_submission_and_shows_finished_an
     assert any("reviewed answer is ready" in m.value for m in app.markdown)
 
 
-def test_results_button_opens_chat_for_viewed_run(tmp_path):
+def test_saved_run_opens_its_conversation_and_existing_diagnoses(tmp_path, monkeypatch):
+    from frontend_streamlit import conversation_core as core
+    monkeypatch.setattr(core, "CHAT_DIR", tmp_path / "chats")
+    monkeypatch.setattr(core, "OUTPUT_DIR", tmp_path)
     run = make_run(tmp_path, "1")
-    app = AppTest.from_file(str(Path(__file__).parents[1] / "agent_sysid_app.py"), default_timeout=30)
-    app.session_state["output_dir"] = str(tmp_path)
-    app.session_state["section"] = "Results"
-    app.session_state["viewing"] = {"run_dir":str(run), "complete":True, "env_name":"oscillator"}
-    app.run()
-    app.button(key="ask_selected_run").click().run()
+    append_exchange(run, "Explain the result", diagnostic_answer("A saved run-specific answer"))
+    app = AppTest.from_file(str(Path(__file__).parents[1] / "agent_sysid_app.py"), default_timeout=30).run()
+    next(b for b in app.button if (b.key or "").startswith("legacy_run_")).click().run()
     assert not app.exception
-    assert app.session_state["section"] == "Ask run"
-    assert app.session_state["diagnostic_run"] == str(run.resolve())
+    assert app.session_state["conversation"]["run_dir"] == str(run.resolve())
+    assert any("saved run-specific answer" in m.value.replace("\\", "") for m in app.markdown)
+    assert len(app.chat_input) == 1

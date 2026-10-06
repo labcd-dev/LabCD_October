@@ -95,6 +95,21 @@ def test_lstm_forces_chronological_split():
     assert np.all(np.diff(train[0]["times"]) > 0)
 
 
+@pytest.mark.parametrize("rows,sequence_length", [(41, 10), (10, 3)])
+def test_small_single_lstm_recording_keeps_a_full_window_in_each_split(monkeypatch, rows, sequence_length):
+    monkeypatch.setattr(cfg, "LSTM_SEQ_LENGTH", sequence_length)
+    monkeypatch.setattr(cfg, "ROLLOUT_HORIZON", 1)
+    monkeypatch.setattr(cfg, "TRAJECTORY_CHUNK_SIZE", 0)
+
+    train, validation, test = split_trajectories(
+        [_traj(rows)], architecture="LSTM", chunk_size=0, shuffle=False, verbose=False
+    )
+
+    assert len(train[0]["states"]) >= sequence_length
+    assert len(validation[0]["states"]) >= sequence_length
+    assert len(test[0]["states"]) >= sequence_length
+
+
 def test_split_rejects_empty_input():
     with pytest.raises(ValueError):
         split_trajectories([], verbose=False)
