@@ -46,6 +46,17 @@ def attached_chat():
     return chat
 
 
+def attached_pitch_yaw_chat():
+    chat = core.new_chat()
+    rows = [
+        f"{i * 0.01},{0.01 * i},{-0.02 * i},{0.03 * i},{-0.04 * i},{1.0 if i < 40 else 0.0},{0.5}"
+        for i in range(80)
+    ]
+    raw = ("time,s_pitch,s_yaw,s_dpitch,s_dyaw,a_u1,a_u2\n" + "\n".join(rows) + "\n").encode()
+    chat["dataset"] = core.inspect_upload("pitch_yaw.csv", raw, chat["id"])
+    return chat
+
+
 def source_for(chat, source=b"function xdot = model(x,u)\nxdot = -x + u;\nend\n", name="model.m"):
     source = maker.save_source(chat["id"], name, source)
     source["chat_id"] = chat["id"]
@@ -131,6 +142,96 @@ def test_constants_and_math_functions_return_batch_tensors(storage):
     output = fn(torch.zeros((4, 1)), torch.zeros((4, 1)))
     assert tuple(output.shape) == (4, 1)
     torch.testing.assert_close(output, torch.full((4, 1), 2.0))
+
+
+def test_python_pytorch_pinn_assignments_are_safely_translated_without_api(storage):
+    chat = attached_pitch_yaw_chat()
+    raw = b'''this is my PINN
+pitch = states[:, 0]
+    yaw = states[:, 1]  # not used in the continuous-time ODEs
+    dpitch = states[:, 2]
+    dyaw = states[:, 3]
+
+    u1 = actions[:, 0]
+    u2 = actions[:, 1]
+
+    # Physical parameters from the MATLAB plant with the stated adjustments.
+    m = 1.3872 * 1.08
+    g = 9.81
+    B_p = 0.8 * 0.92
+    B_y = 0.318 * 1.10
+    K_pp = 0.2040 * 0.93
+    K_yy = 0.0720 * 1.07
+    K_py = 0.0068 * 1.09
+    K_yp = 0.0219 * 0.91
+    J_p = 0.0178 * 1.06
+    J_y = 0.0084 * 0.94
+    l_cm = 0.186 * 1.05
+    J_Tp = J_p + m * l_cm**2
+    J_Ty = J_y + m * l_cm**2
+    Tp = K_pp * u1 + K_py * u2
+    Ty = K_yp * u1 + K_yy * u2
+
+    xdot_pitch = dpitch
+    xdot_yaw = dyaw
+    xdot_dpitch = (Tp - B_p * dpitch - m * g * l_cm * torch.sin(pitch)) / J_Tp
+    xdot_dyaw = (Ty - B_y * dyaw) / J_Ty
+
+    physics_xdot[:, 0] = xdot_pitch
+    physics_xdot[:, 1] = xdot_yaw
+    physics_xdot[:, 2] = xdot_dpitch
+    physics_xdot[:, 3] = xdot_dyaw
+'''
+    source = source_for(chat, raw, "pitch_yaw_pinn.txt")
+
+    class NeverCallClient:
+        settings = SimpleNamespace(model="must-not-be-used")
+
+        def complete(self, *_args):
+            raise AssertionError("Python tensor PINN source should use the constrained local translator")
+
+    answer = maker.prepare_equation(chat, "Prepare this Python PINN", source=source, client=NeverCallClient())
+
+    artifact = answer["generated_artifact"]
+    assert answer["status"] == "ready"
+    assert answer["model"] == "local safe Python equation translator"
+    assert "states[:, i]" in answer["answer"]
+    assert "uncertainty comments are not sampled" in answer["answer"]
+    assert Path(source["path"]).read_bytes() == raw
+    function = load_analytical_xdot(artifact["path"])
+    state = torch.tensor([[0.2, -0.1, 0.3, -0.4], [-0.3, 0.2, -0.1, 0.25]])
+    action = torch.tensor([[1.0, 0.5], [0.0, 0.5]])
+    actual = function(state, action)
+
+    m = 1.3872 * 1.08
+    g = 9.81
+    B_p, B_y = 0.8 * 0.92, 0.318 * 1.10
+    K_pp, K_yy = 0.2040 * 0.93, 0.0720 * 1.07
+    K_py, K_yp = 0.0068 * 1.09, 0.0219 * 0.91
+    J_p, J_y, l_cm = 0.0178 * 1.06, 0.0084 * 0.94, 0.186 * 1.05
+    torque_pitch = K_pp * action[:, 0] + K_py * action[:, 1]
+    torque_yaw = K_yp * action[:, 0] + K_yy * action[:, 1]
+    expected = torch.stack([
+        state[:, 2],
+        state[:, 3],
+        (torque_pitch - B_p * state[:, 2] - m * g * l_cm * torch.sin(state[:, 0])) / (J_p + m * l_cm**2),
+        (torque_yaw - B_y * state[:, 3]) / (J_y + m * l_cm**2),
+    ], dim=1)
+    torch.testing.assert_close(actual, expected, rtol=2e-5, atol=2e-5)
+
+
+def test_python_pinn_translator_rejects_unsafe_statements_and_bad_indices():
+    unsafe = "pitch = states[:, 0]\nphysics_xdot[:, 0] = __import__('os').system('whoami')"
+    with pytest.raises(ValueError, match="safe PINN math|function outside"):
+        maker._python_equations(unsafe, ["s_pitch"], [])
+
+    out_of_range = "pitch = states[:, 1]\nphysics_xdot[:, 0] = pitch"
+    with pytest.raises(ValueError, match="confirmed dataset has 1 state"):
+        maker._python_equations(out_of_range, ["s_pitch"], [])
+
+    missing = "pitch = states[:, 0]\nphysics_xdot[:, 0] = pitch"
+    with pytest.raises(ValueError, match="missing.*state index/indices 1"):
+        maker._python_equations(missing, ["s_pitch", "s_yaw"], [])
 
 
 def test_clarification_does_not_create_or_enable_an_equation(storage):

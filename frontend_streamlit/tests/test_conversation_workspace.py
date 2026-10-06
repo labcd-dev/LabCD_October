@@ -2,6 +2,7 @@ import json
 import queue
 from pathlib import Path
 from types import SimpleNamespace
+import zipfile
 
 import pytest
 from streamlit.testing.v1 import AppTest
@@ -383,6 +384,32 @@ def test_run_artifact_card_opens_python_source_in_right_file_panel(app_storage):
     assert not app.exception
     assert app.session_state["conversation_files"] is True
     assert any("def predict(state, action)" in block.value for block in app.code)
+
+
+def test_results_zip_is_promoted_and_opens_archive_preview(app_storage):
+    run_dir = app_storage / "archive_run"
+    run_dir.mkdir()
+    archive_path = run_dir / "SystemID_RunResults_archive.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("run_manifest.json", "{}")
+    (run_dir / "predict.py").write_text("def predict(): return 1\n", encoding="utf-8")
+    (run_dir / "run_manifest.json").write_text(json.dumps({"status": "completed"}), encoding="utf-8")
+    chat = core.new_chat()
+    chat["run_dir"] = str(run_dir)
+    core.add_message(chat, "assistant", "The run completed.", kind="result", run_dir=str(run_dir))
+
+    app = new_app()
+    app.session_state["conversation"] = chat
+    app.run()
+
+    result_file_buttons = [button for button in app.button
+                           if button.key and button.key.startswith("open_chat_file_")]
+    assert result_file_buttons[0].label == "Results ZIP"
+    result_file_buttons[0].click().run()
+    assert not app.exception
+    assert app.session_state["conversation_files"] is True
+    assert any(button.label == "Download file" for button in app.download_button)
+    assert any("Archive contents · 1 files" in caption.value for caption in app.caption)
 
 
 def test_message_prepares_plan_through_current_client(app_storage, monkeypatch):

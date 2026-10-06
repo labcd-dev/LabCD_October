@@ -1,8 +1,9 @@
 """Safe, data-bound conversion of raw physics equations and MATLAB .m files.
 
-The configured model interprets the client's source and proposes a small JSON
-equation map. This module validates that map and compiles it itself; uploaded
-source and model-generated text are never executed as Python or MATLAB.
+Supported Python tensor assignments are translated locally from a restricted
+AST. Other source formats can be interpreted by the configured model, after
+which this module validates the map and compiles it itself. Uploaded source
+and model-generated text are never executed as Python or MATLAB.
 """
 from __future__ import annotations
 
@@ -80,6 +81,8 @@ _BINARY_FUNCTIONS = {"minimum": torch.minimum, "maximum": torch.maximum, "atan2"
 _TORCH_FUNCTIONS = {**{key: f"torch.{key}" for key in _UNARY_FUNCTIONS},
                     "minimum": "torch.minimum", "maximum": "torch.maximum", "atan2": "torch.atan2"}
 _BINOPS = {ast.Add: "+", ast.Sub: "-", ast.Mult: "*", ast.Div: "/", ast.Pow: "**"}
+_PYTHON_TENSOR_REFERENCE = re.compile(r"\b(?:states|actions)\s*\[\s*:")
+_PYTHON_OUTPUT_REFERENCE = re.compile(r"\bphysics_xdot\s*\[\s*:")
 
 
 def is_raw_equation_request(question: str, *, has_pending_source: bool | str = False) -> bool:
@@ -197,6 +200,164 @@ def _parse_expression(expression: str, state_count: int, action_count: int) -> a
             continue
         raise ValueError("The equation contains code outside the safe mathematical expression language.")
     return tree
+
+
+def _python_tensor_source(source_text: str) -> bool:
+    """Return whether a source looks like the supported Python tensor form."""
+    return bool(_PYTHON_TENSOR_REFERENCE.search(source_text) and
+                _PYTHON_OUTPUT_REFERENCE.search(source_text))
+
+
+def _tensor_column_index(node: ast.AST, tensor_name: str) -> int | None:
+    """Read only the exact ``tensor[:, integer]`` indexing used by PINN snippets."""
+    if not isinstance(node, ast.Subscript) or not isinstance(node.value, ast.Name) or node.value.id != tensor_name:
+        return None
+    index = node.slice
+    if not isinstance(index, ast.Tuple) or len(index.elts) != 2:
+        return None
+    row, column = index.elts
+    if (not isinstance(row, ast.Slice) or row.lower is not None or row.upper is not None or row.step is not None or
+            not isinstance(column, ast.Constant) or type(column.value) is not int):
+        return None
+    return column.value
+
+
+class _PythonEquationRewriter(ast.NodeTransformer):
+    """Expand trusted aliases from a restricted, non-executed Python AST."""
+    def __init__(self, values: dict[str, ast.expr], state_count: int, action_count: int):
+        self.values = values
+        self.state_count = state_count
+        self.action_count = action_count
+
+    def visit_Name(self, node: ast.Name):
+        if node.id in self.values:
+            return copy.deepcopy(self.values[node.id])
+        if node.id == "pi":
+            return ast.copy_location(ast.Name(id="pi", ctx=ast.Load()), node)
+        raise ValueError(f"The Python source uses `{node.id}` before it is defined or mapped to a state/input column.")
+
+    def visit_Subscript(self, node: ast.Subscript):
+        for tensor_name, alias, count, label in (
+            ("states", "s", self.state_count, "state"),
+            ("actions", "a", self.action_count, "input"),
+        ):
+            if isinstance(node.value, ast.Name) and node.value.id == tensor_name:
+                index = _tensor_column_index(node, tensor_name)
+                if index is None:
+                    raise ValueError(f"Use only `{tensor_name}[:, index]` to select a measured {label} column.")
+                if index < 0 or index >= count:
+                    raise ValueError(f"The Python source selects {label} index {index}, but the confirmed dataset has {count} {label} column(s).")
+                return ast.copy_location(ast.Name(id=f"{alias}{index}", ctx=ast.Load()), node)
+        raise ValueError("The Python source contains tensor indexing outside the supported state/input columns.")
+
+    def visit_Attribute(self, node: ast.Attribute):
+        if isinstance(node.value, ast.Name) and node.value.id == "torch" and node.attr == "pi":
+            return ast.copy_location(ast.Name(id="pi", ctx=ast.Load()), node)
+        raise ValueError("Only approved math functions such as `torch.sin` are supported from Python modules.")
+
+    def visit_Call(self, node: ast.Call):
+        function = node.func.id if isinstance(node.func, ast.Name) else None
+        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id == "torch":
+            function = node.func.attr
+        if function not in _UNARY_FUNCTIONS | _BINARY_FUNCTIONS or node.keywords:
+            raise ValueError("The Python source calls a function outside the safe PINN math function list.")
+        expected = 2 if function in _BINARY_FUNCTIONS else 1
+        if len(node.args) != expected:
+            raise ValueError(f"Math function `{function}` needs {expected} argument(s).")
+        args = [self.visit(argument) for argument in node.args]
+        return ast.copy_location(ast.Call(func=ast.Name(id=function, ctx=ast.Load()), args=args, keywords=[]), node)
+
+    def visit_Constant(self, node: ast.Constant):
+        if type(node.value) not in (int, float) or not math.isfinite(float(node.value)):
+            raise ValueError("Python PINN equations may contain only finite numeric constants.")
+        return node
+
+    def visit_BinOp(self, node: ast.BinOp):
+        if type(node.op) not in _BINOPS:
+            raise ValueError("Use only +, -, *, /, and bounded numeric powers in Python PINN equations.")
+        return self.generic_visit(node)
+
+    def visit_UnaryOp(self, node: ast.UnaryOp):
+        if not isinstance(node.op, (ast.UAdd, ast.USub)):
+            raise ValueError("Use only unary + or - in Python PINN equations.")
+        return self.generic_visit(node)
+
+    def generic_visit(self, node):
+        if isinstance(node, (ast.Expression, ast.BinOp, ast.UnaryOp, ast.Load, ast.Add, ast.Sub,
+                             ast.Mult, ast.Div, ast.Pow, ast.UAdd, ast.USub)):
+            return super().generic_visit(node)
+        if isinstance(node, ast.expr):
+            raise ValueError("The Python source contains syntax outside the safe PINN math language.")
+        return super().generic_visit(node)
+
+
+def _python_equations(source_text: str, states: list[str], actions: list[str]) -> list[EquationTerm] | None:
+    """Translate the supported assignment-based Python PINN format without executing it.
+
+    The uploaded source remains untouched. This reads assignments into a small
+    allowlisted AST, resolves scalar aliases, and returns expression strings
+    that still pass through the regular expression validator and dataset check.
+    """
+    if not _python_tensor_source(source_text):
+        return None
+
+    lines = source_text.splitlines()
+    first_equation = next((index for index, line in enumerate(lines)
+                           if re.match(r"^\s*[A-Za-z_]\w*\s*=\s*(?:states|actions)\s*\[\s*:", line)), None)
+    if first_equation is None:
+        raise ValueError("I recognized Python tensor equations, but could not find a state/input assignment. Use `name = states[:, i]` or `name = actions[:, i]`.")
+    code_lines = []
+    for line in lines[first_equation:]:
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            continue
+        # These snippets are a flat equation list; discard pasted top-level
+        # indentation while preserving whitespace inside expressions.
+        code_lines.append(stripped)
+    code = "\n".join(code_lines)
+    try:
+        module = ast.parse(code, mode="exec")
+    except (SyntaxError, ValueError) as exc:
+        raise ValueError("I recognized Python-style PINN code, but could not read its assignments. Keep each equation on a valid Python assignment line.") from exc
+    if len(list(ast.walk(module))) > MAX_AST_NODES * 12:
+        raise ValueError("The Python PINN source is too complex for the safe equation translator.")
+
+    values: dict[str, ast.expr] = {}
+    derivatives: dict[int, str] = {}
+    rewriter = _PythonEquationRewriter(values, len(states), len(actions))
+    for statement in module.body:
+        if isinstance(statement, ast.Import):
+            if len(statement.names) == 1 and statement.names[0].name == "torch" and statement.names[0].asname is None:
+                continue
+            raise ValueError("Only an optional plain `import torch` is accepted in Python PINN source.")
+        if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+            raise ValueError("Python PINN source may contain only simple variable assignments and `physics_xdot[:, i] = ...` equations.")
+        target = statement.targets[0]
+        output_index = _tensor_column_index(target, "physics_xdot")
+        if output_index is not None:
+            if output_index < 0 or output_index >= len(states):
+                raise ValueError(f"The Python source writes derivative index {output_index}, but the dataset has {len(states)} state(s).")
+            if output_index in derivatives:
+                raise ValueError(f"The Python source assigns derivative index {output_index} more than once.")
+            expression = rewriter.visit(copy.deepcopy(statement.value))
+            if len(list(ast.walk(expression))) > MAX_AST_NODES:
+                raise ValueError("A translated Python equation is too complex for the safe PINN expression language.")
+            derivatives[output_index] = ast.unparse(ast.fix_missing_locations(expression))
+            continue
+        if not isinstance(target, ast.Name) or target.id in {"states", "actions", "physics_xdot", "torch"}:
+            raise ValueError("Only scalar aliases and `physics_xdot[:, i]` output assignments are supported in Python PINN source.")
+        if target.id in values:
+            raise ValueError(f"The Python source assigns `{target.id}` more than once; keep each parameter or alias unambiguous.")
+        value = rewriter.visit(copy.deepcopy(statement.value))
+        if len(list(ast.walk(value))) > MAX_AST_NODES:
+            raise ValueError("A translated Python assignment is too complex for the safe PINN expression language.")
+        values[target.id] = ast.fix_missing_locations(value)
+
+    missing = [index for index in range(len(states)) if index not in derivatives]
+    if missing:
+        aliases = ", ".join(str(index) for index in missing)
+        raise ValueError(f"The Python source is missing `physics_xdot[:, i]` equations for state index/indices {aliases}.")
+    return [EquationTerm(state=states[index], expression=derivatives[index]) for index in range(len(states))]
 
 
 def _render(node) -> str:
@@ -345,18 +506,34 @@ def prepare_equation(chat: dict, question: str, *, source: dict | None = None,
     source_text = _read_source(source)
     if len(dataset["states"]) > 100 or len(dataset.get("actions") or []) > 100:
         raise ValueError("PINN equation mapping supports up to 100 state and 100 input columns.")
-    if client is None:
-        client = DiagnosticClient(DiagnosticSettings.defaults())
-    prompt = _prepare_prompt(chat, question, source_text, source.get("name", "equation source"), dataset, frame)
-    response = _provider_response(client.complete(system_prompt("pinn_maker"), prompt))
+    states, actions = list(dataset["states"]), list(dataset.get("actions") or [])
+    local_equations = _python_equations(source_text, states, actions)
+    if local_equations is not None:
+        response = EquationResponse(
+            status="ready",
+            message=("I read the Python-style PINN assignments and mapped `states[:, i]` and "
+                     "`actions[:, i]` using the confirmed dataset column order. I translated the "
+                     "equations and approved math functions without running the uploaded Python."),
+            equations=local_equations,
+            assumptions=[
+                "State and input indices follow the confirmed dataset column order.",
+                "Parameter expressions are fixed exactly as written in the source; uncertainty comments are not sampled as ranges.",
+            ],
+        )
+        model_name = "local safe Python equation translator"
+    else:
+        if client is None:
+            client = DiagnosticClient(DiagnosticSettings.defaults())
+        prompt = _prepare_prompt(chat, question, source_text, source.get("name", "equation source"), dataset, frame)
+        response = _provider_response(client.complete(system_prompt("pinn_maker"), prompt))
+        model_name = getattr(getattr(client, "settings", None), "model", "configured model")
     if response.status == "clarification":
         source["status"] = "needs_clarification"
         result = {"answer": response.message, "status": "clarification", "generated_artifact": None,
                   "equations": [], "assumptions": response.assumptions, "evidence": [],
-                  "model": getattr(getattr(client, "settings", None), "model", "configured model")}
+                  "model": model_name}
         return result
 
-    states, actions = list(dataset["states"]), list(dataset.get("actions") or [])
     target_order = [equation.state for equation in response.equations]
     if len(target_order) != len(states) or len(set(target_order)) != len(target_order) or set(target_order) != set(states):
         missing = [name for name in states if name not in target_order]
@@ -400,11 +577,12 @@ def prepare_equation(chat: dict, question: str, *, source: dict | None = None,
                          [f"`a{i}` = `{column}`" for i, column in enumerate(actions)])
     validation_note = ("I mapped one derivative for each measured state and checked that the equations return finite values for every row in the attached dataset. "
                        "Review the variable mapping and units below before starting a PINN run.")
+    assumptions_note = ("Assumptions: " + " ".join(response.assumptions)) if response.assumptions else ""
     message = "\n\n".join(part for part in (response.message.strip(), validation_note,
-                                            "Variable map: " + aliases, details) if part)
+                                            "Variable map: " + aliases, details, assumptions_note) if part)
     return {"answer": message, "status": "ready", "generated_artifact": artifact,
             "equations": equations, "assumptions": response.assumptions, "evidence": [],
-            "model": getattr(getattr(client, "settings", None), "model", "configured model")}
+            "model": model_name}
 
 
 def is_equation_ready(chat: dict) -> bool:

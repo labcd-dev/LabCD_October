@@ -86,6 +86,18 @@ CSS = """
 [class*="st-key-chat_file_card"] button { background:transparent; border:0; text-align:left; justify-content:flex-start; min-height:34px; }
 [class*="st-key-chat_file_card"] button:hover { background:#333; }
 [class*="st-key-chat_file_card"] [data-testid="stCaptionContainer"] p { font-size:11px; }
+[class*="st-key-chat_file_card_zip_"] [data-testid="stVerticalBlockBorderWrapper"] {
+  min-height:132px; border-color:#67736f;
+  background:linear-gradient(110deg,#2d3533 0%,#292b2c 58%,#2b2a2b 100%);
+  border-radius:15px; box-shadow:0 8px 24px #0003,inset 0 1px #ffffff0a;
+}
+[class*="st-key-chat_file_card_zip_"] button {
+  min-height:62px; padding:10px 16px; border:1px solid #505957;
+  border-radius:11px; background:#303735; transition:background .16s ease,border-color .16s ease;
+}
+[class*="st-key-chat_file_card_zip_"] button:hover { background:#39423f; border-color:#84908b; }
+[class*="st-key-chat_file_card_zip_"] button p { font-size:16px; font-weight:600; }
+[class*="st-key-chat_file_card_zip_"] [data-testid="stCaptionContainer"] p { font-size:12px; }
 [data-testid="stCaptionContainer"] { color:var(--chat-muted); }
 button:focus-visible { outline:2px solid #b9b9b9; outline-offset:2px; }
 .st-key-conversation_composer textarea:focus-visible { outline:none; }

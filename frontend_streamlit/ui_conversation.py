@@ -623,10 +623,18 @@ def _open_file(item):
     st.session_state["conversation_files"] = True
 
 
+def _is_zip_file(item):
+    return item.get("kind") == "archive" or Path(item.get("path", "")).suffix.lower() == ".zip"
+
+
 def _file_card(item, key):
-    with st.container(border=True, key=f"chat_file_card_{key}"):
+    prominent_zip = _is_zip_file(item)
+    card_key = f"chat_file_card_{'zip_' if prominent_zip else ''}{key}"
+    with st.container(border=True, key=card_key):
         st.button(item["label"], icon=f":material/{item['icon']}:", width="stretch",
-                  key=f"open_chat_file_{key}", help="Open this file in the right preview panel",
+                  key=f"open_chat_file_{key}",
+                  help=("Open the full results archive in the right preview panel" if prominent_zip
+                        else "Open this file in the right preview panel"),
                   on_click=_open_file, args=(item,))
         st.caption(item["subtitle"])
 
@@ -635,9 +643,14 @@ def _file_cards(items, scope):
     if not items:
         return
     st.markdown("**Files from this run**")
-    for start in range(0, len(items), 2):
+    zip_items = [item for item in items if _is_zip_file(item)]
+    regular_items = [item for item in items if not _is_zip_file(item)]
+    for item in zip_items:
+        card_id = hashlib.sha1(item["id"].encode()).hexdigest()[:10]
+        _file_card(item, f"{scope}_{card_id}")
+    for start in range(0, len(regular_items), 2):
         columns = st.columns(2, gap="small")
-        for column, item in zip(columns, items[start:start + 2]):
+        for column, item in zip(columns, regular_items[start:start + 2]):
             with column:
                 card_id = hashlib.sha1(item["id"].encode()).hexdigest()[:10]
                 _file_card(item, f"{scope}_{card_id}")
