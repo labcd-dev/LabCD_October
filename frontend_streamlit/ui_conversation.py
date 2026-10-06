@@ -959,7 +959,7 @@ def _messages(chat, busy, file_items=None):
         with st.chat_message(message["role"], avatar=":material/person:" if message["role"] == "user" else ":material/graphic_eq:"):
             if message.get("diagnosis"):
                 diagnosis_ui.render_answer(message["diagnosis"])
-            elif message.get("evidence") or message.get("kind") in ("excel_maker", "pinn_maker", "column_review", "column_correction", "pasted_table_preview", "run_setup"):
+            elif message.get("evidence") or message.get("kind") in ("excel_maker", "pinn_maker", "clarification", "column_review", "column_correction", "pasted_table_preview", "run_setup"):
                 # Model prose is Markdown; Streamlit escapes raw HTML by default.
                 safe = re.sub(r"!\[([^\]]*)\]\([^)]+\)", r"\1", message["content"])
                 st.markdown(safe)
@@ -1135,7 +1135,9 @@ def _sync(chat, hooks):
         if not job.running:
             if job.answer:
                 extra = {"evidence": job.answer["evidence"], "model": job.answer["model"]}
-                if (chat.get("run_dir") or chat.get("dataset")) and job.purpose not in ("excel_maker", "pinn_maker"):
+                if ((chat.get("run_dir") or chat.get("dataset")) and
+                        job.purpose not in ("excel_maker", "pinn_maker") and
+                        job.answer.get("status") != "clarification"):
                     extra["visual_question"] = job.question
                 if job.purpose == "excel_maker":
                     extra["kind"] = "excel_maker"
@@ -1158,6 +1160,8 @@ def _sync(chat, hooks):
                         core.save_chat(chat)
                 if job.purpose == "data_review":
                     extra["kind"] = "data_review"
+                if job.purpose == "question" and job.answer.get("status") == "clarification":
+                    extra["kind"] = "clarification"
                 if chat.get("run_dir") and analysis.state_comparison_question(job.question):
                     comparison = analysis.compare_run_states(chat["run_dir"])
                     if comparison.get("rows"):

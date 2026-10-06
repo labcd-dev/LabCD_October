@@ -68,7 +68,15 @@ def test_detects_equation_preparation_but_not_pinn_explanations():
     assert maker.is_raw_equation_request("xdot_position = -position + force")
     assert maker.is_raw_equation_request("Please prepare this for PINN")
     assert not maker.is_raw_equation_request("Explain how PINN works")
-    assert maker.is_raw_equation_request("yes, map it", has_pending_source=True)
+    assert maker.is_raw_equation_request("yes, map it", has_pending_source="needs_clarification")
+    assert not maker.is_raw_equation_request("yes, map it", has_pending_source="ready")
+    assert not maker.is_raw_equation_request("What should I try next?", has_pending_source="ready")
+    assert not maker.is_raw_equation_request("How do I use PINN?", has_pending_source="ready")
+    assert not maker.is_raw_equation_request("How do I prepare equations for PINN?", has_pending_source="ready")
+    assert not maker.is_raw_equation_request("Why is this PINN equation wrong?", has_pending_source="ready")
+    assert maker.is_raw_equation_request("Can you prepare this equation for PINN?", has_pending_source="ready")
+    assert not maker.is_raw_equation_request("What should I try next?", has_pending_source="needs_clarification")
+    assert maker.is_raw_equation_request("pitch is s0 and yaw is s1", has_pending_source="needs_clarification")
     assert not maker.is_raw_equation_request("Do you use PINN in this run?", has_pending_source=True)
     assert not maker.is_raw_equation_request("Was PINN enabled in this run?", has_pending_source="needs_clarification")
     assert maker.is_pinn_usage_question("Do you use PINN in this run?")
@@ -456,3 +464,37 @@ def test_pinn_usage_question_reads_saved_run_and_does_not_start_equation_job(sto
     assert "data-driven" in chat["messages"][-1]["content"]
     assert "physics loss was used" in chat["messages"][-1]["content"]
     assert chat["id"] not in core.REGISTRY.conversations
+
+
+def test_ordinary_run_question_does_not_reattach_ready_pinn_source(storage, monkeypatch):
+    chat = attached_chat()
+    source_for(chat)
+    chat["pinn_source"]["status"] = "ready"
+    chat["run_dir"] = str(storage / "runs" / "completed")
+    core.REGISTRY = core.JobRegistry()
+    started = {}
+
+    class CapturedConversationJob:
+        running = True
+        answer = None
+        error = None
+
+        def __init__(self, snapshot, question, purpose="question"):
+            started.update(snapshot=snapshot, question=question, purpose=purpose)
+
+        def start(self):
+            started["started"] = True
+
+    class UnexpectedPINNJob:
+        def __init__(self, *_args):
+            raise AssertionError("An ordinary run question must not start PINN preparation")
+
+    monkeypatch.setattr(ui.agent, "ConversationJob", CapturedConversationJob)
+    monkeypatch.setattr(ui.pinn_maker, "PINNMakerJob", UnexpectedPINNJob)
+
+    ui._submit(chat, "What should I try next?", [], hooks={})
+
+    assert started["started"]
+    assert started["purpose"] == "question"
+    assert started["question"] == "What should I try next?"
+    assert "attachment" not in chat["messages"][-1]

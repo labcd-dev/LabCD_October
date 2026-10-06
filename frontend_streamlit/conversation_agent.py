@@ -6,6 +6,7 @@ import json
 import re
 import threading
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -20,6 +21,7 @@ except ImportError:
 
 
 class Answer(BaseModel):
+    status: Literal["answer", "clarification"] = "answer"
     answer: str = Field(min_length=1, max_length=9000)
     sources: list[str] = Field(default_factory=list, max_length=15)
     uncertainty: str = Field(default="", max_length=1000)
@@ -56,6 +58,16 @@ _PINN_USAGE_QUESTION = re.compile(
     r"\b(?:this|the|current)?\s*(?:run|training|model)\b",
     re.I,
 )
+_GENERIC_NEXT_STEP_QUESTION = re.compile(
+    r"^\s*(?:what\s+(?:should|could|can|do)\s+i\s+(?:try|do|test|work\s+on)\s+next|"
+    r"what\s+next|what(?:'s|\s+is)\s+the\s+next\s+step|what\s+do\s+you\s+recommend)\s*[?.!]*$",
+    re.I,
+)
+_NEXT_STEP_GOAL = re.compile(
+    r"\b(?:accuracy|prediction|predictive|generaliz\w*|overfit\w*|error|mse|rmse|"
+    r"physics|pinn|equation|deploy\w*|controller|control|mpc|cbf|hardware|"
+    r"validat\w*|test\s+data|new\s+experiment|data\s+collection|improv\w*|"
+    r"optimis\w*|optimiz\w*|reduce|lower|increase)\b", re.I)
 
 
 def is_identity_question(question: str) -> bool:
@@ -157,10 +169,39 @@ def _parse(raw: str, allowed: set[str]) -> dict:
     cited = set(re.findall(r"\[([A-Z][A-Za-z0-9_]+)\]", reply["answer"]))
     if cited - allowed:
         raise ValueError("The answer contains an unknown source citation.")
+    if reply["status"] == "clarification" and "?" not in reply["answer"]:
+        raise ValueError("A clarification response must ask one clear client question.")
     # Force evidence-aware replies to identify at least one actual source.
-    if allowed and not reply["sources"]:
+    if allowed and reply["status"] == "answer" and not reply["sources"]:
         raise ValueError("The answer did not identify supporting evidence.")
     return reply
+
+
+def _next_step_clarification(chat: dict, question: str) -> dict | None:
+    """Ask for the missing goal instead of substituting a generic run recap."""
+    if not _GENERIC_NEXT_STEP_QUESTION.fullmatch(question or ""):
+        return None
+    messages = chat.get("messages", [])
+    result_positions = [index for index, message in enumerate(messages) if message.get("kind") == "result"]
+    recent = messages[result_positions[-1] + 1:] if result_positions else messages[-12:]
+    for message in recent:
+        if message.get("role") != "user":
+            continue
+        content = str(message.get("content", "")).strip()
+        if content and content.casefold() != question.strip().casefold() and _NEXT_STEP_GOAL.search(content):
+            return None
+    return {
+        "status": "clarification",
+        "answer": (
+            "I can help choose a useful next step, but it depends on what you want to achieve. "
+            "Would you like to improve prediction on unseen measurements, check whether the learned "
+            "dynamics match the physical system, or figure out what validation is needed before a "
+            "controller test? The reported score and inference time alone do not establish controller "
+            "readiness. Choose one, or tell me a different goal, and I’ll tailor the next step to it."
+        ),
+        "sources": [],
+        "uncertainty": "The run results do not identify which next-step goal matters most to the client.",
+    }
 
 
 def _run_sources(run_dir: str, question: str) -> list[dict]:
@@ -259,6 +300,9 @@ def _check_state_ranking(reply: dict, comparison: dict) -> str:
 def answer_question(chat: dict, question: str, *, client=None, progress=None) -> dict:
     if not question.strip() or len(question) > 6000:
         raise ValueError("Ask a question between 1 and 6000 characters.")
+    clarification = _next_step_clarification(chat, question)
+    if clarification is not None:
+        return {**clarification, "evidence": [], "model": "LabCD clarification"}
     if progress:
         progress("Reading measurements and saved run evidence")
     llm = client or DiagnosticClient(DiagnosticSettings.defaults())
@@ -287,7 +331,14 @@ def answer_question(chat: dict, question: str, *, client=None, progress=None) ->
     draft = _parse(llm.complete(SYSTEM, payload), allowed)
     if progress:
         progress("Checking the answer against evidence")
-    reviewed = _parse(llm.complete(REVIEW, payload + "\nDRAFT ANSWER:\n" + json.dumps(draft, ensure_ascii=False)), allowed)
+    try:
+        reviewed = _parse(llm.complete(REVIEW, payload + "\nDRAFT ANSWER:\n" + json.dumps(draft, ensure_ascii=False)), allowed)
+    except ValueError:
+        if draft["status"] != "clarification":
+            raise
+        reviewed = draft
+    if draft["status"] == "clarification" and reviewed["status"] != "clarification":
+        reviewed = draft
     if chat.get("run_dir") and analysis.state_comparison_question(question):
         comparison = analysis.compare_run_states(chat["run_dir"])
         problem = _check_state_ranking(reviewed, comparison)

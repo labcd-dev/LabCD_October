@@ -37,10 +37,16 @@ except ImportError:
 MAX_SOURCE_BYTES = 120_000
 MAX_EXPRESSION_CHARS = 1200
 MAX_AST_NODES = 160
-_REQUEST_VERBS = re.compile(r"\b(?:use|prepare|make|create|convert|map|apply|enable|add|try|run)\b", re.I)
+_REQUEST_VERBS = re.compile(r"\b(?:use|prepare|make|create|convert|map|apply|enable|add|run)\b", re.I)
 _PINN_TERMS = re.compile(r"\b(?:pinn|physics(?:[- ]informed)?|equations?|derivatives?|xdot|d\s*\w+\s*/\s*dt)\b", re.I)
-_CONTINUATION = re.compile(r"\b(?:prepare|use|map|convert|equation|pinn|ready|yes|confirm|try|apply|retry)\b", re.I)
-_ORDINARY_QUESTION = re.compile(r"^\s*(?:what|why|which|how|show|plot|analy[sz]e|start|run|explain|compare)\b", re.I)
+_CONTINUATION = re.compile(r"\b(?:prepare|use|map|convert|equation|pinn|ready|yes|confirm|apply|retry)\b", re.I)
+_ORDINARY_QUESTION = re.compile(
+    r"^\s*(?:what|why|which|how|where|when|who|can|could|would|should|do|does|did|is|are|was|were|"
+    r"have|has|will|show|plot|analy[sz]e|explain|compare)\b", re.I)
+_EXPLICIT_PREPARE_VERB = re.compile(r"\b(?:prepare|make|create|convert|map|apply|enable|validate)\b", re.I)
+_CLARIFICATION_REPLY = re.compile(
+    r"\b(?:s\d+|a\d+|state|input|action|column|equation|derivative|represents?|means|mapped|mapping)\b|"
+    r"^\s*(?:yes|no|correct|that's right|that is right|confirmed)\s*[.!]?\s*$", re.I)
 _PINN_USAGE_QUESTION = re.compile(
     r"\b(?:do|does|did)\s+(?:you|we|this(?:\s+run|\s+model)?|the\s+run|the\s+model)\s+"
     r"(?:use|apply|include|train(?:ed)?\s+with)\b.{0,100}\b(?:pinn|physics[- ]informed)\b|"
@@ -92,10 +98,15 @@ def is_raw_equation_request(question: str, *, has_pending_source: bool | str = F
         return False
     if _PINN_USAGE_QUESTION.search(text):
         return False
-    if has_pending_source:
-        if _CONTINUATION.search(text):
-            return True
-        if has_pending_source == "needs_clarification" and not _ORDINARY_QUESTION.search(text):
+    # A saved/ready source is context, not an instruction. Only explicit
+    # equation work can prepare it; normal questions must remain ordinary chat.
+    explicit_prepare = bool(_EXPLICIT_PREPARE_VERB.search(text) and _PINN_TERMS.search(text))
+    if _ORDINARY_QUESTION.search(text):
+        direct_request = bool(re.match(r"^\s*(?:can|could|would)\s+you\b", text, re.I) and explicit_prepare)
+        if not direct_request:
+            return False
+    if has_pending_source == "needs_clarification" and "?" not in text:
+        if _CLARIFICATION_REPLY.search(text) or _CONTINUATION.search(text):
             return True
     has_formula = bool(re.search(
         r"(?:\bxdot[_\w]*\s*=|\bd\s*[_a-zA-Z]\w*\s*/\s*dt\s*=|"

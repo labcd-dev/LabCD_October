@@ -595,6 +595,25 @@ def test_completed_run_question_routes_to_conversational_agent(app_storage, monk
     assert any("actual evidence" in m.value for m in app.markdown)
 
 
+def test_conversation_clarification_stays_in_chat_without_run_visuals(app_storage):
+    chat = ready_chat()
+    core.add_message(chat, "user", "What should I try next?")
+    core.REGISTRY = core.JobRegistry()
+    core.REGISTRY.conversations[chat["id"]] = SimpleNamespace(
+        running=False,
+        answer={"status": "clarification", "answer": "Which goal matters most?", "evidence": [],
+                "model": "local clarification"},
+        question="What should I try next?", purpose="question", error=None, error_detail=None,
+    )
+
+    ui._sync(chat, hooks={})
+
+    clarification = chat["messages"][-1]
+    assert clarification["kind"] == "clarification"
+    assert clarification["content"] == "Which goal matters most?"
+    assert "visual_question" not in clarification
+
+
 def test_identity_question_without_dataset_routes_to_conversational_agent(app_storage, monkeypatch):
     calls = []
 

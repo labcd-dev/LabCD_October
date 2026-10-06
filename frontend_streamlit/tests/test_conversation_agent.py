@@ -47,6 +47,7 @@ def test_question_receives_soft_client_journey_context_without_forced_cta():
             if self.calls == 1:
                 assert "answer the exact question first" in system.lower()
                 assert "do not append a call to action" in system.lower()
+                assert "status `clarification`" in system.lower()
             else:
                 assert "low-pressure tone" in system.lower()
             return json.dumps({"answer": "An LSTM learns from ordered sequences; an MLP maps the supplied features directly.",
@@ -204,6 +205,70 @@ def test_run_question_supplies_per_state_metrics_and_agent_records(tmp_path):
 def test_answer_rejects_invented_evidence_id():
     with pytest.raises(ValueError, match="not supplied"):
         agent._parse('{"answer":"Unsupported [X9]", "sources":["X9"]}', {"D1"})
+
+
+def test_generic_next_step_question_asks_client_for_goal_instead_of_repeating_metrics():
+    chat = core.new_chat()
+    chat["run_dir"] = "a completed run"
+
+    class MustNotCallModel:
+        def complete(self, *_args):
+            raise AssertionError("A broad next-step prompt should clarify the client's goal first")
+
+    result = agent.answer_question(chat, "What should I try next?", client=MustNotCallModel())
+
+    assert result["status"] == "clarification"
+    assert result["sources"] == []
+    assert "improve prediction on unseen measurements" in result["answer"]
+    assert "controller test" in result["answer"]
+    assert "do not establish controller readiness" in result["answer"]
+    assert "99.8" not in result["answer"]
+
+
+def test_next_step_question_uses_a_goal_the_client_already_stated():
+    chat = core.new_chat()
+    chat["messages"] = [
+        {"role": "assistant", "kind": "result", "content": "The run completed."},
+        {"role": "user", "content": "I want to improve prediction on unseen measurements."},
+    ]
+
+    assert agent._next_step_clarification(chat, "What should I try next?") is None
+
+
+def test_model_can_ask_a_clarifying_question_without_citing_evidence():
+    response = agent._parse(
+        '{"status":"clarification","answer":"Are you optimizing accuracy or deployment?",'
+        '"sources":[],"uncertainty":"The goal is unclear."}',
+        {"D1", "V1"},
+    )
+
+    assert response["status"] == "clarification"
+    assert response["sources"] == []
+
+
+def test_reviewer_cannot_replace_a_clarification_with_a_metric_recap():
+    chat = core.new_chat()
+
+    class Client:
+        calls = 0
+
+        def complete(self, _system, _user):
+            self.calls += 1
+            if self.calls == 1:
+                return json.dumps({
+                    "status": "clarification",
+                    "answer": "Are you trying to improve accuracy or assess controller readiness?",
+                    "sources": [], "uncertainty": "The goal is not clear yet.",
+                })
+            return json.dumps({
+                "status": "answer", "answer": "The run scored 99.8 and is ready for MPC.",
+                "sources": [], "uncertainty": "",
+            })
+
+    result = agent.answer_question(chat, "What is the best next step?", client=Client())
+
+    assert result["status"] == "clarification"
+    assert result["answer"].startswith("Are you trying")
 
 
 def test_question_during_setup_is_not_mistaken_for_client_choice(tmp_path, monkeypatch):
