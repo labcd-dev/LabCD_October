@@ -24,6 +24,7 @@ from backend_core.AgentSysID.pipeline import (
     SysIDResult,
     apply_actor_human_choice,
     apply_initializer_human_choice,
+    estimate_model_parameter_count,
     run_pipeline,
 )
 from backend_core.AgentSysID.agents.actor import ActorAgent
@@ -103,6 +104,19 @@ def test_apply_to_config_maps_the_knobs():
     assert cfg.CUSTOMER_SYSTEM_DESCRIPTION == "A quadcopter."
     assert cfg.RUN_MODE == "heavy"
     assert cfg.ENV_NAME == "plant"
+
+
+@pytest.mark.parametrize("architecture, widths", [("MLP", [12, 6]), ("LSTM", [8, 8])])
+def test_parameter_count_analysis_matches_the_actual_model(architecture, widths):
+    from backend_core.AgentSysID.model.dynamics_model import DynamicsModel
+
+    model = DynamicsModel(
+        state_dim=3, action_dim=2, hidden_layers=widths,
+        architecture=architecture, dropout_rate=0.2,
+    )
+    actual = sum(parameter.numel() for parameter in model.parameters())
+
+    assert estimate_model_parameter_count(3, 2, widths, architecture) == actual
 
 
 def test_initializer_human_choices_stay_within_authorized_ranges():

@@ -142,17 +142,13 @@ class InitializerAgent:
                 "  (You MUST output these exact locked values in your response.)\n"
             )
 
-        mode_str = str(getattr(cfg, "RUN_MODE", "regular")).lower()
-        if mode_str == "fast":
-            reasoning_req = (
-                "Write exactly TWO concise sentences on a SINGLE continuous line "
-                "explaining your primary choices."
-            )
-        else:
-            reasoning_req = (
-                "Write exactly ONE concise paragraph on a SINGLE continuous line "
-                "explaining your logic for all parameters."
-            )
+        reasoning_req = (
+            "Write exactly four concise, evidence-led sentences on a SINGLE continuous line: "
+            "(1) cite the sample count, dimensions, and complexity tier; "
+            "(2) explain the topology and its history window from the measurements; "
+            "(3) explain the learning-rate and regularization tradeoff; "
+            "(4) state that this is only a starting hypothesis and validation/held-out test scores decide fit."
+        )
 
         complexity_tier = getattr(self.loader, "complexity_tier", 2)
         complexity_label = getattr(self.loader, "complexity_label", "Unknown")

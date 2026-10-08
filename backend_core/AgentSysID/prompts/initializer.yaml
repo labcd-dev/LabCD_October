@@ -21,6 +21,14 @@ user_template: |
   - Wrapped Angular States: {num_angles}
   {jump_data_str}
 
+  Make REASONING specific to the evidence above. Name the actual sample count,
+  state/action dimensions, complexity tier, and measured time step where relevant.
+  Explain the model-capacity tradeoff and why the learning rate and regularization
+  are plausible starting values. Do not say a setting "ensures" stability,
+  prevents overfitting, or guarantees generalization. These are hypotheses only;
+  validation results guide tuning and the held-out test is reserved for the final
+  check.
+
   CRITICAL ARCHITECTURE INSTRUCTIONS based on Tier {complexity_tier}:
   - If Tier 1-2 (Trivial/Mild): Recommend shallow networks (e.g., [64] or [32, 32]), higher learning rates (0.01), minimal regularization, larger batch sizes (e.g., 256), and standard patience (20).
   - If Tier 3 (Moderate): Recommend standard networks (e.g., [64, 64] or [128, 64]), mild weight decay, batch size 128, and patience 25.

@@ -38,8 +38,8 @@ def sample_chat(rows=180):
 def test_recommendation_uses_profile_and_clamps_cycles_to_effort_limit():
     client = FakeClient({
         "architecture": "MLP", "architecture_reason": "A compact first comparison fits this sample size.",
-        "history_steps": 8, "search_effort": "fast", "cycles": 40,
-        "effort_reason": "Start with a short search, then expand if useful.", "confidence": "moderate",
+        "history_steps": 8, "search_effort": "fast", "cycles": 3,
+        "effort_reason": "Use the standard fast first-search allowance.", "confidence": "moderate",
     })
 
     recommendation = setup_agent.recommend(sample_chat(), client=client)
@@ -50,6 +50,34 @@ def test_recommendation_uses_profile_and_clamps_cycles_to_effort_limit():
     assert "path" not in client.payload["dataset"]
     assert client.payload["cycle_limits_by_effort"]["heavy"] == cfg.run_mode_limits("heavy")["max_cycles"]
     assert recommendation["model"] == "configured-test-model"
+    assert client.payload["current_settings"]["max_cycles"] == 7
+
+
+def test_fast_setup_recommendation_uses_seven_cycles_even_for_legacy_three_cycle_setting():
+    chat = sample_chat(rows=6500)
+    chat["settings"]["max_cycles"] = 3  # Existing chats may still carry the former default.
+    client = FakeClient({
+        "architecture": "LSTM", "architecture_reason": "A sequence model is a testable first choice.",
+        "history_steps": 10, "search_effort": "fast", "cycles": 3,
+        "effort_reason": "A focused fast pass fits the initial review.", "confidence": "moderate",
+    })
+
+    recommendation = setup_agent.recommend(chat, client=client)
+
+    assert recommendation["cycles"] == 7
+
+
+def test_saved_fast_setup_recommendation_uses_full_default_budget():
+    chat = sample_chat(rows=6500)
+    ui._save_setup_recommendation(chat, {
+        "architecture": "LSTM", "architecture_reason": "Sequence context is worth testing.",
+        "history_steps": 10, "search_effort": "fast", "cycles": 3,
+        "effort_reason": "A fast first pass.", "confidence": "moderate",
+    })
+
+    assert chat["settings"]["run_mode"] == "fast"
+    assert chat["settings"]["max_cycles"] == 7
+    assert chat["run_setup_flow"]["recommended_cycles"] == 7
 
 
 def test_recommendation_rejects_unavailable_architecture():

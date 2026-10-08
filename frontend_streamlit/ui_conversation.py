@@ -225,6 +225,73 @@ def _setup_animation(step: str):
 ''', unsafe_allow_html=True)
 
 
+def _model_illustration(architecture: str, *, selected: bool = False) -> str:
+    """Small visual overview of what each starting architecture sees and predicts."""
+    selected_class = "selected" if selected else "unselected"
+    if architecture == "LSTM":
+        return f'''
+<svg class="architecture-diagram {selected_class}" viewBox="0 0 440 174" role="img" aria-label="An LSTM reads recent state and input samples in order, keeps a short memory, then predicts the next state">
+  <text class="arch-label" x="93" y="27" text-anchor="middle">RECENT SAMPLES</text>
+  <text class="arch-label" x="280" y="27" text-anchor="middle">SEQUENCE MEMORY</text>
+  <text class="arch-label" x="390" y="27" text-anchor="middle">PREDICTION</text>
+  <rect class="arch-sample" x="14" y="47" width="70" height="70" rx="10"/><rect class="arch-sample" x="94" y="47" width="70" height="70" rx="10"/><rect class="arch-sample current" x="174" y="47" width="70" height="70" rx="10"/>
+  <text class="arch-main" x="49" y="78" text-anchor="middle">[x,u]</text><text class="arch-small" x="49" y="99" text-anchor="middle">t − 2</text>
+  <text class="arch-main" x="129" y="78" text-anchor="middle">[x,u]</text><text class="arch-small" x="129" y="99" text-anchor="middle">t − 1</text>
+  <text class="arch-main" x="209" y="78" text-anchor="middle">[x,u]</text><text class="arch-small" x="209" y="99" text-anchor="middle">now</text>
+  <path class="arch-wire" d="M84 82H94M164 82H174M244 82H258M358 82H370"/>
+  <path class="arch-arrow" d="M252 77l7 5-7 5M364 77l7 5-7 5"/>
+  <rect class="arch-block" x="260" y="47" width="98" height="70" rx="12"/>
+  <path class="arch-memory" d="M276 91c11-22 20 18 31-2s19 11 34-10"/>
+  <text class="arch-main" x="309" y="69" text-anchor="middle">LSTM</text>
+  <rect class="arch-output" x="372" y="57" width="58" height="50" rx="10"/>
+  <text class="arch-main" x="401" y="79" text-anchor="middle">x̂(t+1)</text><text class="arch-small" x="401" y="96" text-anchor="middle">next</text>
+  <text class="arch-foot" x="129" y="143" text-anchor="middle">order matters</text><text class="arch-foot" x="309" y="143" text-anchor="middle">uses recent history</text>
+</svg>'''
+    return f'''
+<svg class="architecture-diagram {selected_class}" viewBox="0 0 440 174" role="img" aria-label="An MLP maps the current state and input through connected layers to predict the next state">
+  <text class="arch-label" x="60" y="27" text-anchor="middle">CURRENT DATA</text>
+  <text class="arch-label" x="222" y="27" text-anchor="middle">CONNECTED LAYERS</text>
+  <text class="arch-label" x="376" y="27" text-anchor="middle">PREDICTION</text>
+  <rect class="arch-sample" x="14" y="53" width="94" height="60" rx="10"/>
+  <text class="arch-main" x="61" y="79" text-anchor="middle">x(t), u(t)</text><text class="arch-small" x="61" y="97" text-anchor="middle">state + input</text>
+  <path class="arch-wire faint" d="M108 64L164 56M108 64L164 84M108 64L164 112M108 83L164 56M108 83L164 84M108 83L164 112M108 102L164 56M108 102L164 84M108 102L164 112M180 56L225 68M180 84L225 68M180 112L225 68M180 56L225 99M180 84L225 99M180 112L225 99M239 68L283 84M239 99L283 84M283 84L324 84"/>
+  <circle class="arch-node" cx="172" cy="56" r="6"/><circle class="arch-node" cx="172" cy="84" r="6"/><circle class="arch-node" cx="172" cy="112" r="6"/>
+  <circle class="arch-node bright" cx="231" cy="68" r="6"/><circle class="arch-node" cx="231" cy="99" r="6"/><circle class="arch-node bright" cx="289" cy="84" r="6"/>
+  <path class="arch-wire" d="M324 84H337"/><path class="arch-arrow" d="M331 79l7 5-7 5"/>
+  <rect class="arch-output" x="340" y="57" width="86" height="54" rx="10"/>
+  <text class="arch-main" x="383" y="81" text-anchor="middle">x̂(t+1)</text><text class="arch-small" x="383" y="99" text-anchor="middle">next state</text>
+  <text class="arch-foot" x="222" y="143" text-anchor="middle">learns a direct mapping</text>
+</svg>'''
+
+
+def _physics_guidance_visual() -> str:
+    """Animated sketch of measured data and an optional equation guiding training."""
+    return '''
+<svg class="pinn-guidance-diagram" viewBox="0 0 760 178" role="img" aria-label="Measured data and an optional validated physics equation both guide an LSTM or MLP training process">
+  <rect class="pinn-panel" x="10" y="24" width="190" height="100" rx="13"/>
+  <text class="pinn-heading" x="26" y="48">MEASURED DATA</text>
+  <text class="pinn-sub" x="26" y="65">states + inputs over time</text>
+  <path class="pinn-grid" d="M27 82H183M27 99H183M63 76V111M101 76V111M139 76V111"/>
+  <path class="pinn-wave" d="M28 101C43 101 44 82 59 82S77 107 92 104S112 80 128 86S152 99 182 84"/>
+  <path class="pinn-link" d="M200 75H282M452 75H545"/>
+  <path class="pinn-arrow" d="M273 69l9 6-9 6M536 69l9 6-9 6"/>
+  <rect class="pinn-panel model" x="282" y="24" width="170" height="100" rx="13"/>
+  <text class="pinn-heading" x="367" y="51" text-anchor="middle">TRAIN THE MODEL</text>
+  <circle class="pinn-neuron" cx="329" cy="76" r="6"/><circle class="pinn-neuron bright" cx="367" cy="76" r="7"/><circle class="pinn-neuron" cx="405" cy="76" r="6"/>
+  <path class="pinn-grid" d="M335 76H360M374 76H399"/>
+  <text class="pinn-sub" x="367" y="104" text-anchor="middle">LSTM or MLP</text>
+  <rect class="pinn-panel output" x="545" y="24" width="205" height="100" rx="13"/>
+  <text class="pinn-heading" x="561" y="48">PREDICTED STATES</text>
+  <text class="pinn-sub" x="561" y="65">check against held-out data</text>
+  <path class="pinn-grid" d="M562 84H733M562 102H733M605 78V111M648 78V111M691 78V111"/>
+  <path class="pinn-wave" d="M563 104C580 101 581 84 598 84S622 103 638 99S657 81 676 86S705 97 732 81"/>
+  <path class="pinn-equation-link" d="M367 148V125"/>
+  <path class="pinn-arrow" d="M361 134l6-9 6 9"/>
+  <rect class="pinn-equation" x="235" y="145" width="264" height="25" rx="12"/>
+  <text class="pinn-equation-text" x="367" y="162" text-anchor="middle">OPTIONAL EQUATION · dx/dt = f(x,u)</text>
+</svg>'''
+
+
 def _run_setup_card(chat, message, busy):
     flow = chat.get("run_setup_flow") or {}
     dataset = chat.get("dataset") or {}
@@ -254,12 +321,18 @@ def _run_setup_card(chat, message, busy):
                 format_func=lambda value: "LSTM · sequence memory" if value == "LSTM" else "MLP · direct mapping",
                 required=True, width="stretch")
             left, right = st.columns(2, gap="small")
-            with left, st.container(border=True):
+            with left, st.container(border=True, key=f"setup_model_card_lstm_{suffix}"):
+                if architecture == "LSTM":
+                    st.markdown('<div class="model-choice-selected">✓ SELECTED STARTING MODEL</div>', unsafe_allow_html=True)
+                st.markdown(_model_illustration("LSTM", selected=architecture == "LSTM"), unsafe_allow_html=True)
                 st.markdown("**LSTM · remembers sequences**")
-                st.caption("Use earlier measurements as context. A useful first test when current states and inputs may not capture all relevant history.")
-            with right, st.container(border=True):
+                st.caption("Reads recent state and input samples in order, then uses that short history to predict the next state.")
+            with right, st.container(border=True, key=f"setup_model_card_mlp_{suffix}"):
+                if architecture == "MLP":
+                    st.markdown('<div class="model-choice-selected">✓ SELECTED STARTING MODEL</div>', unsafe_allow_html=True)
+                st.markdown(_model_illustration("MLP", selected=architecture == "MLP"), unsafe_allow_html=True)
                 st.markdown("**MLP · learns snapshots**")
-                st.caption("Maps the current state and input directly. A simpler first test when those measurements describe the dynamics well.")
+                st.caption("Maps the current state and input directly to the next state. A simple starting point when the current measurements are enough.")
             history_key = f"setup_history_{suffix}"
             st.session_state.setdefault(history_key, settings["lstm_seq_length"])
             history = st.number_input("Past time steps · LSTM history", min_value=2, max_value=500,
@@ -269,35 +342,53 @@ def _run_setup_card(chat, message, busy):
             if architecture == "LSTM" and interval and interval > 0:
                 st.caption(f"At the measured interval of {interval:.4g} s, this history spans about {(history - 1) * interval:.4g} s.")
             pinn_ready = pinn_maker.is_equation_ready(chat)
-            pinn_key = f"setup_pinn_{suffix}"
-            st.session_state.setdefault(pinn_key, settings["use_pinn"] if pinn_ready else False)
+            physics_advisory = flow.get("physics_advisory") or run_setup_agent.physics_advisory(chat)
+            pinn_key = f"setup_pinn_interest_{suffix}"
+            st.session_state.setdefault(pinn_key, "Yes" if pinn_ready and settings["use_pinn"] else "No")
             with st.container(border=True, key=f"setup_pinn_panel_{suffix}"):
                 status_col, badge_col = st.columns([3, 1], vertical_alignment="center")
-                status_col.markdown("**Physics-informed training**")
-                badge_col.badge("Equation ready" if pinn_ready else "Optional",
+                status_col.markdown("**Physics equation · optional PINN constraint**")
+                badge_col.badge("Equation checked" if pinn_ready else "Optional",
                                 icon=":material/science:", color="green" if pinn_ready else "gray")
-                pinn_enabled = st.checkbox("Use the equation as a training constraint (PINN)",
-                                           key=pinn_key, disabled=not pinn_ready)
+                st.caption("PINN adds a checked equation as a training constraint alongside measured data. It can be used with either LSTM or MLP.")
+                if physics_advisory.get("ask"):
+                    st.caption("INITIALIZER AGENT · MEASURED-DATA CHECK")
+                    st.markdown("**The setup check found a signal worth reviewing**")
+                    st.markdown(_physics_guidance_visual(), unsafe_allow_html=True)
+                    for cue in physics_advisory.get("cues", []):
+                        st.caption("Data check · " + str(cue))
+                    st.caption("Does this match what you expect from the system? If not, explain what is different in the chat before continuing.")
+                    st.caption("A trusted equation can add a physics constraint when it matches these measurements. It cannot replace missing excitation or guarantee higher accuracy.")
                 if pinn_ready:
                     state_count = len((chat.get("pinn_equation") or {}).get("states") or [])
                     source_name = (chat.get("pinn_equation") or {}).get("source_name") or "Saved equation"
-                    st.caption(f"{source_name} · checked against {state_count} measured state{'s' if state_count != 1 else ''}. "
-                               "PINN can pair with either model.")
+                    question = f"Use {source_name}, checked against {state_count} measured state{'s' if state_count != 1 else ''}, as a PINN training constraint?"
+                else:
+                    question = "Do you have a trusted equation for this system to check as an optional PINN constraint?"
+                pinn_choice = st.segmented_control(question, ["No", "Yes"], key=pinn_key,
+                                                   format_func=lambda value: "No · use measured data" if value == "No" else "Yes · use physics equation",
+                                                   required=True, width="stretch")
+                pinn_enabled = pinn_ready and pinn_choice == "Yes"
+                if pinn_enabled:
                     weight_key = f"setup_pinn_weight_{suffix}"
                     st.session_state.setdefault(weight_key, float(settings["pinn_loss_weight"]))
                     pinn_weight = st.number_input("Physics loss strength", min_value=0.0, max_value=10000.0,
                                                   step=0.05, key=weight_key,
                                                   help="Controls how strongly the validated equation contributes to training.")
+                elif pinn_choice == "Yes":
+                    pinn_weight = settings["pinn_loss_weight"]
+                    st.info("Yes selected. Attach a `.m` or `.txt` file, or paste a differential equation such as `dx/dt = ...` in the chat below. I’ll check its state and input mapping before enabling PINN. This step stays paused until the equation is validated.")
                 else:
                     pinn_weight = settings["pinn_loss_weight"]
-                    st.caption("Attach a physics equation or MATLAB .m file in the chat. I’ll map it to your confirmed columns and check it before PINN can be enabled.")
+                    st.caption("No equation will be used; this run will learn from the measured data alone.")
             context_key = f"setup_context_{suffix}"
             st.session_state.setdefault(context_key, settings["customer_description"])
             context = st.text_area("Optional: what device or process produced these signals, and what units are they in?",
                                    key=context_key, placeholder="For example: motor position in radians; torque in N·m.",
                                    help="Skip this if you do not know. It helps interpret results but is not required to train.")
             if st.button("Continue to search effort", type="primary", icon=":material/arrow_forward:",
-                         key=f"setup_continue_effort_{suffix}", disabled=busy):
+                         key=f"setup_continue_effort_{suffix}",
+                         disabled=busy or (pinn_choice == "Yes" and not pinn_ready)):
                 try:
                     chat["settings"] = core.apply_changes(chat["settings"], {
                         "architecture": architecture, "lstm_seq_length": history,
@@ -1114,9 +1205,12 @@ def _messages(chat, busy, file_items=None):
 def _save_setup_recommendation(chat, recommendation=None, error=None, error_detail=None):
     dataset = chat.get("dataset") or {}
     settings = chat["settings"]
+    physics_advisory = ((recommendation or {}).get("physics_advisory") or
+                        run_setup_agent.physics_advisory(chat))
     if recommendation:
         effort = recommendation["search_effort"]
-        cycles = min(int(recommendation["cycles"]), int(cfg.run_mode_limits(effort)["max_cycles"]))
+        cycle_cap = int(cfg.run_mode_limits(effort)["max_cycles"])
+        cycles = cycle_cap if effort == "fast" else min(int(recommendation["cycles"]), cycle_cap)
         chat["settings"] = core.apply_changes(settings, {
             "architecture": recommendation["architecture"],
             "lstm_seq_length": recommendation["history_steps"],
@@ -1137,21 +1231,25 @@ def _save_setup_recommendation(chat, recommendation=None, error=None, error_deta
             "confidence": recommendation["confidence"],
             "agent_model": recommendation.get("model", "configured model"),
             "sample_adjustments": adjustments,
+            "physics_advisory": physics_advisory,
         }
         content = (f"I looked over the measured-data profile and prepared {recommendation['architecture']} as a starting point. "
                    "You can change the model and search effort below. Nothing starts until you choose to approve the setup and start the run; its held-out results will give us the first measured comparison.")
     else:
+        fallback_effort = settings["run_mode"] if settings["run_mode"] in ("fast", "regular", "heavy") else "regular"
+        fallback_cycle_cap = int(cfg.run_mode_limits(fallback_effort)["max_cycles"])
         flow = {
             "dataset_sha256": dataset.get("sha256"),
             "stage": "model",
             "recommended_architecture": settings["architecture"],
             "architecture_reason": "Choose the first model from the measured data. The current selection is only a starting point; compare held-out predictions after training.",
             "recommended_history_steps": settings["lstm_seq_length"],
-            "recommended_effort": settings["run_mode"] if settings["run_mode"] in ("fast", "regular", "heavy") else "regular",
-            "recommended_cycles": min(int(settings["max_cycles"]), int(cfg.run_mode_limits(settings["run_mode"])["max_cycles"])),
+            "recommended_effort": fallback_effort,
+            "recommended_cycles": fallback_cycle_cap if fallback_effort == "fast" else min(int(settings["max_cycles"]), fallback_cycle_cap),
             "effort_reason": "Select a search budget that fits your time and desired breadth.",
             "confidence": "low",
             "agent_error": error or "The setup recommendation is unavailable.",
+            "physics_advisory": physics_advisory,
         }
         content = "I couldn’t get a model recommendation this time. You can choose a starting model below, or ask me what would make sense for these measurements. We’ll review the search effort before anything starts."
     chat["run_setup_flow"] = flow
@@ -1185,6 +1283,7 @@ def _sync(chat, hooks):
                         st.session_state[f"run_setup_{chat['id']}_use_pinn"] = True
                         setup_suffix = f"{chat['id']}_{(chat.get('dataset') or {}).get('sha256', '')[:8]}"
                         st.session_state[f"setup_pinn_{setup_suffix}"] = True
+                        st.session_state[f"setup_pinn_interest_{setup_suffix}"] = "Yes"
                         core.save_chat(chat)
                     elif chat.get("pinn_source"):
                         chat["pinn_source"]["status"] = "needs_clarification"
@@ -1435,7 +1534,7 @@ def _submit(chat, question, files, hooks):
             return
         try:
             uploaded = files[0]
-            if Path(uploaded.name).suffix.lower() in (".m", ".txt"):
+            if Path(uploaded.name).suffix.lower() in (".m", ".py", ".txt"):
                 pinn_upload = pinn_maker.save_source(chat["id"], uploaded.name, uploaded.getvalue())
                 pinn_upload["chat_id"] = chat["id"]
                 chat["pinn_source"] = pinn_upload
@@ -1650,6 +1749,141 @@ def _respond_to_human_checkpoint(task, action):
         st.rerun()
 
 
+def _initializer_analysis_rows(checkpoint):
+    """Create a compact, data-grounded table for reviewing the first proposal."""
+    config = checkpoint.get("config") or {}
+    dataset = checkpoint.get("dataset") or {}
+    setup = checkpoint.get("setup") or {}
+    architecture = str(setup.get("architecture", "LSTM")).upper()
+    run_mode = str(setup.get("run_mode", "fast")).lower()
+    run_limits = cfg.run_mode_limits(run_mode)
+    cycles = int(setup.get("max_cycles", run_limits["max_cycles"]))
+    samples = int(dataset.get("samples", 0) or 0)
+    train_samples = int(dataset.get("train_samples", 0) or 0)
+    validation_samples = int(dataset.get("validation_samples", 0) or 0)
+    test_samples = int(dataset.get("test_samples", 0) or 0)
+    states = list(dataset.get("states") or [])
+    inputs = list(dataset.get("inputs") or [])
+    dt = float(dataset.get("median_dt", 0.0) or 0.0)
+    history_steps = int(setup.get("history_steps", 0) or 0)
+    history_seconds = setup.get("history_seconds")
+    if history_seconds is None and architecture == "LSTM" and dt > 0 and history_steps > 1:
+        history_seconds = (history_steps - 1) * dt
+
+    layer_widths = [int(width) for width in (config.get("hidden_layers") or [])]
+    if architecture == "LSTM":
+        topology = (
+            f"{len(layer_widths)} LSTM layers × {layer_widths[0]} units"
+            if layer_widths else "LSTM topology unavailable"
+        )
+        context_value = f"LSTM · {history_steps} past steps"
+        if history_seconds is not None:
+            context_value += f" · {float(history_seconds):.4g} s of history"
+        context_read = (
+            f"The window covers {max(history_steps - 1, 0)} measured intervals. "
+            "Sequence memory is a hypothesis to test, not proof that hidden memory is required."
+        )
+    else:
+        topology = "MLP · " + (" → ".join(map(str, layer_widths)) if layer_widths else "topology unavailable")
+        context_value = "MLP · current state and input"
+        context_read = "The model maps each measured state/input snapshot directly; no history window is used."
+
+    parameter_count = setup.get("estimated_parameters")
+    if parameter_count is not None:
+        capacity_value = f"{topology} · {int(parameter_count):,} trainable parameters"
+    else:
+        capacity_value = topology
+    capacity_read = (
+        f"The training split contains {train_samples:,} rows. Parameter count is a size indicator, "
+        "not a direct overfitting test; compare training and validation errors, then use the held-out test."
+    )
+
+    lr = config.get("learning_rate")
+    dropout = config.get("dropout_rate")
+    weight_decay = config.get("weight_decay")
+    optimizer_value = (
+        f"LR {float(lr):.3g}" if lr is not None else "Learning rate unavailable"
+    )
+    if dropout is not None:
+        optimizer_value += f" · dropout {float(dropout):.2f}"
+    if weight_decay is not None:
+        optimizer_value += f" · weight decay {float(weight_decay):.3g}"
+    lr_min, lr_max = config.get("lr_search_min"), config.get("lr_search_max")
+    if lr_min is not None and lr_max is not None:
+        optimizer_read = f"Learning rate search spans {float(lr_min):.3g}–{float(lr_max):.3g}; regularization is a tunable tradeoff, not a guarantee."
+    else:
+        optimizer_read = "Validation results will show whether the starting optimization and regularization settings need adjustment."
+
+    split = f"{train_samples:,} train · {validation_samples:,} validation · {test_samples:,} test"
+    split_read = (
+        f"{samples:,} rows · {len(states)} states · {len(inputs)} inputs. "
+        "The held-out test segment stays out of candidate selection for the final check."
+    )
+    varying_states = dataset.get("varying_states")
+    varying_inputs = dataset.get("varying_inputs")
+    complexity = str(dataset.get("complexity", "Unknown"))
+    tier = dataset.get("complexity_tier")
+    complexity_label = f"{complexity} · tier {tier}/5" if tier else complexity
+    if varying_inputs is None:
+        signal_value = "Signal variation not summarized"
+    else:
+        signal_value = f"{len(varying_states or [])}/{len(states)} states · {len(varying_inputs)}/{len(inputs)} inputs vary"
+    derivative_count = len(dataset.get("derivatives") or [])
+    derivative_note = (
+        f"{derivative_count} supplied derivative columns"
+        if derivative_count else "derivatives will be estimated from measured states"
+    )
+    signal_read = (
+        f"{complexity_label}; {derivative_note}. Input variation alone does not prove sufficient excitation."
+    )
+    max_hours = float(setup.get("max_hours", run_limits["max_hours"]) or 0.0)
+    time_budget = f"{max_hours * 60:g} min time cap" if max_hours < 1 else f"{max_hours:g} h time cap"
+    budget_value = f"{run_mode.title()} · up to {cycles} candidate cycles · {time_budget}"
+    budget_read = "Each cycle evaluates one candidate. You can lower the cycle count before starting; the time cap can stop it sooner."
+
+    return [
+        {"Review area": "Search budget", "Initializer proposal": budget_value, "Read against the data": budget_read},
+        {"Review area": "Model context", "Initializer proposal": context_value, "Read against the data": context_read},
+        {"Review area": "Network capacity", "Initializer proposal": capacity_value, "Read against the data": capacity_read},
+        {"Review area": "Optimization", "Initializer proposal": optimizer_value, "Read against the data": optimizer_read},
+        {"Review area": "Dataset and split", "Initializer proposal": split, "Read against the data": split_read},
+        {"Review area": "Signal quality", "Initializer proposal": signal_value, "Read against the data": signal_read},
+    ]
+
+
+def _initializer_detail_rows(checkpoint):
+    config = checkpoint.get("config") or {}
+    details = []
+    learning_rate = config.get("learning_rate")
+    if learning_rate is not None:
+        details.append({"Training detail": "Starting learning rate", "Value": f"{float(learning_rate):.3g}"})
+    for label, low_key, high_key in (
+        ("Learning-rate search", "lr_search_min", "lr_search_max"),
+        ("Hidden-width search", "hidden_size_search_min", "hidden_size_search_max"),
+        ("Layer-count search", "num_layers_search_min", "num_layers_search_max"),
+    ):
+        low, high = config.get(low_key), config.get(high_key)
+        if low is not None and high is not None:
+            value = f"{float(low):.3g}–{float(high):.3g}" if "lr" in low_key else f"{int(low)}–{int(high)}"
+            details.append({"Training detail": label, "Value": value})
+    for label, key in (
+        ("Epoch limit per candidate", "epochs"),
+        ("Batch size", "batch_size"),
+        ("Early-stop patience", "early_stop_patience"),
+        ("Activation", "activation"),
+        ("Dropout", "dropout_rate"),
+        ("Weight decay", "weight_decay"),
+    ):
+        if config.get(key) is not None:
+            value = config[key]
+            if key == "dropout_rate":
+                value = f"{float(value):.2f}"
+            elif key == "weight_decay":
+                value = f"{float(value):.3g}"
+            details.append({"Training detail": label, "Value": str(value)})
+    return details
+
+
 def _human_checkpoint_card(chat, task, state):
     checkpoint = state.get("checkpoint")
     if not isinstance(checkpoint, dict):
@@ -1662,46 +1896,40 @@ def _human_checkpoint_card(chat, task, state):
             if phase == "initializer":
                 config = checkpoint.get("config") or {}
                 dataset = checkpoint.get("dataset") or {}
-                st.caption("HUMAN CHECKPOINT · BEFORE THE FIRST CANDIDATE")
-                st.markdown("**Review the initializer’s starting point**")
+                setup = checkpoint.get("setup") or {}
+                architecture = str(setup.get("architecture", "LSTM")).upper()
+                run_mode = str(setup.get("run_mode", "fast")).lower()
+                run_limit = cfg.run_mode_limits(run_mode)
+                cycles = int(setup.get("max_cycles", run_limit["max_cycles"]))
+                sample_count = int(dataset.get("samples", 0) or 0)
+                st.caption("INITIAL SETUP REVIEW · BEFORE TRAINING")
+                st.markdown("**The initializer’s first candidate, checked against your data**")
+                with st.container(horizontal=True, gap="small", wrap=True):
+                    st.badge(f"{architecture} model", icon=":material/account_tree:", color="blue")
+                    st.badge(f"{run_mode.title()} · {cycles} cycles", icon=":material/speed:", color="green")
+                    st.badge(f"{sample_count:,} measured rows", icon=":material/database:", color="gray")
                 goal_names = {"balanced":"Balanced", "accuracy":"Best validation fit",
                               "speed":"Fast inference", "compact":"Smaller model"}
                 st.caption(f"Your priority · {goal_names.get(checkpoint.get('goal'), 'Balanced')}")
                 reasoning = str(config.get("reasoning", "")).strip()
                 if reasoning:
+                    st.markdown("**Why this is the starting proposal**")
                     st.write(reasoning)
-                st.caption("This is a starting hypothesis. The candidate scores will test it against validation data.")
-
-                with st.container(horizontal=True, gap="small"):
-                    st.metric("Learning rate", f"{float(config.get('learning_rate', 0.0)):.2g}")
-                    layers = config.get("hidden_layers") or []
-                    st.metric("Layer widths", " × ".join(str(width) for width in layers) or "—")
-                    st.metric("Dropout", f"{float(config.get('dropout_rate', 0.0)):.2f}")
-                    st.metric("Weight decay", f"{float(config.get('weight_decay', 0.0)):.2g}")
-
-                with st.container(horizontal=True, gap="small"):
-                    st.metric("Samples", f"{int(dataset.get('samples', 0)):,}")
-                    st.metric("Train · validation · test",
-                              f"{int(dataset.get('train_samples', 0)):,} · {int(dataset.get('validation_samples', 0)):,} · {int(dataset.get('test_samples', 0)):,}")
-                    st.metric("States · inputs",
-                              f"{len(dataset.get('states') or [])} · {len(dataset.get('inputs') or [])}")
-                    interval = float(dataset.get("median_dt", 0.0) or 0.0)
-                    st.metric("Median interval", f"{interval:.4g} s" if interval > 0 else "—")
+                st.caption("This is a hypothesis, not a score. The validation split guides tuning; the test split stays held out.")
+                st.markdown("**Setup analysis**")
+                st.table(_initializer_analysis_rows(checkpoint))
                 if dataset.get("quality_notes"):
-                    st.caption("Data checks · " + " · ".join(str(note) for note in dataset["quality_notes"]))
+                    with st.expander("Data checks to review", expanded=True):
+                        for note in dataset["quality_notes"]:
+                            st.markdown(f"- {note}")
 
-                with st.expander("Search bounds and training details"):
-                    st.json({key: config.get(key) for key in (
-                        "lr_search_min", "lr_search_max", "hidden_size_search_min",
-                        "hidden_size_search_max", "num_layers_search_min",
-                        "num_layers_search_max", "epochs", "batch_size",
-                        "early_stop_patience", "activation",
-                    ) if key in config})
+                with st.expander("Detailed training settings and search bounds"):
+                    st.table(_initializer_detail_rows(checkpoint))
                 choices = [
-                    ("accept", "Use recommendation", "check"),
-                    ("compact", "Prefer smaller", "compress"),
-                    ("regularize", "Regularize more", "shield"),
-                    ("widen", "Widen search", "open_in_full"),
+                    ("accept", "Approve setup", "check"),
+                    ("compact", "Smaller model", "compress"),
+                    ("regularize", "More regularization", "shield"),
+                    ("widen", "Broader search", "open_in_full"),
                 ]
             elif phase == "early_results":
                 recent = checkpoint.get("recent_results") or []
@@ -1741,18 +1969,19 @@ def _human_checkpoint_card(chat, task, state):
                     ("continue", "Continue search", "arrow_forward"),
                     ("compact", "Smaller candidates", "compress"),
                     ("regularize", "Regularize more", "shield"),
-                    ("widen", "Widen search", "open_in_full"),
-                    ("stop", "Keep best and stop", "stop"),
+                    ("widen", "Broaden search", "open_in_full"),
+                    ("stop", "Stop and keep best", "stop"),
                 ]
             else:
                 return
 
-            columns = st.columns(len(choices), gap="small")
-            for column, (action, label, icon) in zip(columns, choices):
-                if column.button(label, key=f"human_tuning_{checkpoint_id}_{action}",
-                                 type="primary" if action in ("accept", "continue") else "secondary",
-                                 icon=f":material/{icon}:", width="stretch"):
-                    _respond_to_human_checkpoint(task, action)
+            for offset in range(0, len(choices), 2):
+                columns = st.columns(2, gap="small")
+                for column, (action, label, icon) in zip(columns, choices[offset:offset + 2]):
+                    if column.button(label, key=f"human_tuning_{checkpoint_id}_{action}",
+                                     type="primary" if action in ("accept", "continue") else "secondary",
+                                     icon=f":material/{icon}:", width="stretch"):
+                        _respond_to_human_checkpoint(task, action)
 
 
 def _working(chat):
@@ -1762,13 +1991,77 @@ def _working(chat):
             state = task["state"]
             _human_checkpoint_card(chat, task, state)
             with st.chat_message("assistant", avatar=":material/graphic_eq:"):
-                with st.status(state["stage"], expanded=True):
-                    st.caption(f"Working for {workspace.duration(time.time()-task['started'])}")
-                    for item in state["activity"][-4:]:
-                        st.caption(("✓ " if item.get("state") == "complete" else "· ") + item["label"])
-                    if state["history"]:
-                        last = state["history"][-1]
-                        st.caption(f"Cycle {last['cycle']} · validation MSE {last['val_mse']:.5g}")
+                stage = str(state.get("stage", "Preparing run"))
+                milestones = (
+                    ("Inspect", {"Questionnaire", "Loading dataset", "Data Inspector"}),
+                    ("Tune", {"Splitting trajectories", "Initializer Agent", "Tuning cycles"}),
+                    ("Verify", {"Held-out verification"}),
+                    ("Package", {"Report & packaging"}),
+                )
+                active_milestone = next(
+                    (index for index, (_, stages) in enumerate(milestones) if stage in stages), 0
+                )
+                progress = max(0.0, min(1.0, float(state.get("progress", 0.0) or 0.0)))
+                cycle_limit = int((chat.get("settings") or {}).get("max_cycles", 7))
+                completed_cycles = list(state.get("history") or [])
+                activity = list(state.get("activity") or [])
+                active_cycles = [
+                    int(item["id"].split(":", 1)[1]) for item in activity
+                    if str(item.get("id", "")).startswith("actor:") and item.get("state") == "running"
+                    and str(item["id"]).split(":", 1)[1].isdigit()
+                ]
+                current_cycle = max(active_cycles, default=(
+                    int(completed_cycles[-1].get("cycle", len(completed_cycles))) if completed_cycles else 0
+                ))
+                latest = completed_cycles[-1] if completed_cycles else {}
+                best_mse = min(
+                    (float(item["val_mse"]) for item in completed_cycles
+                     if item.get("val_mse") is not None and math.isfinite(float(item["val_mse"]))),
+                    default=None,
+                )
+                stage_copy = {
+                    "Preparing run": "Getting the measurements and run settings ready.",
+                    "Questionnaire": "Confirming the assumptions for this identification run.",
+                    "Loading dataset": "Checking the measurements and preparing the working data.",
+                    "Data Inspector": "Reviewing signal quality and useful patterns in the data.",
+                    "Splitting trajectories": "Preparing training and held-out data fairly.",
+                    "Initializer Agent": "Choosing a sensible first model from the data evidence.",
+                    "Tuning cycles": "Training candidates and comparing their validation scores.",
+                    "Held-out verification": "Checking how the selected model performs on unseen data.",
+                    "Report & packaging": "Putting the findings and downloadable files together.",
+                }.get(stage, "Working through the identification pipeline.")
+                with st.container(border=True, key="conversation_live_run_card"):
+                    with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center"):
+                        st.markdown(
+                            '<div class="run-live-label"><span class="run-live-dot"></span> LabCD is working</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.caption(f"{workspace.duration(time.time()-task['started'])} elapsed")
+                    st.markdown("### Your model is taking shape")
+                    st.caption(stage_copy)
+                    st.progress(progress, text=f"{stage} · {round(progress * 100)}% overall")
+                    step_html = "".join(
+                        f'<div class="run-step {"done" if index < active_milestone else "active" if index == active_milestone else ""}">'
+                        f'<span class="run-step-dot">{"✓" if index < active_milestone else index + 1}</span>'
+                        f'<span>{label}</span></div>'
+                        for index, (label, _) in enumerate(milestones)
+                    )
+                    st.markdown(f'<div class="run-stepper">{step_html}</div>', unsafe_allow_html=True)
+                    with st.container(horizontal=True, gap="small", wrap=True):
+                        st.metric("Search cycles", f"{current_cycle} / {cycle_limit}")
+                        st.metric("Best validation MSE", f"{best_mse:.5g}" if best_mse is not None else "Waiting for first score")
+                        latest_cycle = latest.get("cycle") or current_cycle
+                        st.metric("Latest candidate", f"Cycle {latest_cycle}" if latest_cycle else "Preparing")
+                    if activity:
+                        current_update = next(
+                            (item["label"] for item in reversed(activity) if item.get("state") == "running"),
+                            activity[-1].get("label", "Run started"),
+                        )
+                        st.caption(f"Now · {current_update}")
+                        with st.status(f"Live activity · {len(activity)} updates", expanded=False):
+                            for item in activity[-6:]:
+                                icon = {"complete": "✓", "error": "!", "running": "◌"}.get(item.get("state"), "·")
+                                st.caption(f"{icon}  {item.get('label', 'Run update')}")
                 with st.expander("Training details"):
                     st.code(state["log"][-12000:], language="text", height=250)
             return
@@ -1860,8 +2153,8 @@ def render_app(*, runner, drain):
                         st.rerun()
                 else:
                     st.caption("Ask about this run" if chat.get("run_dir") else f"{chat['settings']['architecture']} · {chat['settings']['max_cycles']} cycles")
-            value = st.chat_input("Ask LabCD, attach a dataset, or add a PINN equation / MATLAB .m file…" if not chat.get("run_dir") else "Ask about the results, agents, or your next experiment…",
-                                  accept_file=not bool(chat.get("run_dir")), file_type=["csv", "xlsx", "xls", "m", "txt"], max_upload_size=25,
+            value = st.chat_input("Ask LabCD, attach a dataset, or add a PINN source (.py, .m, or .txt)…" if not chat.get("run_dir") else "Ask about the results, agents, or your next experiment…",
+                                  accept_file=not bool(chat.get("run_dir")), file_type=["csv", "xlsx", "xls", "py", "m", "txt"], max_upload_size=25,
                                   max_chars=6000, disabled=busy and not training_active, key=f"composer_{chat['id']}")
             st.caption("LabCD can make mistakes. Check the evidence behind important conclusions.")
     pending = st.session_state.pop("conversation_pending", None)

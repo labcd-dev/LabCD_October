@@ -104,6 +104,23 @@ def profile_frame(frame: pd.DataFrame, states: list[str], actions: list[str], de
                                   "finite_difference_vs_supplied_rmse": rmse,
                                   "rmse_over_supplied_std": rmse / scale if scale > 0 else None,
                                   "note": "Descriptive consistency check; finite differences amplify measurement noise."})
+    correlated_state_pairs = []
+    # Bound this optional advisory check for uploads near the workspace limits.
+    correlation_states = list(dict.fromkeys(states))[:64]
+    if len(correlation_states) > 1 and not frame.columns.duplicated().any():
+        stride = max(1, (len(frame) + 4999) // 5000)
+        numeric_states = frame.iloc[::stride][correlation_states].apply(pd.to_numeric, errors="coerce")
+        correlations = numeric_states.corr().abs()
+        for left_index, left in enumerate(correlation_states):
+            for right in correlation_states[left_index + 1:]:
+                value = correlations.loc[left, right]
+                if pd.notna(value) and float(value) >= 0.95:
+                    correlated_state_pairs.append({"state_a": left, "state_b": right,
+                                                   "abs_correlation": float(value)})
+                    if len(correlated_state_pairs) >= 12:
+                        break
+            if len(correlated_state_pairs) >= 12:
+                break
     return {"rows": count, "time_start": float(times[0]) if len(times) and np.isfinite(times[0]) else None,
             "time_end": float(times[-1]) if len(times) and np.isfinite(times[-1]) else None,
             "observed_duration": duration, "median_dt": median_dt,
@@ -115,12 +132,14 @@ def profile_frame(frame: pd.DataFrame, states: list[str], actions: list[str], de
             "complete_derivatives": len(derivatives) == len(states) and len(states) > 0,
             "detected_wrap_states": detected_wrap,
             "angle_named_states": [s["name"] for s in signals if s["angle_named"]],
-            "possible_boundary_count": len(possible_boundary_rows)}
+            "possible_boundary_count": len(possible_boundary_rows),
+            "correlated_state_pairs": correlated_state_pairs}
 
 
 def ensure_profile(dataset: dict) -> dict:
     """Backfill analysis for chats saved before profiles were introduced."""
-    if isinstance(dataset.get("analysis"), dict):
+    if (isinstance(dataset.get("analysis"), dict) and
+            "correlated_state_pairs" in dataset["analysis"]):
         return dataset["analysis"]
     path = Path(dataset["path"])
     data = path.read_bytes()
@@ -154,6 +173,8 @@ def compare_run_states(run_dir: str) -> dict:
             continue
     if not rows:
         return {"rows": [], "source": str(path)}
-    return {"rows": sorted(rows, key=lambda r: (r["normalized_rmse"] is None, r["normalized_rmse"] or math.inf)),
+    return {"rows": sorted(rows, key=lambda r: (
+                r["normalized_rmse"] is None,
+                r["normalized_rmse"] if r["normalized_rmse"] is not None else math.inf)),
             "aligned_samples": verification.get("aligned_samples"), "protocol": verification.get("protocol", {}),
             "source": str(path)}

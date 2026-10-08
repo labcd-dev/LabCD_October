@@ -25,6 +25,12 @@ def attached_chat():
     return chat
 
 
+def test_new_conversations_default_to_the_full_fast_search_budget(storage):
+    chat = core.new_chat()
+    assert chat["settings"]["run_mode"] == "fast"
+    assert chat["settings"]["max_cycles"] == 7
+
+
 def test_conversation_persists_and_restores_attachment_and_settings(storage):
     chat = attached_chat()
     core.add_message(chat, "user", "Identify this oscillator")

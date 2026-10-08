@@ -228,6 +228,33 @@ pitch = states[:, 0]
     torch.testing.assert_close(actual, expected, rtol=2e-5, atol=2e-5)
 
 
+def test_flattened_markdown_escaped_python_source_falls_back_to_configured_interpreter(storage):
+    chat = attached_pitch_yaw_chat()
+    raw = r"""pitch = states\[:, 0\] yaw = states\[:, 1\] # not used in the continuous-time ODEs dpitch = states\[:, 2\] dyaw = states\[:, 3\] u1 = actions\[:, 0\] u2 = actions\[:, 1\] \# plant parameters m = 1.3872 * 1.08 g = 9.81 B_p = 0.8 * 0.92 B_y = 0.318 * 1.10 K_pp = 0.2040 * 0.93 K_yy = 0.0720 * 1.07 K_py = 0.0068 * 1.09 K_yp = 0.0219 * 0.91 J_p = 0.0178 * 1.06 J_y = 0.0084 * 0.94 l_cm = 0.186 * 1.05 J_Tp = J_p + m * l_cm**2 J_Ty = J_y + m * l_cm**2 Tp = K_pp * u1 + K_py * u2 Ty = K_yp * u1 + K_yy * u2 xdot_pitch = dpitch xdot_yaw = dyaw xdot_dpitch = (Tp - B_p * dpitch - m * g * l_cm * torch.sin(pitch)) / J_Tp xdot_dyaw = (Ty - B_y * dyaw) / J_Ty physics_xdot\[:, 0\] = xdot_pitch physics_xdot\[:, 1\] = xdot_yaw physics_xdot\[:, 2\] = xdot_dpitch physics_xdot\[:, 3\] = xdot_dyaw"""
+    source = source_for(chat, raw.encode("utf-8"), "pasted_pitch_yaw.txt")
+    client = FakeClient({
+        "status": "ready", "message": "I mapped the four supplied derivatives.",
+        "equations": [
+            {"state": "s_pitch", "expression": "s2"},
+            {"state": "s_yaw", "expression": "s3"},
+            {"state": "s_dpitch", "expression": "a0 + a1 - s2 - sin(s0)"},
+            {"state": "s_dyaw", "expression": "a0 - a1 - s3"},
+        ],
+        "assumptions": [],
+    })
+
+    answer = maker.prepare_equation(chat, "Prepare this raw Python PINN", source=source, client=client)
+
+    assert answer["status"] == "ready"
+    assert answer["model"] == "configured-test-model"
+    assert len(client.calls) == 1
+    interpreted_source = client.calls[0][1]["source_text_untrusted"]
+    assert "states[:, 0]" in interpreted_source
+    assert "actions[:, 0]" in interpreted_source
+    assert "physics_xdot[:, 3]" in interpreted_source
+    assert Path(source["path"]).read_bytes() == raw.encode("utf-8")
+
+
 def test_python_pinn_translator_rejects_unsafe_statements_and_bad_indices():
     unsafe = "pitch = states[:, 0]\nphysics_xdot[:, 0] = __import__('os').system('whoami')"
     with pytest.raises(ValueError, match="safe PINN math|function outside"):

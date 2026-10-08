@@ -1,9 +1,9 @@
 """Safe, data-bound conversion of raw physics equations and MATLAB .m files.
 
 Supported Python tensor assignments are translated locally from a restricted
-AST. Other source formats can be interpreted by the configured model, after
-which this module validates the map and compiles it itself. Uploaded source
-and model-generated text are never executed as Python or MATLAB.
+AST. Other Python and MATLAB source can be interpreted by the configured model,
+after which this module validates the map and compiles it itself. Uploaded
+source and model-generated text are never executed as Python or MATLAB.
 """
 from __future__ import annotations
 
@@ -219,6 +219,13 @@ def _python_tensor_source(source_text: str) -> bool:
                 _PYTHON_OUTPUT_REFERENCE.search(source_text))
 
 
+def _normalize_python_paste(source_text: str) -> str:
+    """Undo Markdown escaping around pasted Python punctuation for interpretation only."""
+    text = (source_text or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"(?<!\\)\\([^\w\s])", r"\1", text)
+    return text.replace("`", "")
+
+
 def _tensor_column_index(node: ast.AST, tensor_name: str) -> int | None:
     """Read only the exact ``tensor[:, integer]`` indexing used by PINN snippets."""
     if not isinstance(node, ast.Subscript) or not isinstance(node.value, ast.Name) or node.value.id != tensor_name:
@@ -309,6 +316,7 @@ def _python_equations(source_text: str, states: list[str], actions: list[str]) -
     allowlisted AST, resolves scalar aliases, and returns expression strings
     that still pass through the regular expression validator and dataset check.
     """
+    source_text = _normalize_python_paste(source_text)
     if not _python_tensor_source(source_text):
         return None
 
@@ -316,7 +324,9 @@ def _python_equations(source_text: str, states: list[str], actions: list[str]) -
     first_equation = next((index for index, line in enumerate(lines)
                            if re.match(r"^\s*[A-Za-z_]\w*\s*=\s*(?:states|actions)\s*\[\s*:", line)), None)
     if first_equation is None:
-        raise ValueError("I recognized Python tensor equations, but could not find a state/input assignment. Use `name = states[:, i]` or `name = actions[:, i]`.")
+        # The source may be pasted into a single wrapped line. Let the configured
+        # equation interpreter read that raw source instead of rejecting it here.
+        return None
     code_lines = []
     for line in lines[first_equation:]:
         stripped = line.strip()
@@ -328,8 +338,12 @@ def _python_equations(source_text: str, states: list[str], actions: list[str]) -
     code = "\n".join(code_lines)
     try:
         module = ast.parse(code, mode="exec")
-    except (SyntaxError, ValueError) as exc:
-        raise ValueError("I recognized Python-style PINN code, but could not read its assignments. Keep each equation on a valid Python assignment line.") from exc
+    except (SyntaxError, ValueError):
+        # This fast path intentionally supports only a small, unambiguous subset.
+        # A syntax/formatting mismatch is not a reason to reject raw PINN code:
+        # prepare_equation will send it to the configured interpreter, whose
+        # response still passes the same allowlisted expression and data checks.
+        return None
     if len(list(ast.walk(module))) > MAX_AST_NODES * 12:
         raise ValueError("The Python PINN source is too complex for the safe equation translator.")
 
@@ -515,10 +529,11 @@ def prepare_equation(chat: dict, question: str, *, source: dict | None = None,
             _chat_folder(chat["id"], "pinn_sources").resolve()):
         raise ValueError("The saved equation source is outside this conversation's source folder.")
     source_text = _read_source(source)
+    python_source_text = _normalize_python_paste(source_text)
     if len(dataset["states"]) > 100 or len(dataset.get("actions") or []) > 100:
         raise ValueError("PINN equation mapping supports up to 100 state and 100 input columns.")
     states, actions = list(dataset["states"]), list(dataset.get("actions") or [])
-    local_equations = _python_equations(source_text, states, actions)
+    local_equations = _python_equations(python_source_text, states, actions)
     if local_equations is not None:
         response = EquationResponse(
             status="ready",
@@ -535,7 +550,10 @@ def prepare_equation(chat: dict, question: str, *, source: dict | None = None,
     else:
         if client is None:
             client = DiagnosticClient(DiagnosticSettings.defaults())
-        prompt = _prepare_prompt(chat, question, source_text, source.get("name", "equation source"), dataset, frame)
+        # Use normalized punctuation for pasted Python, while preserving MATLAB
+        # source as-authored. The saved original file and its hash are untouched.
+        prompt_source = python_source_text if _PYTHON_TENSOR_REFERENCE.search(python_source_text) else source_text
+        prompt = _prepare_prompt(chat, question, prompt_source, source.get("name", "equation source"), dataset, frame)
         response = _provider_response(client.complete(system_prompt("pinn_maker"), prompt))
         model_name = getattr(getattr(client, "settings", None), "model", "configured model")
     if response.status == "clarification":

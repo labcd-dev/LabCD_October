@@ -281,20 +281,78 @@ def _client_journey(chat: dict) -> dict:
     }
 
 
-def _check_state_ranking(reply: dict, comparison: dict) -> str:
-    """Catch the specific best/worst inversion seen in a real provider response."""
-    ranked = [r for r in comparison.get("rows", []) if r["normalized_rmse"] is not None]
+def _check_state_ranking(reply: dict, comparison: dict, question: str = "") -> str:
+    """Check only the ranking claims requested or actually made in the answer."""
+    ranked = sorted(
+        (r for r in comparison.get("rows", []) if r["normalized_rmse"] is not None),
+        key=lambda row: row["normalized_rmse"],
+    )
     if len(ranked) < 2:
         return ""
     answer = reply["answer"].lower().replace("**", "")
-    best = re.search(r"\b(?:best|lowest|most accurate)\b[^\n.!?]{0,100}?\b(s_[a-z0-9_]+)\b", answer)
-    worst = re.search(r"\b(?:worst|highest|hardest|least accurate)\b[^\n.!?]{0,100}?\b(s_[a-z0-9_]+)\b", answer)
+    state_token = r"(s_[a-z0-9_]+)"
+    best_words = r"(?:best|lowest|smallest|most accurate|predicts? better|performs? better)"
+    worst_words = r"(?:worst|highest|largest|hardest|least accurate|predicts? worse|performs? worse)"
+
+    def claim(words):
+        # Check each sentence/clause independently. A broad state-to-claim
+        # regex can accidentally bind "worst" to the state named in the
+        # preceding "best" clause (for example, "Best: s_b; worst: s_a").
+        for clause in re.split(r"[;.!?\n]+", answer):
+            terms = list(re.finditer(rf"\b{words}\b", clause))
+            states = list(re.finditer(state_token, clause))
+            if terms and states:
+                term = terms[0]
+                nearest = min(states, key=lambda state: min(
+                    abs(state.start() - term.end()), abs(term.start() - state.end())))
+                return nearest.group(1)
+        return None
+
+    best, worst = claim(best_words), claim(worst_words)
     expected_best, expected_worst = ranked[0]["state"].lower(), ranked[-1]["state"].lower()
-    if not best or not worst or best.group(1) != expected_best or worst.group(1) != expected_worst:
-        return (f"State ranking mismatch. From V2, best by normalized held-out RMSE is {expected_best} "
-                f"and worst is {expected_worst}. State both explicitly and correct the surrounding explanation. "
-                "Do not infer a cause from this ranking alone.")
+    q = question.lower()
+    asks_best = bool(re.search(best_words, q))
+    asks_worst = bool(re.search(worst_words, q))
+    mismatches = []
+    if (asks_best and not best) or (best and best != expected_best):
+        mismatches.append(f"best is {expected_best}")
+    if (asks_worst and not worst) or (worst and worst != expected_worst):
+        mismatches.append(f"worst is {expected_worst}")
+    if mismatches:
+        return ("State ranking mismatch. From V2, " + " and ".join(mismatches) +
+                " by normalized held-out RMSE. Correct only the ranking claim(s) requested or stated; "
+                "do not infer a cause from this ranking alone.")
     return ""
+
+
+def _direct_best_state_answer(question: str, comparison: dict) -> dict | None:
+    """Answer a plain best-state lookup directly from the saved held-out metrics."""
+    q = question.lower()
+    asks_best = bool(re.search(r"\b(?:best|lowest|smallest|most accurate)\b", q))
+    asks_other = bool(re.search(r"\b(?:worst|highest|largest|why|explain|reason|cause|versus|vs\.?|compare|comparison)\b", q))
+    if not asks_best or asks_other:
+        return None
+    ranked = sorted(
+        (r for r in comparison.get("rows", []) if r["normalized_rmse"] is not None),
+        key=lambda row: row["normalized_rmse"],
+    )
+    if not ranked:
+        return None
+    best = ranked[0]
+    value = 100 * best["normalized_rmse"]
+    samples = comparison.get("aligned_samples")
+    sample_text = f" across {samples:,} aligned held-out samples" if isinstance(samples, int) else ""
+    return {
+        "status": "answer",
+        "answer": (f"**{best['state']}** was predicted best by normalized held-out RMSE "
+                   f"({value:.2f}% of that state's held-out variation; lower is better){sample_text}. "
+                   "This ranks prediction error; it does not explain why that state was easier to predict."),
+        "sources": ["V2"],
+        "uncertainty": "The ranking uses normalized RMSE from the saved held-out comparison.",
+        "evidence": [{"id": "V2", "title": "Computed comparison of held-out state rollout errors",
+                      "kind": "calculation"}],
+        "model": "Computed from saved run evidence",
+    }
 
 
 def answer_question(chat: dict, question: str, *, client=None, progress=None) -> dict:
@@ -303,6 +361,11 @@ def answer_question(chat: dict, question: str, *, client=None, progress=None) ->
     clarification = _next_step_clarification(chat, question)
     if clarification is not None:
         return {**clarification, "evidence": [], "model": "LabCD clarification"}
+    if chat.get("run_dir") and analysis.state_comparison_question(question):
+        comparison = analysis.compare_run_states(chat["run_dir"])
+        direct = _direct_best_state_answer(question, comparison)
+        if direct:
+            return direct
     if progress:
         progress("Reading measurements and saved run evidence")
     llm = client or DiagnosticClient(DiagnosticSettings.defaults())
@@ -341,13 +404,13 @@ def answer_question(chat: dict, question: str, *, client=None, progress=None) ->
         reviewed = draft
     if chat.get("run_dir") and analysis.state_comparison_question(question):
         comparison = analysis.compare_run_states(chat["run_dir"])
-        problem = _check_state_ranking(reviewed, comparison)
+        problem = _check_state_ranking(reviewed, comparison, question)
         if problem:
             if progress:
                 progress("Correcting a mismatch with the measured ranking")
             reviewed = _parse(llm.complete(REVIEW, payload + "\nLOCAL CHECK FAILED:\n" + problem +
                                            "\nDRAFT ANSWER:\n" + json.dumps(reviewed, ensure_ascii=False)), allowed)
-            if _check_state_ranking(reviewed, comparison):
+            if _check_state_ranking(reviewed, comparison, question):
                 raise ValueError("The AI answer could not be reconciled with the measured state ranking.")
     return {**reviewed, "evidence": [{"id": s["id"], "title": s["title"], "kind": s["kind"]}
                                     for s in sources if s["id"] in reviewed["sources"]],

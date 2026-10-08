@@ -43,6 +43,52 @@ def _signal(dataset: dict, name: str, key: str, *, height=205):
         st.warning(str(exc))
 
 
+def _wrap_angle_illustration():
+    """Explain the difference between a physical turn and its wrapped file value."""
+    st.markdown('''
+<section class="wrap-angle-card" aria-label="Illustration of angle wrapping">
+  <div class="wrap-angle-heading">ONE ROTATION · TWO WAYS TO STORE IT</div>
+  <p>The physical angle can keep turning smoothly. If the file stores angles only between −π and +π, its number jumps at the boundary.</p>
+  <svg class="wrap-angle-svg" viewBox="0 0 960 255" role="img" aria-label="The physical angle rises smoothly through pi, while the stored angle jumps from plus pi to minus pi and continues">
+    <defs>
+      <marker id="wrap-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#ffb86b"/></marker>
+    </defs>
+    <rect x="10" y="10" width="458" height="231" rx="15" fill="#121b1d" stroke="#30413f"/>
+    <rect x="492" y="10" width="458" height="231" rx="15" fill="#121b1d" stroke="#30413f"/>
+    <text x="30" y="38" fill="#e7f4f0" font-size="14" font-weight="700">PHYSICAL ANGLE</text>
+    <text x="30" y="57" fill="#91aaa5" font-size="12">The rotation continues through +π</text>
+    <text x="512" y="38" fill="#e7f4f0" font-size="14" font-weight="700">VALUE STORED IN THE FILE</text>
+    <text x="512" y="57" fill="#91aaa5" font-size="12">The value is kept between −π and +π</text>
+    <path d="M67 88H442M67 132H442M67 176H442M67 205H442" stroke="#2b3a3b" stroke-width="1"/>
+    <path d="M548 88H923M548 132H923M548 176H923M548 205H923" stroke="#2b3a3b" stroke-width="1"/>
+    <path d="M67 132H442" stroke="#617a76" stroke-dasharray="4 5"/>
+    <path d="M548 88H923M548 205H923" stroke="#617a76" stroke-dasharray="4 5"/>
+    <text x="24" y="92" fill="#a9bbb7" font-size="11">+π</text>
+    <text x="43" y="136" fill="#829894" font-size="11">0</text>
+    <text x="513" y="92" fill="#a9bbb7" font-size="11">+π</text>
+    <text x="513" y="209" fill="#a9bbb7" font-size="11">−π</text>
+    <path d="M69 173C130 164 167 145 223 126S322 102 440 72" fill="none" stroke="#66dbc5" stroke-width="3.4" stroke-linecap="round"/>
+    <path d="M550 173C610 164 650 145 704 126S777 99 800 89L802 204C840 194 878 181 922 167" fill="none" stroke="#66dbc5" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="800" cy="89" r="4.5" fill="#ffb86b"/><circle cx="802" cy="204" r="4.5" fill="#ffb86b"/>
+    <path d="M812 98L812 190" stroke="#ffb86b" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#wrap-arrow)"/>
+    <text x="829" y="136" fill="#ffc98e" font-size="11">wrap</text>
+    <text x="252" y="226" fill="#718985" font-size="11">TIME →</text>
+    <text x="734" y="226" fill="#718985" font-size="11">TIME →</text>
+  </svg>
+  <div class="wrap-angle-note"><span>How to decide</span> Choose wrapping only if that state is an angle in radians stored modulo 2π. A column name alone is not proof.</div>
+</section>
+<style>
+.wrap-angle-card{margin:14px 0 12px;padding:16px 17px 13px;border:1px solid #354b48;border-radius:15px;background:linear-gradient(135deg,#172321 0%,#171b20 68%,#1a1c23 100%);box-shadow:inset 0 1px #ffffff08}
+.wrap-angle-heading{font:600 10px/1.5 ui-monospace,monospace;letter-spacing:.14em;color:#8edbcb}
+.wrap-angle-card p{margin:5px 0 8px;color:#b8c7c4;font-size:12px;line-height:1.55}
+.wrap-angle-svg{display:block;width:100%;height:auto;overflow:visible}
+.wrap-angle-note{display:flex;gap:9px;align-items:flex-start;margin-top:5px;color:#99aaa7;font-size:11px;line-height:1.5}
+.wrap-angle-note span{flex:none;color:#dbede9;font-weight:650}
+@media(max-width:620px){.wrap-angle-card{padding:12px 9px;overflow-x:auto}.wrap-angle-card p{font-size:11px}.wrap-angle-svg{min-width:560px}}
+</style>
+''', unsafe_allow_html=True)
+
+
 def _cycle_history(entry: dict) -> pd.DataFrame:
     """Read finite per-candidate scores saved in the manifest or activity feed."""
     rows = entry.get("performance_history") or []
@@ -270,6 +316,71 @@ def _choose(label: str, value: str, key: str, *, primary=False):
         st.session_state["conversation_pending"] = value
 
 
+def _trajectory_illustration():
+    """Contrast one uninterrupted recording with separate, restarted runs."""
+    st.markdown('''
+<section class="trajectory-example" aria-label="How to choose between one continuous recording and separate runs">
+  <style>
+    .trajectory-example{margin:4px 0 8px;padding:14px;border:1px solid #354744;border-radius:16px;
+      background:linear-gradient(135deg,#172321 0%,#191c21 65%,#1d1d24 100%);box-shadow:inset 0 1px #ffffff08}
+    .trajectory-example-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin:0 2px 8px}
+    .trajectory-example-title{color:#e7f1ed;font-size:14px;font-weight:650;letter-spacing:-.01em}
+    .trajectory-example-subtitle{margin-top:3px;color:#9eafaa;font-size:11px;line-height:1.5}
+    .trajectory-example-tag{flex:none;padding:4px 8px;border:1px solid #3d5851;border-radius:999px;
+      background:#1b302b;color:#a9e0ce;font:600 9px ui-monospace,monospace;letter-spacing:.08em}
+    .trajectory-example-svg{display:block;width:100%;height:auto}
+    .trajectory-example-note{display:flex;gap:8px;align-items:flex-start;margin:6px 2px 0;padding:9px 11px;
+      border-radius:10px;background:#222b2a;color:#b8c9c4;font-size:11px;line-height:1.5}
+    .trajectory-example-note strong{flex:none;color:#e0eee9}
+    @media(max-width:680px){.trajectory-example{padding:11px 8px;overflow-x:auto}.trajectory-example-head{gap:7px}.trajectory-example-subtitle{font-size:10px}.trajectory-example-svg{min-width:740px;max-width:none}}
+    @media(prefers-reduced-motion:reduce){.trajectory-example *{scroll-behavior:auto!important;transition:none!important}}
+  </style>
+  <div class="trajectory-example-head">
+    <div><div class="trajectory-example-title">Which picture matches your data?</div>
+      <div class="trajectory-example-subtitle">A trajectory is one uninterrupted recording of the system.</div></div>
+    <span class="trajectory-example-tag">DATA CHECK</span>
+  </div>
+  <svg class="trajectory-example-svg" viewBox="0 0 1000 302" role="img" aria-label="One continuous recording is one unbroken signal over time. Separate runs are shown as three independent traces, each restarting at its own time zero.">
+    <defs>
+      <linearGradient id="traj-single-line" x1="0" x2="1"><stop offset="0" stop-color="#59c8b2"/><stop offset="1" stop-color="#9be4c8"/></linearGradient>
+      <linearGradient id="traj-run-one" x1="0" x2="1"><stop offset="0" stop-color="#64d7c2"/><stop offset="1" stop-color="#92e4ce"/></linearGradient>
+      <linearGradient id="traj-run-two" x1="0" x2="1"><stop offset="0" stop-color="#8c9fff"/><stop offset="1" stop-color="#b6bcff"/></linearGradient>
+      <linearGradient id="traj-run-three" x1="0" x2="1"><stop offset="0" stop-color="#e7b56f"/><stop offset="1" stop-color="#f1d39a"/></linearGradient>
+      <marker id="traj-time-arrow" markerWidth="7" markerHeight="7" refX="5.5" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7Z" fill="#829691"/></marker>
+    </defs>
+    <rect x="8" y="8" width="480" height="280" rx="14" fill="#111a1c" stroke="#344744"/>
+    <rect x="512" y="8" width="480" height="280" rx="14" fill="#111a1c" stroke="#344744"/>
+    <text x="30" y="38" fill="#e4f1ec" font-size="13" font-weight="700">ONE CONTINUOUS RUN</text>
+    <text x="30" y="57" fill="#91a9a3" font-size="11">One uninterrupted experiment from start to finish.</text>
+    <rect x="365" y="23" width="98" height="22" rx="11" fill="#1b302b" stroke="#3c6658"/>
+    <text x="414" y="38" text-anchor="middle" fill="#a9e0ce" font-size="9" font-weight="700">ONE TRAJECTORY</text>
+    <path d="M48 92H458M48 130H458M48 168H458M48 206H458" stroke="#304240" stroke-width="1"/>
+    <path d="M49 218H457" stroke="#667c76" stroke-width="1.2" marker-end="url(#traj-time-arrow)"/>
+    <path d="M50 195C90 185 115 161 151 156S207 162 243 143S307 125 345 113S408 89 454 82" fill="none" stroke="url(#traj-single-line)" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="50" cy="195" r="5" fill="#b1f1dd"/><circle cx="454" cy="82" r="5" fill="#b1f1dd"/>
+    <text x="49" y="238" fill="#a7b9b3" font-size="10">start</text><text x="425" y="238" fill="#a7b9b3" font-size="10">finish</text>
+    <text x="247" y="258" text-anchor="middle" fill="#91aaa3" font-size="10">time keeps moving →</text>
+    <text x="532" y="38" fill="#e4f1ec" font-size="13" font-weight="700">SEVERAL STACKED RUNS</text>
+    <text x="532" y="57" fill="#91a9a3" font-size="11">The system restarts; separate recordings share one file.</text>
+    <rect x="864" y="23" width="101" height="22" rx="11" fill="#20263a" stroke="#4b557c"/>
+    <text x="914" y="38" text-anchor="middle" fill="#c3c9ff" font-size="9" font-weight="700">3 TRAJECTORIES</text>
+    <rect x="530" y="70" width="444" height="58" rx="9" fill="#182321" stroke="#2d403c"/>
+    <rect x="530" y="137" width="444" height="58" rx="9" fill="#1b1e2a" stroke="#343b56"/>
+    <rect x="530" y="204" width="444" height="58" rx="9" fill="#24211b" stroke="#4b4130"/>
+    <text x="544" y="94" fill="#bdece0" font-size="10" font-weight="700">RUN 01</text><text x="544" y="111" fill="#7f9790" font-size="9">t: 0 → T</text>
+    <text x="544" y="161" fill="#c6cdff" font-size="10" font-weight="700">RUN 02</text><text x="544" y="178" fill="#858ba9" font-size="9">t: 0 → T</text>
+    <text x="544" y="228" fill="#f0d6a5" font-size="10" font-weight="700">RUN 03</text><text x="544" y="245" fill="#a99b7c" font-size="9">t: 0 → T</text>
+    <path d="M626 111H950M626 178H950M626 245H950" stroke="#596e68" stroke-width="1" marker-end="url(#traj-time-arrow)"/>
+    <path d="M627 105C659 102 678 84 714 86S762 110 801 100S866 81 916 88S936 94 949 91" fill="none" stroke="url(#traj-run-one)" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M627 171C663 166 690 148 723 153S780 180 813 169S872 151 916 157S937 162 949 158" fill="none" stroke="url(#traj-run-two)" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M627 239C660 235 687 216 722 220S777 248 813 237S872 217 916 224S936 230 949 225" fill="none" stroke="url(#traj-run-three)" stroke-width="3.2" stroke-linecap="round"/>
+    <circle cx="627" cy="105" r="3.5" fill="#b1f1dd"/><circle cx="627" cy="171" r="3.5" fill="#c6cdff"/><circle cx="627" cy="239" r="3.5" fill="#f0d6a5"/>
+  </svg>
+  <div class="trajectory-example-note"><strong>Key difference</strong><span>Each separate run starts a new trajectory. LabCD keeps those boundaries when preparing training and test data instead of connecting the traces.</span></div>
+</section>
+''', unsafe_allow_html=True)
+
+
 def render_setup_question(chat: dict, key: str, active: bool):
     if not active:
         return
@@ -279,17 +390,13 @@ def render_setup_question(chat: dict, key: str, active: bool):
     with st.container(border=True, key=f"setup_{key}"):
         st.caption("DATA ASSUMPTIONS · ANSWER HERE OR TYPE IN CHAT")
         if stage == "trajectory":
-            left, right = st.columns(2)
-            with left:
-                st.markdown("**One continuous run**")
-                single = pd.DataFrame({"Time": range(11), "Measured state": [0, .5, 1, 1.3, 1.5, 1.6, 1.7, 2, 2.2, 2.4, 2.5]})
-                st.line_chart(single, x="Time", y="Measured state", height=145)
-                st.caption("One experiment continues without a restart.")
-            with right:
-                st.markdown("**Several stacked runs**")
-                stacked = pd.DataFrame({"Time": range(11), "Measured state": [0, .6, 1.2, 1.8, 2.2, 0, .7, 1.3, 1.8, 0, .8]})
-                st.line_chart(stacked, x="Time", y="Measured state", height=145)
-                st.caption("Separate experiments are joined in one file.")
+            _trajectory_illustration()
+            resets = int(profile.get("time_reset_count", 0) or 0)
+            if resets:
+                with st.container(horizontal=True, gap="small", vertical_alignment="center"):
+                    st.badge(f"{resets} time reset{'s' if resets != 1 else ''} found",
+                             icon=":material/restart_alt:", color="orange")
+                    st.caption("This can indicate stacked runs. Please choose based on how you recorded the data.")
             with st.container(horizontal=True, gap="small"):
                 _choose("One continuous run", "One continuous run", f"one_{key}")
                 _choose("Several stacked runs", "Several stacked runs", f"stacked_{key}", primary=bool(profile.get("time_reset_count")))
@@ -312,11 +419,13 @@ def render_setup_question(chat: dict, key: str, active: bool):
             elif names:
                 st.markdown("**Angle-like column in your data**")
                 _signal(dataset, names[0], f"angle_{key}", height=165)
-                st.caption("Its name suggests an angle, but this recording shows no ±π crossing. The physical meaning is yours to confirm.")
+                candidates = ", ".join(names[:8])
+                extra = f" Possible angle-like columns: {candidates}." if candidates else ""
+                st.caption("The name suggests an angle, but this recording shows no ±π crossing. Confirm the physical meaning before selecting a state." + extra +
+                           " A rate or derivative should not be selected just because its name contains pitch or yaw.")
             else:
-                example = pd.DataFrame({"Time": range(7), "Stored angle (rad)": [2.1, 2.5, 2.9, 3.14, -3.14, -2.8, -2.4]})
-                st.line_chart(example, x="Time", y="Stored angle (rad)", height=165)
-                st.caption("Example: a wrapped angle jumps from +π to −π while the physical rotation continues.")
+                st.caption("I did not identify a likely wrapped angle in this file. This illustration shows what wrapping would look like.")
+            _wrap_angle_illustration()
             with st.container(horizontal=True, gap="small"):
                 if found:
                     _choose("Wrap detected states", "Wrap detected states", f"wrap_found_{key}", primary=True)
@@ -335,13 +444,27 @@ def render_state_comparison(comparison: dict):
     if not rows:
         return
     st.caption(f"SAVED RUN EVIDENCE · verification_summary.json · {comparison.get('aligned_samples') or 'unknown'} aligned held-out samples")
-    plot = pd.DataFrame([{"State": r["state"], "Normalized RMSE (% of test variation)": 100*r["normalized_rmse"]}
-                         for r in rows if r["normalized_rmse"] is not None])
-    if not plot.empty:
-        st.bar_chart(plot, x="State", y="Normalized RMSE (% of test variation)", height=220)
-    table = pd.DataFrame([{"State": r["state"], "RMSE": r["rmse"], "MAE": r["mae"],
-                           "RMSE / test std.": r["normalized_rmse"], "Samples": r["valid_samples"]} for r in rows])
-    st.dataframe(table, hide_index=True, width="stretch", height=min(310, 42 + 35*len(rows)))
+    ranked = [r for r in rows if r["normalized_rmse"] is not None]
+    if ranked:
+        best = ranked[0]
+        st.markdown(f"**Lowest normalized error: `{best['state']}`** · "
+                    f"{100 * best['normalized_rmse']:.2f}% of held-out variation")
+    table_rows = []
+    rank = 0
+    for row in rows:
+        if row["normalized_rmse"] is not None:
+            rank += 1
+            rank_label = str(rank)
+            normalized = f"{100 * row['normalized_rmse']:.2f}%"
+        else:
+            rank_label, normalized = "—", "—"
+        table_rows.append({"Rank": rank_label, "State": row["state"],
+                           "Normalized RMSE · lower is better": normalized,
+                           "RMSE": f"{row['rmse']:.4g}", "MAE": f"{row['mae']:.4g}",
+                           "Samples": row["valid_samples"]})
+    st.dataframe(pd.DataFrame(table_rows), hide_index=True, width="stretch",
+                 height=min(310, 42 + 35 * len(table_rows)))
+    st.caption("States are ranked by normalized RMSE on the held-out rollout. Lower means closer predictions relative to that state's variation.")
     protocol = comparison.get("protocol") or {}
     if protocol.get("initialization"):
         st.caption("Rollout protocol: " + protocol["initialization"])

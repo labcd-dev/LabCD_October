@@ -76,11 +76,29 @@ def test_uploaded_data_review_and_setup_render_inside_chat(app_storage):
     assert not app.exception
     assert any(item.label == "Samples" for item in app.metric)
     assert any(item.label == "More signal checks" for item in app.expander)
+    assert any("Which picture matches your data?" in item.value for item in app.markdown)
+    assert any("Each separate run starts a new trajectory" in item.value for item in app.markdown)
+    assert any("RUN 01" in item.value and "RUN 03" in item.value for item in app.markdown)
     assert any(button.label == "One continuous run" for button in app.button)
     assert any(button.label == "Several stacked runs" for button in app.button)
     next(button for button in app.button if button.label == "One continuous run").click().run()
     assert not app.exception
     assert app.session_state["conversation"]["setup"]["stage"] == "angle"
+
+
+def test_trajectory_hint_uses_detected_resets_as_a_clue_not_a_decision(app_storage):
+    chat = ready_chat()
+    chat["dataset"]["analysis"]["time_reset_count"] = 2
+    core.begin_setup(chat)
+    core.add_message(chat, "assistant", core.setup_prompt(chat), kind="setup_question", stage="trajectory")
+    app = new_app()
+    app.session_state["conversation"] = chat
+    app.run()
+
+    assert not app.exception
+    assert any("This can indicate stacked runs" in item.value for item in app.caption)
+    assert any(button.label == "Several stacked runs" for button in app.button)
+    assert any(button.label == "One continuous run" for button in app.button)
 
 
 def test_unprefixed_output_header_prompts_client_to_confirm_roles(app_storage, monkeypatch):
@@ -524,17 +542,45 @@ def test_validated_pinn_automatically_checks_inline_setup_control(app_storage):
     app = new_app()
     app.session_state["conversation"] = chat
     suffix = f"{chat['id']}_{chat['dataset']['sha256'][:8]}"
-    widget_key = f"setup_pinn_{suffix}"
-    app.session_state[widget_key] = False
+    widget_key = f"setup_pinn_interest_{suffix}"
+    app.session_state[widget_key] = "No"
     app.run()
 
     assert not app.exception
-    assert app.session_state[widget_key] is True
+    assert app.session_state[widget_key] == "Yes"
     assert app.session_state["conversation"]["settings"]["use_pinn"] is True
     assert not any(button.label == "Set up run" for button in app.button)
-    checkbox = app.checkbox(key=widget_key)
-    assert checkbox.value is True
-    assert checkbox.disabled is False
+    choice = app.segmented_control(key=widget_key)
+    assert choice.value == "Yes"
+    assert choice.disabled is False
+
+
+def test_raw_python_pinn_source_upload_starts_equation_preparation(app_storage, monkeypatch):
+    chat = ready_chat()
+    started = {}
+    monkeypatch.setattr(core, "REGISTRY", core.JobRegistry())
+
+    class CapturedJob:
+        purpose = "pinn_maker"
+        running = True
+
+        def __init__(self, snapshot, question):
+            started["snapshot"] = snapshot
+            started["question"] = question
+
+        def start(self):
+            started["started"] = True
+
+    monkeypatch.setattr(ui.pinn_maker, "PINNMakerJob", CapturedJob)
+    raw = b"xdot_position = -position + force\n"
+    uploaded = SimpleNamespace(name="plant_pinn.py", getvalue=lambda: raw)
+
+    ui._submit(chat, "", [uploaded], hooks={})
+
+    assert started["started"]
+    assert started["snapshot"]["pinn_source"]["name"] == "plant_pinn.py"
+    assert Path(started["snapshot"]["pinn_source"]["path"]).read_bytes() == raw
+    assert "Prepare plant_pinn.py for PINN" in started["question"]
 
 
 def test_run_setup_agent_opens_inline_model_then_approved_effort_steps(app_storage):
@@ -608,14 +654,20 @@ _human_checkpoint_card({"id": "test-chat"}, st.session_state["task"], st.session
                    "num_layers_search_min": 1, "num_layers_search_max": 2,
                    "epochs": 80, "batch_size": 32, "early_stop_patience": 20,
                    "activation": "tanh"},
+        "setup": {"architecture": "LSTM", "run_mode": "fast", "max_cycles": 7,
+                  "max_hours": 0.5, "history_steps": 10, "history_seconds": 0.09,
+                  "estimated_parameters": 1700},
         "dataset": {"samples": 120, "train_samples": 84, "validation_samples": 18,
                     "test_samples": 18, "states": ["s_position"], "inputs": ["a_force"],
-                    "median_dt": 0.01, "quality_notes": []},
+                    "median_dt": 0.01, "complexity": "Level 2", "complexity_tier": 2,
+                    "varying_states": ["s_position"], "varying_inputs": ["a_force"],
+                    "derivatives": [], "quality_notes": []},
     }}
     app.run()
     assert not app.exception
-    assert any("Review the initializer’s starting point" in item.value for item in app.markdown)
-    assert any(button.label == "Prefer smaller" for button in app.button)
+    assert any("first candidate, checked against your data" in item.value for item in app.markdown)
+    assert app.table
+    assert any(button.label == "Smaller model" for button in app.button)
     app.button(key="human_tuning_initializer_1_compact").click().run()
     assert not app.exception
     assert runner.action == "compact"
@@ -634,6 +686,31 @@ _human_checkpoint_card({"id": "test-chat"}, st.session_state["task"], st.session
     assert not app.exception
     assert any("How should the remaining search adapt?" in item.value for item in app.markdown)
     assert app.button(key="human_tuning_early_results_2_widen")
+
+
+def test_initializer_setup_analysis_connects_budget_and_model_size_to_data():
+    rows = ui._initializer_analysis_rows({
+        "setup": {"architecture": "LSTM", "run_mode": "fast", "max_cycles": 7,
+                  "max_hours": 0.5, "history_steps": 10, "history_seconds": 0.09,
+                  "estimated_parameters": 334852},
+        "config": {"hidden_layers": [128, 128, 128], "learning_rate": 0.001,
+                   "lr_search_min": 0.00005, "lr_search_max": 0.001,
+                   "dropout_rate": 0.2, "weight_decay": 0.001},
+        "dataset": {"samples": 6500, "train_samples": 5148,
+                    "validation_samples": 702, "test_samples": 650,
+                    "states": ["s_pitch", "s_yaw", "s_dpitch", "s_dyaw"],
+                    "inputs": ["a_left", "a_right"], "median_dt": 0.01,
+                    "complexity": "Level 4", "complexity_tier": 4,
+                    "varying_states": ["s_pitch", "s_yaw", "s_dpitch", "s_dyaw"],
+                    "varying_inputs": ["a_left", "a_right"], "derivatives": []},
+    })
+    by_area = {row["Review area"]: row for row in rows}
+
+    assert "Fast · up to 7 candidate cycles" in by_area["Search budget"]["Initializer proposal"]
+    assert "0.09 s of history" in by_area["Model context"]["Initializer proposal"]
+    assert "334,852 trainable parameters" in by_area["Network capacity"]["Initializer proposal"]
+    assert "5,148 rows" in by_area["Network capacity"]["Read against the data"]
+    assert "held-out test" in by_area["Dataset and split"]["Read against the data"]
 
 
 def test_completed_run_question_routes_to_conversational_agent(app_storage, monkeypatch):
@@ -747,3 +824,37 @@ def test_other_conversation_cannot_stop_active_run(app_storage, monkeypatch):
     app.chat_input[0].set_value("stop").run()
     assert not stopped
     assert any("no active training" in m.value for m in app.markdown)
+
+
+def test_live_training_uses_compact_chat_progress_card(app_storage):
+    from time import time
+
+    chat = {"id": "live-progress", "settings": {"max_cycles": 7}}
+    state = {
+        "stage": "Tuning cycles", "progress": 0.63, "history": [], "log": "",
+        "critic": [], "result": None, "checkpoint": None,
+        "activity": [
+            {"id": "stage:Tuning cycles", "label": "Searching for the best model",
+             "state": "complete", "details": {}},
+            {"id": "actor:1", "label": "Actor is training cycle 1",
+             "state": "running", "details": {}},
+        ],
+    }
+    core.REGISTRY.training[chat["id"]] = {
+        "runner": SimpleNamespace(running=True), "started": time() - 90, "state": state,
+    }
+    script = '''
+import streamlit as st
+from frontend_streamlit import ui_conversation as ui
+ui._working(st.session_state["chat"])
+'''
+    app = AppTest.from_string(script, default_timeout=30)
+    app.session_state["chat"] = chat
+    app.run()
+
+    assert not app.exception
+    assert any("Your model is taking shape" in item.value for item in app.markdown)
+    assert any("Training candidates and comparing their validation scores" in item.value for item in app.caption)
+    assert any("Now · Actor is training cycle 1" in item.value for item in app.caption)
+    assert any(item.label == "Live activity · 2 updates" for item in app.status)
+    assert any(item.label == "Search cycles" and item.value == "1 / 7" for item in app.metric)

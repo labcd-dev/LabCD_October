@@ -13,6 +13,11 @@ from backend_core.AgentSysID.agents.prompt_library import system_prompt
 from backend_core.AgentSysID.agents.run_diagnostic import DiagnosticClient, DiagnosticSettings
 from backend_core.AgentSysID.agents.run_evidence import redact
 
+try:
+    from . import conversation_analysis as analysis
+except ImportError:
+    import conversation_analysis as analysis
+
 
 class SetupRecommendation(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -27,10 +32,11 @@ class SetupRecommendation(BaseModel):
 
 def _profile(chat: dict) -> dict:
     dataset = chat.get("dataset") or {}
+    physics_cues = _physics_cues(chat)
     analysis = dataset.get("analysis") or {}
     analysis_fields = (
         "observed_duration", "median_dt", "time_reset_count", "detected_wrap_states",
-        "angle_named_states", "states", "inputs", "derivatives",
+        "angle_named_states", "states", "inputs", "derivatives", "correlated_state_pairs",
     )
     safe_analysis = {key: analysis[key] for key in analysis_fields if key in analysis}
     return {
@@ -43,7 +49,53 @@ def _profile(chat: dict) -> dict:
         "sample_period_seconds": dataset.get("sample_period"),
         "quality_warnings": dataset.get("warnings") or [],
         "profile": safe_analysis,
+        "physics_cues": physics_cues,
     }
+
+
+def _physics_cues(chat: dict) -> list[str]:
+    """Surface only measurable reasons a known equation could be worth discussing."""
+    dataset = chat.get("dataset") or {}
+    profile = dataset.get("analysis") or {}
+    if (len(dataset.get("states") or []) > 1 and
+            "correlated_state_pairs" not in profile and dataset.get("path")):
+        try:
+            profile = analysis.ensure_profile(dataset)
+        except (KeyError, OSError, ValueError):
+            pass
+
+    cues = []
+    state_names = set(dataset.get("states") or [])
+    for pair in profile.get("correlated_state_pairs") or []:
+        left, right = pair.get("state_a"), pair.get("state_b")
+        if left not in state_names or right not in state_names:
+            continue
+        correlation = pair.get("abs_correlation")
+        suffix = f" (|correlation| {float(correlation):.2f})" if correlation is not None else ""
+        cues.append(f"{left} and {right} move very closely together{suffix}; check whether they are distinct states.")
+        if len(cues) == 2:
+            break
+
+    inputs = profile.get("inputs") or []
+    weak_inputs = []
+    for item in inputs:
+        std = item.get("std")
+        if item.get("constant") or (std is not None and float(std) ** 2 < 1e-4):
+            weak_inputs.append(item.get("name", "an input"))
+    if weak_inputs:
+        names = ", ".join(str(name) for name in weak_inputs[:4])
+        cues.append(f"{names} show little variation, so this recording may not reveal their effects clearly.")
+
+    rows = dataset.get("rows")
+    if isinstance(rows, int) and 10 <= rows < 50:
+        cues.append(f"The file contains only {rows} samples, so the measured data provide limited evidence for the dynamics.")
+    return cues
+
+
+def physics_advisory(chat: dict) -> dict:
+    """Build a transparent, optional PINN prompt from deterministic data checks."""
+    cues = _physics_cues(chat)
+    return {"ask": bool(cues), "cues": cues}
 
 
 def recommend(chat: dict, *, client=None) -> dict:
@@ -68,9 +120,15 @@ def recommend(chat: dict, *, client=None) -> dict:
         raw = raw.removeprefix("```").removesuffix("```").strip()
     recommendation = SetupRecommendation.model_validate_json(raw)
     cap = limits[recommendation.search_effort]
-    recommendation.cycles = min(recommendation.cycles, cap)
+    # Fast is the product's default first search: use its full seven-candidate
+    # allowance unless the client changes the cycle slider in the setup card.
+    # The separate time cap can still end the search earlier.
+    recommendation.cycles = (
+        cap if recommendation.search_effort == "fast"
+        else min(recommendation.cycles, cap)
+    )
     model = getattr(getattr(llm, "settings", None), "model", "configured model")
-    return {**recommendation.model_dump(), "model": model}
+    return {**recommendation.model_dump(), "physics_advisory": physics_advisory(chat), "model": model}
 
 
 class RunSetupAgentJob:

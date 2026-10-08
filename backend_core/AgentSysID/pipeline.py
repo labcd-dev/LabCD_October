@@ -508,6 +508,33 @@ def apply_initializer_to_config(setup_config: Dict[str, Any], loader: ExcelDataL
         loader.reset_threshold = setup_config["reset_threshold"]
 
 
+def estimate_model_parameter_count(
+    state_dim: int, action_dim: int, hidden_layers: Sequence[int], architecture: str
+) -> int:
+    """Count trainable parameters using the exact MLP/LSTM layout in DynamicsModel."""
+    widths = [max(1, int(width)) for width in hidden_layers] or [64]
+    input_dim = max(1, int(state_dim)) + max(0, int(action_dim)) + 1
+    output_dim = max(1, int(state_dim))
+
+    if str(architecture).strip().upper() == "LSTM":
+        hidden_size = widths[0]
+        layer_count = len(widths)
+        # PyTorch's LSTM has input/recurrent matrices and two bias vectors for
+        # each of its four gates at every layer.
+        recurrent = sum(
+            4 * hidden_size * (layer_input + hidden_size) + 8 * hidden_size
+            for layer_input in [input_dim] + [hidden_size] * (layer_count - 1)
+        )
+        return int(recurrent + (hidden_size + 1) * output_dim)
+
+    params = 0
+    previous_width = input_dim
+    for width in widths:
+        params += (previous_width + 1) * width
+        previous_width = width
+    return int(params + (previous_width + 1) * output_dim)
+
+
 def apply_initializer_human_choice(
     setup_config: Dict[str, Any], action: str, authorized_bounds: Dict[str, Any]
 ) -> Dict[str, Any]:
@@ -853,15 +880,46 @@ def run_pipeline(
             train_count = sum(len(trajectory.get("states", [])) for trajectory in train_trajs)
             val_count = sum(len(trajectory.get("states", [])) for trajectory in val_trajs)
             test_count = sum(len(trajectory.get("states", [])) for trajectory in test_trajs)
+            architecture = str(cfg.NETWORK_ARCHITECTURE).strip().upper()
+            history_steps = max(1, int(options.lstm_seq_length or cfg.LSTM_SEQ_LENGTH))
+            median_dt = float(getattr(loader, "median_dt", 0.0) or 0.0)
+            parameter_count = estimate_model_parameter_count(
+                loader.state_dim,
+                loader.action_dim,
+                setup_config.get("hidden_layers", [64]),
+                architecture,
+            )
+            varying_states = [
+                name for name in loader.state_cols
+                if int(loader.df[name].nunique(dropna=True)) > 1
+            ]
+            varying_inputs = [
+                name for name in loader.action_cols
+                if int(loader.df[name].nunique(dropna=True)) > 1
+            ]
             review = human_review("initializer", {
                 "config": dict(setup_config),
                 "goal": str(getattr(cfg, "OPTIMIZATION_GOAL", "balanced")),
+                "setup": {
+                    "architecture": architecture,
+                    "run_mode": str(options.run_mode).strip().lower(),
+                    "max_cycles": max_cycles,
+                    "max_hours": float(limits["max_hours"]),
+                    "history_steps": history_steps,
+                    "history_seconds": (history_steps - 1) * median_dt if architecture == "LSTM" and median_dt > 0 else None,
+                    "estimated_parameters": parameter_count,
+                },
                 "dataset": {
                     "samples": int(len(loader.df)),
                     "states": list(loader.state_cols),
                     "inputs": list(loader.action_cols),
-                    "median_dt": float(getattr(loader, "median_dt", 0.0)),
+                    "derivatives": list(loader.xdot_cols),
+                    "varying_states": varying_states,
+                    "varying_inputs": varying_inputs,
+                    "samples_per_dimension": int(len(loader.df) / max(1, loader.state_dim + loader.action_dim)),
+                    "median_dt": median_dt,
                     "complexity": str(getattr(loader, "complexity_label", "Unknown")),
+                    "complexity_tier": int(getattr(loader, "complexity_tier", 0) or 0),
                     "train_samples": train_count,
                     "validation_samples": val_count,
                     "test_samples": test_count,

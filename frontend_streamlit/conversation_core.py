@@ -41,7 +41,7 @@ class RunSettings(BaseModel):
     architecture: Literal["LSTM", "MLP"] = "LSTM"
     optimization_goal: Literal["balanced", "accuracy", "speed", "compact"] = "balanced"
     run_mode: Literal["fast", "regular", "heavy", "expert"] = "fast"
-    max_cycles: int = Field(default=3, ge=1, le=100)
+    max_cycles: int = Field(default=7, ge=1, le=100)
     epochs: int = Field(default=100, ge=1, le=5000)
     batch_size: int = Field(default=64, ge=8, le=4096)
     lstm_seq_length: int = Field(default=10, ge=2, le=500)
