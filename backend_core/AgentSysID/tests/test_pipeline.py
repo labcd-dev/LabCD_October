@@ -22,15 +22,18 @@ from backend_core.AgentSysID.pipeline import (
     STAGES,
     SysIDOptions,
     SysIDResult,
+    apply_actor_human_choice,
+    apply_initializer_human_choice,
     run_pipeline,
 )
+from backend_core.AgentSysID.agents.actor import ActorAgent
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 UI_APP = REPO_ROOT / "frontend_streamlit" / "agent_sysid_app.py"
 EXAMPLE = REPO_ROOT / "backend_core/AgentSysID/data/examples/synthetic_oscillator.csv"
 
 #: Fields that are plumbing rather than an engineer-facing knob.
-_NON_KNOB_FIELDS = {"data_path", "run_mode", "output_dir", "interactive", "_CONFIG_MAP"}
+_NON_KNOB_FIELDS = {"data_path", "run_mode", "output_dir", "interactive", "human_in_the_loop", "_CONFIG_MAP"}
 
 
 @pytest.fixture(autouse=True)
@@ -59,6 +62,7 @@ def test_apply_to_config_maps_the_knobs():
         data_path="plant.csv",
         run_mode="heavy",
         architecture="mlp",
+        optimization_goal="speed",
         lstm_seq_length=7,
         rollout_horizon=4,
         integrator_type="euler",
@@ -80,6 +84,7 @@ def test_apply_to_config_maps_the_knobs():
     ).apply_to_config()
 
     assert cfg.NETWORK_ARCHITECTURE == "MLP"          # upper-cased
+    assert cfg.OPTIMIZATION_GOAL == "speed"
     assert cfg.INTEGRATOR_TYPE == "EULER"
     assert cfg.DERIVATIVE_METHOD == "savitzky_golay"  # lower-cased
     assert cfg.MANUAL_ACTIVATION == "tanh"
@@ -98,6 +103,69 @@ def test_apply_to_config_maps_the_knobs():
     assert cfg.CUSTOMER_SYSTEM_DESCRIPTION == "A quadcopter."
     assert cfg.RUN_MODE == "heavy"
     assert cfg.ENV_NAME == "plant"
+
+
+def test_initializer_human_choices_stay_within_authorized_ranges():
+    authorized = {
+        "learning_rate_min": 0.00001, "learning_rate_max": 0.01,
+        "hidden_size_min": 16, "hidden_size_max": 256,
+        "num_layers_min": 1, "num_layers_max": 4,
+    }
+    proposal = {
+        "learning_rate": 0.001, "lr_search_min": 0.0001, "lr_search_max": 0.002,
+        "hidden_layers": [128, 128], "hidden_size_search_min": 32,
+        "hidden_size_search_max": 192, "num_layers_search_min": 1,
+        "num_layers_search_max": 3, "dropout_rate": 0.0, "weight_decay": 0.005,
+    }
+
+    compact = apply_initializer_human_choice(proposal, "compact", authorized)
+    assert len(compact["hidden_layers"]) == 1
+    assert compact["hidden_layers"][0] < proposal["hidden_layers"][0]
+    assert compact["hidden_size_search_max"] <= proposal["hidden_size_search_max"]
+    assert compact["num_layers_search_max"] == 1
+
+    wider = apply_initializer_human_choice(proposal, "widen", authorized)
+    assert wider["lr_search_min"] == authorized["learning_rate_min"]
+    assert wider["hidden_size_search_max"] == authorized["hidden_size_max"]
+    assert wider["num_layers_search_max"] == authorized["num_layers_max"]
+
+    regularized = apply_initializer_human_choice(proposal, "regularize", authorized)
+    assert regularized["dropout_rate"] > proposal["dropout_rate"]
+    assert regularized["weight_decay"] > proposal["weight_decay"]
+    assert regularized["weight_decay"] <= cfg.WEIGHT_DECAY_MAX
+    over_limit = apply_initializer_human_choice(
+        {**proposal, "weight_decay": 0.5}, "regularize", authorized
+    )
+    assert over_limit["weight_decay"] == cfg.WEIGHT_DECAY_MAX
+
+
+def test_cycle_human_choice_guides_next_candidate_within_outer_limits():
+    actor = ActorAgent("relu", initial_config={
+        "learning_rate": 0.001, "hidden_layers": [128, 128],
+        "dropout_rate": 0.0, "weight_decay": 0.005,
+        "batch_size": 64, "early_stop_patience": 20,
+        "lr_search_min": 0.0001, "lr_search_max": 0.002,
+        "hidden_size_search_min": 32, "hidden_size_search_max": 192,
+        "num_layers_search_min": 1, "num_layers_search_max": 3,
+    })
+    authorized = {
+        "learning_rate_min": 0.00001, "learning_rate_max": 0.01,
+        "hidden_size_min": 16, "hidden_size_max": 256,
+        "num_layers_min": 1, "num_layers_max": 4,
+    }
+    smaller = apply_actor_human_choice(actor, "compact", authorized)
+    assert len(smaller["hidden_layers"]) == 1
+    assert max(smaller["hidden_layers"]) <= actor.hs_max
+
+    apply_actor_human_choice(actor, "widen", authorized)
+    assert actor.hs_max == 256 and actor.num_layers_max == 4
+    assert cfg.HIDDEN_SIZE_MAX == 256 and cfg.NUM_LAYERS_MAX == 4
+    guided = apply_actor_human_choice(actor, "regularize", authorized)
+    assert guided["dropout_rate"] > 0
+    assert guided["weight_decay"] == cfg.WEIGHT_DECAY_MAX
+    actor.current_config["weight_decay"] = 0.5
+    capped = apply_actor_human_choice(actor, "regularize", authorized)
+    assert capped["weight_decay"] == cfg.WEIGHT_DECAY_MAX
 
 
 def test_every_knob_reaches_a_real_config_attribute():

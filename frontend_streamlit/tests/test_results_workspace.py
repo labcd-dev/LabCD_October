@@ -81,7 +81,7 @@ render_panel(st.session_state["test_output_dir"])
     assert app.session_state["preview_run"] == str(run.resolve())
 
 
-def test_main_panel_toggle_preserves_run_choice(tmp_path, monkeypatch):
+def test_main_file_panel_toggle_preserves_selected_run_artifact(tmp_path, monkeypatch):
     from frontend_streamlit import conversation_core as core
     monkeypatch.setattr(core, "CHAT_DIR", tmp_path / "chats")
     monkeypatch.setattr(core, "OUTPUT_DIR", tmp_path)
@@ -92,13 +92,15 @@ def test_main_panel_toggle_preserves_run_choice(tmp_path, monkeypatch):
     app.session_state["conversation"] = chat
     app.run()
     app.button(key="conversation_files_toggle").click().run()
-    app.button_group(key=f"files_type_{chat['id']}").set_value("Code").run()
+    assert not app.exception
+    app.button(key=next(button.key for button in app.button if button.label == "NN.py")).click().run()
     assert not app.exception
     assert app.code[0].value.splitlines()[0] == "# Run 1"
+    selected_file = app.session_state["conversation_selected_file"]
     app.button(key="conversation_files_toggle").click().run()
     app.button(key="conversation_files_toggle").click().run()
     assert not app.exception
-    assert app.button_group(key=f"files_type_{chat['id']}").value == "Code"
+    assert app.session_state["conversation_selected_file"] == selected_file
     assert app.code[0].value.splitlines()[0] == "# Run 1"
     assert app.session_state["conversation"]["run_dir"] == str(first.resolve())
 

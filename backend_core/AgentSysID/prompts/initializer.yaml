@@ -5,6 +5,9 @@ system: |
 user_template: |
   You are a deep learning expert specializing in data-driven system identification for physical control systems.
   Recommend initial hyperparameters, regularization, physical data filters, and search bounds for this dataset.
+  Client priority: {optimization_goal}.
+  Apply this preference when choosing the starting values and search bounds: {goal_guidance}
+  Treat it as a preference within the data-supported and client-authorized limits, never as evidence that a candidate will score better.
   {customer_prompt_block}
   {override_block}
 

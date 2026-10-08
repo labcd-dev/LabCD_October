@@ -201,6 +201,7 @@ def train_dynamics_model(
     lr_min: float = 0.00001,
     architecture: Optional[str] = None,
     verbose: bool = True,
+    include_state_metrics: bool = False,
 ) -> Tuple[DynamicsModel, float, float, float, np.ndarray, np.ndarray]:
     """
     Train one candidate architecture.
@@ -548,6 +549,38 @@ def train_dynamics_model(
 
     if best_model_state is not None:
         dyn_model.load_state_dict(best_model_state)
+
+    if include_state_metrics:
+        # Keep a first-step error for each state so the client can see which
+        # measurements a candidate fits poorly. Overall rollout scoring stays
+        # unchanged and remains the search objective.
+        state_squared_error = np.zeros(state_dim, dtype=np.float64)
+        state_validation_rows = 0
+        dyn_model.eval()
+        with torch.no_grad():
+            for i in range(0, X_val_states_t.size(0), batch_size):
+                b_states = X_val_states_t[i : i + batch_size].to(DEVICE)
+                b_actions = X_val_acts_t[i : i + batch_size].to(DEVICE)
+                b_dts = X_val_dt_t[i : i + batch_size].to(DEVICE)
+                b_xdot = y_val_xdot_t[i : i + batch_size].to(DEVICE)
+                if arch == "LSTM":
+                    model_states = b_states[:, :seq_len, :]
+                    model_actions = b_actions[:, :seq_len, :]
+                    model_dts = b_dts[:, :seq_len, :]
+                    target_index = seq_len - 1
+                else:
+                    model_states = b_states[:, 0, :]
+                    model_actions = b_actions[:, 0, :]
+                    model_dts = b_dts[:, 0, :]
+                    target_index = 0
+                prediction, _ = dyn_model(model_states, model_actions, model_dts)
+                error = prediction - b_xdot[:, target_index, :]
+                state_squared_error += error.square().sum(dim=0).cpu().numpy()
+                state_validation_rows += int(error.shape[0])
+        dyn_model.state_validation_mse = (
+            (state_squared_error / state_validation_rows).tolist()
+            if state_validation_rows else []
+        )
 
     final_train_mse = min(train_losses) if train_losses else float("inf")
     if best_val_phys_loss == float("inf") and val_losses:

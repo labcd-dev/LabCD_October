@@ -88,6 +88,7 @@ STAGES: Tuple[str, ...] = (
 )
 
 EventCallback = Callable[[str, Dict[str, Any]], None]
+HumanReviewCallback = Callable[[str, Dict[str, Any]], Optional[Dict[str, Any]]]
 
 
 def _emit(on_event: Optional[EventCallback], kind: str, **payload: Any) -> None:
@@ -118,6 +119,7 @@ class SysIDOptions:
     output_dir: str = "artifacts_sysid"
     interactive: bool = False
     max_cycles: Optional[int] = None
+    human_in_the_loop: bool = False
 
     # --- Questionnaire answers ----------------------------------------
     customer_description: Optional[str] = None
@@ -128,6 +130,7 @@ class SysIDOptions:
 
     # --- Architecture & rollout ---------------------------------------
     architecture: Optional[str] = None          # MLP | LSTM
+    optimization_goal: Optional[str] = None      # balanced | accuracy | speed | compact
     lstm_seq_length: Optional[int] = None
     rollout_horizon: Optional[int] = None
     integrator_type: Optional[str] = None       # EULER | RK4
@@ -208,6 +211,7 @@ class SysIDOptions:
             "multi_trajectory": "MULTI_TRAJECTORY",
             "manual_split_times": "MANUAL_TRAJECTORY_SPLIT_TIMES",
             "architecture": "NETWORK_ARCHITECTURE",
+            "optimization_goal": "OPTIMIZATION_GOAL",
             "lstm_seq_length": "LSTM_SEQ_LENGTH",
             "rollout_horizon": "ROLLOUT_HORIZON",
             "integrator_type": "INTEGRATOR_TYPE",
@@ -266,6 +270,10 @@ class SysIDOptions:
                 value = str(value).strip().lower()
             elif option_name == "manual_activation":
                 value = str(value).strip().lower()
+            elif option_name == "optimization_goal":
+                value = str(value).strip().lower()
+                if value not in {"balanced", "accuracy", "speed", "compact"}:
+                    raise ValueError("optimization_goal must be balanced, accuracy, speed, or compact.")
             elif option_name == "auto_filter_percentiles":
                 value = tuple(value)
             elif option_name == "api_provider":
@@ -500,6 +508,89 @@ def apply_initializer_to_config(setup_config: Dict[str, Any], loader: ExcelDataL
         loader.reset_threshold = setup_config["reset_threshold"]
 
 
+def apply_initializer_human_choice(
+    setup_config: Dict[str, Any], action: str, authorized_bounds: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Apply a small, explicit client adjustment while respecting chosen limits."""
+    result = dict(setup_config)
+    if action == "compact":
+        minimum_width = int(authorized_bounds["hidden_size_min"])
+        minimum_layers = int(authorized_bounds["num_layers_min"])
+        layers = [max(minimum_width, int(round(int(width) * 0.75)))
+                  for width in result.get("hidden_layers", [64])]
+        if len(layers) > minimum_layers:
+            layers = layers[:minimum_layers]
+        old_upper = int(result.get("hidden_size_search_max", authorized_bounds["hidden_size_max"]))
+        new_upper = max(
+            int(result.get("hidden_size_search_min", minimum_width)),
+            min(old_upper, max(minimum_width, int(round(old_upper * 0.75)))),
+        )
+        layers = [min(new_upper, width) for width in layers]
+        result["hidden_layers"] = layers
+        result["hidden_size_search_max"] = new_upper
+        result["num_layers_search_max"] = max(
+            minimum_layers,
+            min(int(result.get("num_layers_search_max", authorized_bounds["num_layers_max"])), len(layers)),
+        )
+    elif action == "widen":
+        result.update(
+            lr_search_min=float(authorized_bounds["learning_rate_min"]),
+            lr_search_max=float(authorized_bounds["learning_rate_max"]),
+            hidden_size_search_min=int(authorized_bounds["hidden_size_min"]),
+            hidden_size_search_max=int(authorized_bounds["hidden_size_max"]),
+            num_layers_search_min=int(authorized_bounds["num_layers_min"]),
+            num_layers_search_max=int(authorized_bounds["num_layers_max"]),
+        )
+    elif action == "regularize":
+        result["dropout_rate"] = min(
+            float(cfg.DROPOUT_RATE_MAX),
+            max(0.05, float(result.get("dropout_rate", 0.0)) * 1.5),
+        )
+        result["weight_decay"] = min(
+            float(cfg.WEIGHT_DECAY_MAX),
+            max(0.00001, float(result.get("weight_decay", 0.0001)) * 2.0),
+        )
+    return result
+
+
+def apply_actor_human_choice(
+    actor: ActorAgent, action: str, authorized_bounds: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Steer the next candidate after the client has seen early validation evidence."""
+    if action == "compact":
+        actor.hs_max = max(actor.hs_min, min(actor.hs_max, int(round(actor.hs_max * 0.75))))
+        actor.num_layers_max = max(actor.num_layers_min, min(actor.num_layers_max, actor.num_layers_min))
+        cfg.HIDDEN_SIZE_MAX = actor.hs_max
+        cfg.NUM_LAYERS_MAX = actor.num_layers_max
+        layers = actor.current_config.get("hidden_layers", [64])
+        actor.current_config["hidden_layers"] = [
+            max(actor.hs_min, min(actor.hs_max, int(round(int(width) * 0.75))))
+            for width in layers[:actor.num_layers_max]
+        ] or [actor.hs_min]
+    elif action == "widen":
+        actor.lr_min = float(authorized_bounds["learning_rate_min"])
+        actor.lr_max = float(authorized_bounds["learning_rate_max"])
+        actor.hs_min = int(authorized_bounds["hidden_size_min"])
+        actor.hs_max = int(authorized_bounds["hidden_size_max"])
+        actor.num_layers_min = int(authorized_bounds["num_layers_min"])
+        actor.num_layers_max = int(authorized_bounds["num_layers_max"])
+        cfg.LEARNING_RATE_MIN, cfg.LEARNING_RATE_MAX = actor.lr_min, actor.lr_max
+        cfg.HIDDEN_SIZE_MIN, cfg.HIDDEN_SIZE_MAX = actor.hs_min, actor.hs_max
+        cfg.NUM_LAYERS_MIN, cfg.NUM_LAYERS_MAX = actor.num_layers_min, actor.num_layers_max
+    elif action == "regularize":
+        actor.current_config["dropout_rate"] = min(
+            float(cfg.DROPOUT_RATE_MAX),
+            max(0.05, float(actor.current_config.get("dropout_rate", 0.0)) * 1.5),
+        )
+        actor.current_config["weight_decay"] = min(
+            float(cfg.WEIGHT_DECAY_MAX),
+            max(0.00001, float(actor.current_config.get("weight_decay", 0.0001)) * 2.0),
+        )
+    if action in {"compact", "widen", "regularize"}:
+        actor._add_to_visited(actor.current_config)
+    return dict(actor.current_config)
+
+
 def print_initializer_dashboard(setup_config: Dict[str, Any], chosen_activation: str) -> None:
     import textwrap
 
@@ -570,6 +661,7 @@ def run_pipeline(
     options: SysIDOptions,
     on_event: Optional[EventCallback] = None,
     install_signal_handler: bool = True,
+    human_review: Optional[HumanReviewCallback] = None,
 ) -> SysIDResult:
     """
     Run the full identification pipeline and return a structured result.
@@ -582,6 +674,8 @@ def run_pipeline(
       ``cycle_started`` {cycle, max_cycles, config}
       ``critic_started`` / ``explorer_started`` {cycle}
       ``cycle``     {cycle, max_cycles, config, train_mse, val_mse, rmse, is_best, best_mse}
+      ``human_checkpoint`` {phase, ...} when a client decision is needed
+      ``human_checkpoint_resolved`` {phase, action} after the client responds
       ``latency``   {cycle, latency_ms, max_latency_ms}
       ``critic``    {cycle, diagnosis, status, lr_dir, lr_step, hidden_layers, reasoning}
       ``explorer``  {cycle, hidden_layers, reasoning}
@@ -624,6 +718,14 @@ def run_pipeline(
 
     options.apply_to_config()
     result.env_name = cfg.ENV_NAME
+    authorized_search_bounds = {
+        "learning_rate_min": float(cfg.LEARNING_RATE_MIN),
+        "learning_rate_max": float(cfg.LEARNING_RATE_MAX),
+        "hidden_size_min": int(cfg.HIDDEN_SIZE_MIN),
+        "hidden_size_max": int(cfg.HIDDEN_SIZE_MAX),
+        "num_layers_min": int(cfg.NUM_LAYERS_MIN),
+        "num_layers_max": int(cfg.NUM_LAYERS_MAX),
+    }
 
     limits = cfg.run_mode_limits(options.run_mode)
     max_cycles = int(options.max_cycles or limits["max_cycles"])
@@ -747,6 +849,36 @@ def run_pipeline(
             setup_config.update(applied)
             print(f"\n   ✏️  Engineer overrides applied to the Initializer proposal: {applied}")
 
+        if human_review and options.human_in_the_loop and not stop_requested():
+            train_count = sum(len(trajectory.get("states", [])) for trajectory in train_trajs)
+            val_count = sum(len(trajectory.get("states", [])) for trajectory in val_trajs)
+            test_count = sum(len(trajectory.get("states", [])) for trajectory in test_trajs)
+            review = human_review("initializer", {
+                "config": dict(setup_config),
+                "goal": str(getattr(cfg, "OPTIMIZATION_GOAL", "balanced")),
+                "dataset": {
+                    "samples": int(len(loader.df)),
+                    "states": list(loader.state_cols),
+                    "inputs": list(loader.action_cols),
+                    "median_dt": float(getattr(loader, "median_dt", 0.0)),
+                    "complexity": str(getattr(loader, "complexity_label", "Unknown")),
+                    "train_samples": train_count,
+                    "validation_samples": val_count,
+                    "test_samples": test_count,
+                    "quality_notes": list(loader.quality_issues)[:8],
+                },
+            }) or {}
+            action = str(review.get("action", "accept"))
+            if action == "stop":
+                request_stop()
+            else:
+                setup_config = apply_initializer_human_choice(
+                    setup_config, action, authorized_search_bounds
+                )
+                setup_config = initializer._clamp(setup_config)
+            _emit(on_event, "human_guidance_applied", phase="initializer", action=action,
+                  config=dict(setup_config))
+
         chosen_activation = setup_config.get("activation", "relu")
         apply_initializer_to_config(setup_config, loader)
         print_initializer_dashboard(setup_config, chosen_activation)
@@ -839,6 +971,9 @@ def run_pipeline(
     tuning_base = STAGES.index("Tuning cycles") / len(STAGES)
 
     for iteration in range(max_cycles):
+        if stop_requested():
+            print("\n🛑 Stop requested before the next candidate; compiling the best model found so far...")
+            break
         elapsed_seconds = time.time() - started
         if elapsed_seconds > max_seconds:
             print("\n" + "!" * 80)
@@ -880,9 +1015,17 @@ def run_pipeline(
             weight_decay=actor.current_config.get("weight_decay", cfg.MANUAL_WEIGHT_DECAY),
             lr_min=cfg.LR_SCHEDULE_MIN_FLOOR,
             architecture=arch,
+            include_state_metrics=bool(options.human_in_the_loop),
         )
         cycle_training_seconds = time.perf_counter() - training_started
         result.training_seconds += cycle_training_seconds
+        state_validation_mse = {
+            str(name): float(value)
+            for name, value in zip(
+                loader.state_cols,
+                getattr(model_trained, "state_validation_mse", []),
+            )
+        }
 
         # --- Generalization gap check -------------------------------------
         if final_train_mse > 1e-8:
@@ -907,6 +1050,7 @@ def run_pipeline(
                 "val_mse": final_mse,
                 "rmse": final_rmse,
                 "training_seconds": cycle_training_seconds,
+                "state_validation_mse": state_validation_mse,
                 "performance": {"mse": final_mse, "rmse": final_rmse},
             }
         )
@@ -934,6 +1078,7 @@ def run_pipeline(
             train_mse=final_train_mse,
             val_mse=final_mse,
             rmse=final_rmse,
+            state_validation_mse=state_validation_mse,
             is_best=is_new_best,
             best_mse=tracker.best_mse,
             best_rmse=tracker.best_rmse,
@@ -1028,6 +1173,27 @@ def run_pipeline(
             stagnation_count = 0
         else:
             actor.apply_critic_feedback(critic_output, tracker, cycle=cycle_num)
+
+        if (human_review and options.human_in_the_loop and cycle_num == 2
+                and cycle_num < max_cycles and not stop_requested()):
+            decision = human_review("early_results", {
+                "cycle": cycle_num,
+                "max_cycles": max_cycles,
+                "recent_results": [dict(row) for row in perf_history[-3:]],
+                "best_mse": tracker.best_mse,
+                "best_config": dict(tracker.best_config or {}),
+                "next_config": dict(actor.current_config),
+                "goal": str(getattr(cfg, "OPTIMIZATION_GOAL", "balanced")),
+                "state_validation_mse": state_validation_mse,
+            }) or {}
+            action = str(decision.get("action", "continue"))
+            if action == "stop":
+                _emit(on_event, "human_guidance_applied", phase="early_results", action=action,
+                      config=dict(actor.current_config))
+                break
+            next_config = apply_actor_human_choice(actor, action, authorized_search_bounds)
+            _emit(on_event, "human_guidance_applied", phase="early_results", action=action,
+                  config=next_config)
 
     result.cycles_run = len(perf_history)
     result.performance_history = perf_history

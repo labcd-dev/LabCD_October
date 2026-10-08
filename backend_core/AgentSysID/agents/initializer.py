@@ -156,10 +156,19 @@ class InitializerAgent:
 
         complexity_tier = getattr(self.loader, "complexity_tier", 2)
         complexity_label = getattr(self.loader, "complexity_label", "Unknown")
+        optimization_goal = str(getattr(cfg, "OPTIMIZATION_GOAL", "balanced")).strip().lower()
+        goal_guidance = {
+            "balanced": "Balance validation fit, generalization, and practical model size.",
+            "accuracy": "Prioritize validation fit while avoiding overfitting; use the data-supported capacity and regularization.",
+            "speed": "Favor a compact, fast-inference starting model and avoid unnecessary width or depth, while preserving a useful validation fit.",
+            "compact": "Favor the smallest reasonable model and a narrower search; avoid spending capacity the measurements do not support.",
+        }.get(optimization_goal, "Balance validation fit, generalization, and practical model size.")
 
         prompt = render(
             "initializer",
             customer_prompt_block=customer_prompt_block,
+            optimization_goal=optimization_goal,
+            goal_guidance=goal_guidance,
             override_block=override_block,
             complexity_label=complexity_label,
             complexity_tier=complexity_tier,

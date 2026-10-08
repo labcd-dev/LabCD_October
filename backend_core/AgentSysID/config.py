@@ -150,6 +150,7 @@ else:  # openrouter
 #  TUNING FRAMEWORK RUN MODE
 # ============================================================================
 RUN_MODE: str = os.getenv("LABCD_SYSID_RUN_MODE", "regular")  # fast | regular | heavy
+OPTIMIZATION_GOAL: str = "balanced"
 
 # Per-mode loop limits (legacy main.py values).
 RUN_MODE_LIMITS: Dict[str, Dict[str, Any]] = {

@@ -249,19 +249,20 @@ def render_dataset(dataset: dict, key: str):
         if states:
             selected = st.selectbox("View measured state", states, key=f"data_signal_{key}")
             _signal(dataset, selected, key)
-            rows = []
-            for item in profile["states"]:
-                baseline = item.get("persistence") or {}
-                ratio = baseline.get("over_test_std")
-                rows.append({"State": item["name"], "Minimum": item["min"], "Maximum": item["max"],
-                             "Std. dev.": item["std"],
-                             "One-step persistence / test std.": ratio})
-            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch",
-                         height=min(320, 42 + 35 * len(rows)))
-            st.caption("The last column is a naive data-only baseline on the last 10% of samples. It is not a trained-model score; lower means smoother one-step continuation relative to that state's variation.")
+            with st.expander("More signal checks"):
+                rows = []
+                for item in profile["states"]:
+                    baseline = item.get("persistence") or {}
+                    ratio = baseline.get("over_test_std")
+                    rows.append({"State": item["name"], "Minimum": item["min"], "Maximum": item["max"],
+                                 "Std. dev.": item["std"],
+                                 "One-step persistence / test std.": ratio})
+                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch",
+                             height=min(320, 42 + 35 * len(rows)))
+                st.caption("The persistence score is a data-only baseline on the final 10% of samples, not a trained-model score.")
         if profile.get("inputs"):
             varying = sum(not item["constant"] for item in profile["inputs"])
-            st.caption(f"Input excitation: {varying} of {len(profile['inputs'])} input signals vary in this recording.")
+            st.caption(f"Inputs varying: {varying}/{len(profile['inputs'])} · Variation alone does not prove adequate excitation.")
 
 
 def _choose(label: str, value: str, key: str, *, primary=False):

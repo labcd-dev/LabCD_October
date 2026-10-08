@@ -60,6 +60,25 @@ def record(items: list, kind: str, payload: dict) -> None:
     elif kind == "initializer":
         label = "Initializer selected starting model settings" if payload.get("mode") == "agent" else "Manual starting model settings applied"
         put("stage:Initializer Agent", label)
+    elif kind == "human_checkpoint":
+        phase = payload.get("phase", "review")
+        label = "Waiting for your review of the initializer settings" if phase == "initializer" else "Waiting for your direction after the first candidates"
+        put(f"human:{payload.get('id', phase)}", label, "running")
+    elif kind == "human_checkpoint_resolved":
+        key = f"human:{payload.get('id', payload.get('phase', 'review'))}"
+        label = "You approved the initializer settings" if payload.get("phase") == "initializer" else "You guided the remaining candidate search"
+        put(key, label, "complete", data={"phase": payload.get("phase"), "action": payload.get("action")})
+    elif kind == "human_guidance_applied":
+        labels = {
+            "accept": "Initializer recommendation accepted",
+            "compact": "Search steered toward smaller models",
+            "regularize": "Search steered toward stronger regularization",
+            "widen": "Search widened within the approved limits",
+            "continue": "Search continued with the agent’s suggestion",
+            "stop": "Client stopped additional candidate search",
+        }
+        put(f"guidance:{payload.get('phase', 'run')}:{len(items)}",
+            labels.get(payload.get("action"), "Client updated the candidate search"), "complete")
     elif kind in ("cycle_started", "cycle", "latency"):
         cycle = payload["cycle"]
         key = f"actor:{cycle}"

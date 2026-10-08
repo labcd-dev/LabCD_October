@@ -307,6 +307,25 @@ def test_initializer_parses_and_clamps(monkeypatch):
     assert all(h <= result["hidden_size_search_max"] for h in result["hidden_layers"])
 
 
+def test_initializer_prompt_uses_the_clients_training_priority(monkeypatch):
+    previous_goal = cfg.OPTIMIZATION_GOAL
+    captured = {}
+    reply = "LEARNING_RATE: 0.001\nHIDDEN_LAYERS: [32]\nACTIVATION: tanh\nREASONING: Compact starting model."
+
+    def fake_invoke(system, prompt, **kwargs):
+        captured["prompt"] = prompt
+        return reply
+
+    monkeypatch.setattr("backend_core.AgentSysID.agents.initializer.invoke_llm", fake_invoke)
+    cfg.OPTIMIZATION_GOAL = "speed"
+    try:
+        InitializerAgent(_FakeLoader()).determine_initial_setup()
+        assert "Client priority: speed" in captured["prompt"]
+        assert "Favor a compact, fast-inference starting model" in captured["prompt"]
+    finally:
+        cfg.OPTIMIZATION_GOAL = previous_goal
+
+
 def test_initializer_fallback_keeps_the_calibrated_reset_threshold(monkeypatch):
     """A failed agent call must not shatter trajectories with a bogus threshold."""
     _no_llm(monkeypatch, "initializer")

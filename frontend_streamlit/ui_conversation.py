@@ -5,6 +5,7 @@ import hashlib
 import html
 import importlib.util
 import json
+import math
 import mimetypes
 import re
 import time
@@ -34,6 +35,15 @@ except ImportError:
     import run_setup_agent
     import ui_results_workspace as workspace
     import ui_run_chat as diagnosis_ui
+
+
+AUTO_DATA_REVIEW_PROMPT = (
+    "Give a brief, evidence-based upload review in at most three short bullets: "
+    "sample count and sampling interval, the main state/input observation, and any important data check. "
+    "Keep it under 70 words. Do not recap architecture, run mode, or cycle settings, ask the client to approve them, "
+    "or suggest starting training. The interface will ask any needed trajectory or angle question separately. "
+    "Make clear these are measurements, not trained-model results."
+)
 
 
 def _literal(text):
@@ -302,6 +312,23 @@ def _run_setup_card(chat, message, busy):
                     st.error(str(exc))
         elif stage == "effort":
             st.caption(f"STEP 2 OF 2 · {settings['architecture']} SELECTED")
+            goal_labels = {
+                "balanced": "Balanced",
+                "accuracy": "Best validation fit",
+                "speed": "Fast inference",
+                "compact": "Smaller model",
+            }
+            goal_key = f"setup_goal_{suffix}"
+            st.session_state.setdefault(goal_key, settings.get("optimization_goal", "balanced"))
+            goal = st.selectbox("What matters most for this run?", list(goal_labels),
+                                key=goal_key, format_func=lambda value: goal_labels[value])
+            goal_help = {
+                "balanced": "Balance held-out fit, generalization, and model size.",
+                "accuracy": "Favor validation fit while keeping overfitting in check.",
+                "speed": "Favor a smaller network that is quick to evaluate at inference time.",
+                "compact": "Prefer a simpler model and avoid capacity the measurements do not support.",
+            }
+            st.caption(goal_help[goal] + " The initializer will use this preference; you can review its proposal before training starts.")
             if flow.get("effort_reason"):
                 st.markdown(f"**Run setup agent’s search suggestion · {flow['recommended_effort'].title()}**")
                 st.write(flow["effort_reason"])
@@ -354,12 +381,14 @@ def _run_setup_card(chat, message, busy):
                     try:
                         updates = json.loads(advanced)
                         updates.update(run_mode=mode, max_cycles=cycles, epochs=epochs,
+                                       optimization_goal=goal,
                                        mse_target=mse, customer_max_latency_ms=latency)
                         chat["settings"] = core.apply_changes(chat["settings"], updates)
                         flow["stage"] = "approved"
                         flow["approved_settings"] = {
                             "architecture": chat["settings"]["architecture"],
                             "run_mode": mode, "max_cycles": cycles,
+                            "optimization_goal": goal,
                         }
                         core.save_chat(chat)
                         st.rerun()
@@ -368,6 +397,10 @@ def _run_setup_card(chat, message, busy):
         elif stage == "approved":
             st.caption("SETUP APPROVED · READY WHEN YOU ARE")
             st.markdown(f"**{settings['architecture']} · {settings['run_mode'].title()} search · up to {settings['max_cycles']} cycles**")
+            goal_label = {"balanced":"Balanced", "accuracy":"Best validation fit",
+                          "speed":"Fast inference", "compact":"Smaller model"}.get(
+                              settings.get("optimization_goal", "balanced"), "Balanced")
+            st.caption(f"Priority · {goal_label}")
             if settings["architecture"] == "LSTM":
                 st.caption(f"Using {settings['lstm_seq_length']} past time steps as sequence history.")
             if settings.get("use_pinn"):
@@ -846,9 +879,7 @@ def _finish_column_review(chat, state_columns, action_columns, time_column=None,
         core.add_message(chat, "assistant", "Your columns are confirmed. I’m now mapping the saved PINN source to those measurements and checking it before enabling PINN.")
         _start_pinn_preparation(chat, "Prepare the saved PINN source using the just-confirmed state and input columns.")
         return
-    prompt = ("Analyze this uploaded dataset in depth. Describe the measured signals, sampling and segmentation, "
-              "input variation, derivative availability, and what still needs client confirmation before training.")
-    _start_data_review(chat, prompt)
+    _start_data_review(chat, AUTO_DATA_REVIEW_PROMPT)
 
 
 def _start_data_review(chat, prompt):
@@ -1196,9 +1227,7 @@ def _sync(chat, hooks):
             registry.conversations.pop(identity, None)
             if (job.purpose == "pinn_maker" and job.answer and job.answer.get("status") == "ready" and
                     not chat.get("run_dir") and chat.get("setup") is None):
-                prompt = ("Analyze this uploaded dataset in depth. Describe the measured signals, sampling and segmentation, "
-                          "input variation, derivative availability, and what still needs client confirmation before training.")
-                _start_data_review(chat, prompt)
+                _start_data_review(chat, AUTO_DATA_REVIEW_PROMPT)
     if job := registry.planning.get(identity):
         if not job.running:
             if getattr(job, "purpose", None) == "run_setup_recommendation":
@@ -1472,6 +1501,7 @@ def _submit(chat, question, files, hooks):
     if command in ("stop", "stop run", "cancel run", "stop training"):
         task = core.REGISTRY.training.get(chat["id"])
         if task and task["runner"].running:
+            task["runner"].respond_to_checkpoint("stop")
             request_stop()
             core.add_message(chat, "assistant", "Stop requested. The current step will finish and available results will be saved here.")
         else:
@@ -1558,9 +1588,7 @@ def _submit(chat, question, files, hooks):
                          "\n\nWe can work through these together; the original upload stays as it is.")
         return
     if attached and attached["ready"]:
-        prompt = question or ("Analyze this uploaded dataset in depth. Identify measured patterns, sampling or "
-                              "segmentation issues, input variation, derivative availability, and which conclusions "
-                              "cannot be made before model training. Then help me set up the run.")
+        prompt = question or AUTO_DATA_REVIEW_PROMPT
         _start_data_review(chat, prompt)
         return
     if command in start_commands:
@@ -1617,11 +1645,122 @@ def _submit(chat, question, files, hooks):
     job.start()
 
 
+def _respond_to_human_checkpoint(task, action):
+    if task["runner"].respond_to_checkpoint(action):
+        st.rerun()
+
+
+def _human_checkpoint_card(chat, task, state):
+    checkpoint = state.get("checkpoint")
+    if not isinstance(checkpoint, dict):
+        return
+    runner = task["runner"]
+    checkpoint_id = checkpoint.get("id", "review")
+    phase = checkpoint.get("phase")
+    with st.chat_message("assistant", avatar=":material/graphic_eq:"):
+        with st.container(border=True, key=f"human_tuning_checkpoint_{chat['id']}_{checkpoint_id}"):
+            if phase == "initializer":
+                config = checkpoint.get("config") or {}
+                dataset = checkpoint.get("dataset") or {}
+                st.caption("HUMAN CHECKPOINT · BEFORE THE FIRST CANDIDATE")
+                st.markdown("**Review the initializer’s starting point**")
+                goal_names = {"balanced":"Balanced", "accuracy":"Best validation fit",
+                              "speed":"Fast inference", "compact":"Smaller model"}
+                st.caption(f"Your priority · {goal_names.get(checkpoint.get('goal'), 'Balanced')}")
+                reasoning = str(config.get("reasoning", "")).strip()
+                if reasoning:
+                    st.write(reasoning)
+                st.caption("This is a starting hypothesis. The candidate scores will test it against validation data.")
+
+                with st.container(horizontal=True, gap="small"):
+                    st.metric("Learning rate", f"{float(config.get('learning_rate', 0.0)):.2g}")
+                    layers = config.get("hidden_layers") or []
+                    st.metric("Layer widths", " × ".join(str(width) for width in layers) or "—")
+                    st.metric("Dropout", f"{float(config.get('dropout_rate', 0.0)):.2f}")
+                    st.metric("Weight decay", f"{float(config.get('weight_decay', 0.0)):.2g}")
+
+                with st.container(horizontal=True, gap="small"):
+                    st.metric("Samples", f"{int(dataset.get('samples', 0)):,}")
+                    st.metric("Train · validation · test",
+                              f"{int(dataset.get('train_samples', 0)):,} · {int(dataset.get('validation_samples', 0)):,} · {int(dataset.get('test_samples', 0)):,}")
+                    st.metric("States · inputs",
+                              f"{len(dataset.get('states') or [])} · {len(dataset.get('inputs') or [])}")
+                    interval = float(dataset.get("median_dt", 0.0) or 0.0)
+                    st.metric("Median interval", f"{interval:.4g} s" if interval > 0 else "—")
+                if dataset.get("quality_notes"):
+                    st.caption("Data checks · " + " · ".join(str(note) for note in dataset["quality_notes"]))
+
+                with st.expander("Search bounds and training details"):
+                    st.json({key: config.get(key) for key in (
+                        "lr_search_min", "lr_search_max", "hidden_size_search_min",
+                        "hidden_size_search_max", "num_layers_search_min",
+                        "num_layers_search_max", "epochs", "batch_size",
+                        "early_stop_patience", "activation",
+                    ) if key in config})
+                choices = [
+                    ("accept", "Use recommendation", "check"),
+                    ("compact", "Prefer smaller", "compress"),
+                    ("regularize", "Regularize more", "shield"),
+                    ("widen", "Widen search", "open_in_full"),
+                ]
+            elif phase == "early_results":
+                recent = checkpoint.get("recent_results") or []
+                latest = recent[-1] if recent else {}
+                st.caption(f"HUMAN CHECKPOINT · CYCLE {checkpoint.get('cycle', 2)} OF {checkpoint.get('max_cycles', '?')}")
+                st.markdown("**The first candidates are in. How should the remaining search adapt?**")
+                st.caption("These are validation results; the held-out test segment remains reserved for the final check.")
+                with st.container(horizontal=True, gap="small"):
+                    st.metric("Latest validation MSE", f"{float(latest.get('val_mse', float('nan'))):.5g}")
+                    st.metric("Best validation MSE", f"{float(checkpoint.get('best_mse', float('nan'))):.5g}")
+                    train_mse = float(latest.get("train_mse", float("nan")))
+                    val_mse = float(latest.get("val_mse", float("nan")))
+                    gap = val_mse / train_mse if train_mse > 0 and train_mse < float("inf") else float("nan")
+                    st.metric("Validation / training", f"{gap:.2f}×" if gap < float("inf") else "—")
+                    st.metric("Latest cycle time", f"{float(latest.get('training_seconds', 0.0)):.1f} s")
+
+                chart_rows = [
+                    {"cycle": int(row.get("cycle", index + 1)),
+                     "Training MSE": float(row.get("train_mse", 0.0)),
+                     "Validation MSE": float(row.get("val_mse", 0.0))}
+                    for index, row in enumerate(recent)
+                    if row.get("train_mse") is not None and row.get("val_mse") is not None
+                    and math.isfinite(float(row["train_mse"])) and math.isfinite(float(row["val_mse"]))
+                ]
+                if chart_rows:
+                    st.line_chart(chart_rows, x="cycle", y=["Training MSE", "Validation MSE"],
+                                  height=190, y_label="MSE")
+                state_errors = checkpoint.get("state_validation_mse") or {}
+                state_rows = [{"state": name, "validation_mse": float(value)}
+                              for name, value in state_errors.items()
+                              if math.isfinite(float(value))]
+                if state_rows:
+                    st.caption("First-step derivative MSE by state · units follow the dataset")
+                    st.bar_chart(state_rows, x="state", y="validation_mse", height=190,
+                                 y_label="MSE")
+                choices = [
+                    ("continue", "Continue search", "arrow_forward"),
+                    ("compact", "Smaller candidates", "compress"),
+                    ("regularize", "Regularize more", "shield"),
+                    ("widen", "Widen search", "open_in_full"),
+                    ("stop", "Keep best and stop", "stop"),
+                ]
+            else:
+                return
+
+            columns = st.columns(len(choices), gap="small")
+            for column, (action, label, icon) in zip(columns, choices):
+                if column.button(label, key=f"human_tuning_{checkpoint_id}_{action}",
+                                 type="primary" if action in ("accept", "continue") else "secondary",
+                                 icon=f":material/{icon}:", width="stretch"):
+                    _respond_to_human_checkpoint(task, action)
+
+
 def _working(chat):
     identity = chat["id"]
     if task := core.REGISTRY.training.get(identity):
         if task["runner"].running:
             state = task["state"]
+            _human_checkpoint_card(chat, task, state)
             with st.chat_message("assistant", avatar=":material/graphic_eq:"):
                 with st.status(state["stage"], expanded=True):
                     st.caption(f"Working for {workspace.duration(time.time()-task['started'])}")
@@ -1715,6 +1854,7 @@ def render_app(*, runner, drain):
                     st.caption(f":material/attach_file: {workspace.literal(dataset['name'])}")
                 if training_active:
                     if st.button("Stop run", icon=":material/stop:", key="conversation_stop"):
+                        training["runner"].respond_to_checkpoint("stop")
                         request_stop()
                         core.add_message(chat, "assistant", "Stop requested. I'll save the available results after the current step.")
                         st.rerun()

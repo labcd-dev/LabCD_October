@@ -39,6 +39,7 @@ class RunSettings(BaseModel):
     """Settings a conversation may change. No code, credentials or filesystem paths."""
     model_config = ConfigDict(extra="forbid")
     architecture: Literal["LSTM", "MLP"] = "LSTM"
+    optimization_goal: Literal["balanced", "accuracy", "speed", "compact"] = "balanced"
     run_mode: Literal["fast", "regular", "heavy", "expert"] = "fast"
     max_cycles: int = Field(default=3, ge=1, le=100)
     epochs: int = Field(default=100, ge=1, le=5000)
@@ -674,6 +675,7 @@ def make_options(chat):
     if settings["manual_starting_hidden_layers"] is not None:
         locked["hidden_layers"] = settings["manual_starting_hidden_layers"]
     return SysIDOptions(data_path=str(path), output_dir=str(OUTPUT_DIR), interactive=False, save_plot=True,
+                        human_in_the_loop=True,
                         user_overrides=locked, initializer_overrides=locked,
                         pinn_equation_file=pinn_equation_file, **settings)
 

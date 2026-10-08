@@ -75,6 +75,7 @@ def test_uploaded_data_review_and_setup_render_inside_chat(app_storage):
     app.run()
     assert not app.exception
     assert any(item.label == "Samples" for item in app.metric)
+    assert any(item.label == "More signal checks" for item in app.expander)
     assert any(button.label == "One continuous run" for button in app.button)
     assert any(button.label == "Several stacked runs" for button in app.button)
     next(button for button in app.button if button.label == "One continuous run").click().run()
@@ -275,6 +276,7 @@ def test_pasted_step_response_flows_to_run_review_and_excel_preview(app_storage,
     # the setup agent has its own recommendation/approval coverage below.
     monkeypatch.setattr(ui, "_start_run_setup_agent", lambda chat: False)
     started = []
+    review_prompts = []
 
     class Client:
         settings = SimpleNamespace(model="configured-current-model")
@@ -304,6 +306,7 @@ def test_pasted_step_response_flows_to_run_review_and_excel_preview(app_storage,
             started.append(self.options)
 
     def complete_data_review(chat, prompt):
+        review_prompts.append(prompt)
         chat["setup"] = {"stage": "complete", "dataset_sha256": chat["dataset"]["sha256"]}
         core.save_chat(chat)
 
@@ -330,6 +333,9 @@ def test_pasted_step_response_flows_to_run_review_and_excel_preview(app_storage,
     assert corrected["column_mapping"]["k"] == "removed"
     assert corrected["ready"]
     assert not corrected["issues"]
+    assert len(review_prompts) == 1
+    assert "at most three short bullets" in review_prompts[0]
+    assert "Do not recap architecture" in review_prompts[0]
     assert any("less reliable" in warning for warning in corrected["warnings"])
 
     app.chat_input[0].set_value("No, remove output; we don't have a separate output").run()
@@ -562,6 +568,8 @@ def test_run_setup_agent_opens_inline_model_then_approved_effort_steps(app_stora
     assert app.session_state["conversation"]["run_setup_flow"]["stage"] == "effort"
     assert app.segmented_control(key=f"setup_effort_{suffix}").value == "regular"
 
+    assert any(item.label == "What matters most for this run?" for item in app.selectbox)
+    app.selectbox(key=f"setup_goal_{suffix}").set_value("speed").run()
     app.segmented_control(key=f"setup_effort_{suffix}").set_value("fast").run()
     app.button(key=f"setup_approve_{suffix}").click().run()
 
@@ -569,9 +577,63 @@ def test_run_setup_agent_opens_inline_model_then_approved_effort_steps(app_stora
     flow = app.session_state["conversation"]["run_setup_flow"]
     assert flow["stage"] == "approved"
     assert app.session_state["conversation"]["settings"]["architecture"] == "MLP"
+    assert app.session_state["conversation"]["settings"]["optimization_goal"] == "speed"
     assert app.session_state["conversation"]["settings"]["run_mode"] == "fast"
     assert app.session_state["conversation"]["settings"]["max_cycles"] == 6
     assert app.button(key=f"setup_start_{suffix}").disabled is False
+
+
+def test_human_tuning_checkpoint_cards_render_and_accept_client_guidance():
+    class ReviewRunner:
+        action = None
+        def respond_to_checkpoint(self, action):
+            self.action = action
+            return True
+
+    script = '''
+import streamlit as st
+from frontend_streamlit.ui_conversation import _human_checkpoint_card
+_human_checkpoint_card({"id": "test-chat"}, st.session_state["task"], st.session_state["state"])
+'''
+    runner = ReviewRunner()
+    task = {"runner": runner}
+    app = AppTest.from_string(script, default_timeout=30)
+    app.session_state["task"] = task
+    app.session_state["state"] = {"checkpoint": {
+        "id": "initializer_1", "phase": "initializer", "goal": "balanced",
+        "config": {"learning_rate": 0.001, "hidden_layers": [32], "dropout_rate": 0.1,
+                   "weight_decay": 0.001, "reasoning": "A compact starting model suits this sample size.",
+                   "lr_search_min": 0.0001, "lr_search_max": 0.001,
+                   "hidden_size_search_min": 16, "hidden_size_search_max": 128,
+                   "num_layers_search_min": 1, "num_layers_search_max": 2,
+                   "epochs": 80, "batch_size": 32, "early_stop_patience": 20,
+                   "activation": "tanh"},
+        "dataset": {"samples": 120, "train_samples": 84, "validation_samples": 18,
+                    "test_samples": 18, "states": ["s_position"], "inputs": ["a_force"],
+                    "median_dt": 0.01, "quality_notes": []},
+    }}
+    app.run()
+    assert not app.exception
+    assert any("Review the initializer’s starting point" in item.value for item in app.markdown)
+    assert any(button.label == "Prefer smaller" for button in app.button)
+    app.button(key="human_tuning_initializer_1_compact").click().run()
+    assert not app.exception
+    assert runner.action == "compact"
+
+    runner.action = None
+    app.session_state["state"] = {"checkpoint": {
+        "id": "early_results_2", "phase": "early_results", "cycle": 2,
+        "max_cycles": 6, "best_mse": 0.02,
+        "recent_results": [
+            {"cycle": 1, "train_mse": 0.03, "val_mse": 0.04, "training_seconds": 1.0},
+            {"cycle": 2, "train_mse": 0.02, "val_mse": 0.02, "training_seconds": 1.2},
+        ],
+        "state_validation_mse": {"s_position": 0.025},
+    }}
+    app.run()
+    assert not app.exception
+    assert any("How should the remaining search adapt?" in item.value for item in app.markdown)
+    assert app.button(key="human_tuning_early_results_2_widen")
 
 
 def test_completed_run_question_routes_to_conversational_agent(app_storage, monkeypatch):

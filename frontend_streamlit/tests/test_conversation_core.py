@@ -151,9 +151,11 @@ def test_options_reject_changed_attachment(storage):
 
 def test_plan_maps_to_pipeline_and_locks_requested_values(storage):
     chat = attached_chat()
-    chat["settings"] = core.apply_changes(chat["settings"], {"architecture":"MLP", "epochs":25, "max_cycles":2, "hidden_size_min":16, "manual_starting_hidden_layers":[32,16]})
+    chat["settings"] = core.apply_changes(chat["settings"], {"architecture":"MLP", "optimization_goal":"speed", "epochs":25, "max_cycles":2, "hidden_size_min":16, "manual_starting_hidden_layers":[32,16]})
     options = core.make_options(chat)
     assert options.architecture == "MLP" and options.epochs == 25 and options.max_cycles == 2
+    assert options.optimization_goal == "speed"
+    assert options.human_in_the_loop is True
     assert options.initializer_overrides["epochs"] == 25
     assert options.initializer_overrides["hidden_layers"] == [32,16]
     assert options.api_provider is None and options.llm_model is None
@@ -175,6 +177,7 @@ def test_manual_run_uses_bounded_per_conversation_presets(storage):
 
 @pytest.mark.parametrize("changes", [
     {"llm_model":"unapproved-model"}, {"data_path":"outside.csv"}, {"epochs":0},
+    {"optimization_goal":"guaranteed"},
     {"manual_starting_hidden_layers":[-1]}, {"mse_target":float("nan")},
     {"hidden_size_min":500,"hidden_size_max":32}, {"savgol_window":4},
     {"manual_starting_hidden_layers":[16]}, {"manual_starting_hidden_layers":[32,32,32,32]},

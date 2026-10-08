@@ -59,6 +59,10 @@ class PipelineRunner:
         self.thread: Optional[threading.Thread] = None
         self.run_dir: Optional[Path] = None
         self.last_stage = "Preparing run"
+        self._review_condition = threading.Condition()
+        self._review_sequence = 0
+        self._review_decision = None
+        self.pending_checkpoint = None
 
     def _on_event(self, kind: str, payload: Dict[str, Any]) -> None:
         if kind == "run_started":
@@ -73,7 +77,10 @@ class PipelineRunner:
         sys.stdout = router
         try:
             self.result = run_pipeline(
-                self.options, on_event=self._on_event, install_signal_handler=False
+                self.options,
+                on_event=self._on_event,
+                install_signal_handler=False,
+                human_review=self.request_human_review if getattr(self.options, "human_in_the_loop", False) else None,
             )
         except Exception as exc:  # noqa: BLE001 - surface it in the UI
             import traceback
@@ -99,6 +106,34 @@ class PipelineRunner:
         reset_stop_flag()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
+
+    def request_human_review(self, phase: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Pause the worker until the client chooses how to steer this run."""
+        with self._review_condition:
+            self._review_sequence += 1
+            checkpoint_id = f"{phase}_{self._review_sequence}"
+            checkpoint = {"id": checkpoint_id, "phase": phase, **payload}
+            self.pending_checkpoint = checkpoint
+            self._review_decision = None
+            self._on_event("human_checkpoint", checkpoint)
+            while self._review_decision is None:
+                self._review_condition.wait()
+            decision = dict(self._review_decision)
+            self.pending_checkpoint = None
+            self._review_decision = None
+            self._on_event("human_checkpoint_resolved", {
+                "id": checkpoint_id, "phase": phase, "action": decision.get("action", "continue")
+            })
+            return decision
+
+    def respond_to_checkpoint(self, action: str) -> bool:
+        """Resolve the currently visible checkpoint; return false if it is stale."""
+        with self._review_condition:
+            if self.pending_checkpoint is None or self._review_decision is not None:
+                return False
+            self._review_decision = {"action": str(action)}
+            self._review_condition.notify_all()
+            return True
 
     @property
     def running(self) -> bool:
@@ -127,6 +162,11 @@ def drain(runner: "PipelineRunner", state) -> bool:
         activity.record(state.setdefault("activity", []), kind, payload)
         if kind == "stage":
             state["stage"] = payload["name"]
+        elif kind == "human_checkpoint":
+            state["checkpoint"] = payload
+        elif kind == "human_checkpoint_resolved":
+            state["checkpoint"] = None
+            state["checkpoint_action"] = payload.get("action")
         elif kind == "progress":
             state["progress"] = float(payload["value"])
         elif kind == "cycle":

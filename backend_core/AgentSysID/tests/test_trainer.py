@@ -261,10 +261,13 @@ def test_small_lstm_recording_trains_with_automatically_sized_windows():
         train, validation, state_dim=2, action_encoding_dim=1,
         hidden_layers=[8], learning_rate=1e-3, epochs=1, batch_size=8,
         patience=1, activation="relu", architecture="LSTM", verbose=False,
+        include_state_metrics=True,
     )
 
     assert model is not None
     assert np.isfinite(train_mse) and np.isfinite(val_mse) and np.isfinite(val_rmse)
+    assert len(model.state_validation_mse) == 2
+    assert np.isfinite(model.state_validation_mse).all()
 
 
 def test_empty_validation_error_names_the_offending_settings():
