@@ -12,9 +12,10 @@ for path in (ROOT, Path(__file__).resolve().parent):
 
 from frontend_streamlit.ui_conversation import render_app
 from frontend_streamlit.ui_conversation_theme import CSS
+from frontend_streamlit import ui_brand
 from frontend_streamlit.ui_pipeline_runtime import PipelineRunner, drain
 
-st.set_page_config(page_title="LabCD · Conversation workspace", page_icon="∿",
+st.set_page_config(page_title="LabCD · Conversation workspace", page_icon=str(ui_brand.ICON_PATH),
                    layout="wide", initial_sidebar_state="expanded")
 st.markdown(CSS, unsafe_allow_html=True)
 render_app(runner=PipelineRunner, drain=drain)

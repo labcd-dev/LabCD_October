@@ -26,21 +26,26 @@ CSS = """
 [data-testid="stSidebar"] button p { font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 [class*="st-key-conversation_nav_selected"] button { background:#303030; }
 [class*="st-key-conversation_nav"] button p { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; }
-.conversation-brand { display:flex; align-items:center; gap:9px; padding:15px 0 24px; font-size:17px; font-weight:600; }
-.labcd-symbol { width:25px; height:25px; border:1px solid #777; border-radius:7px; display:grid; place-items:center; font-size:14px; }
+.conversation-brand { display:flex; align-items:center; gap:10px; padding:15px 0 24px; font-size:17px; font-weight:600; }
+.conversation-brand .labcd-logo { width:130px; height:auto; flex:none; }
+.labcd-icon { display:block; width:40px; height:40px; }
 .brand-muted { color:#888; font-size:11px; font-weight:400; padding-top:4px; }
 .sidebar-footnote { color:#888; font-size:11px; line-height:1.8; padding:35px 8px 15px; }
 [data-testid="stLayoutWrapper"]:has(> .st-key-conversation_header) { position:sticky; top:0; z-index:30; background:var(--chat-bg); }
 .st-key-conversation_header { padding:10px 0 18px; margin-bottom:12px; }
-.conversation-heading { font-size:14px; color:#ddd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.conversation-heading span { color:#727272; margin:0 9px; }
+.conversation-heading { display:flex; align-items:center; gap:10px; min-width:0; font-size:14px; color:#ddd; overflow:hidden; white-space:nowrap; }
+.conversation-heading .header-brand { display:inline-flex; flex:none; align-items:center; }
+.conversation-heading .labcd-logo { width:118px; height:auto; }
+.conversation-heading .conversation-heading-separator { color:#727272; flex:none; }
+.conversation-heading-title { overflow:hidden; text-overflow:ellipsis; }
 .st-key-conversation_header button { background:transparent; border-color:transparent; font-size:12px; min-height:34px; }
 .st-key-conversation_header button:hover { background:#303030; }
 .st-key-conversation_header [data-testid="stPopover"] button p { font-size:0; }
 .st-key-conversation_header [data-testid="stPopover"] button { padding:6px; }
 .st-key-conversation_center { max-width:820px; margin:0 auto; }
 .conversation-welcome { text-align:center; padding:clamp(48px,10vh,120px) 0 27px; }
-.welcome-glyph { font-size:51px; font-weight:300; color:#e0e0e0; height:58px; margin-bottom:17px; }
+.welcome-glyph { display:flex; justify-content:center; height:58px; margin-bottom:17px; }
+.welcome-glyph .labcd-icon { width:56px; height:56px; filter:drop-shadow(0 5px 18px #756cff44); }
 .conversation-welcome h1 { font-family:Arial,sans-serif; font-size:32px; font-weight:500; letter-spacing:-1px; margin:0 0 14px; padding:0; color:#ececec; }
 .conversation-welcome p { font-size:15px; color:#aaa; line-height:1.8; }
 .st-key-conversation_suggestions { margin:3px auto 55px; }
@@ -182,7 +187,8 @@ button:focus-visible { outline:2px solid #b9b9b9; outline-offset:2px; }
   [data-testid="stBottomBlockContainer"] { padding:0 1rem .5rem; }
   .conversation-welcome { padding-top:8vh; }
   .conversation-welcome h1 { font-size:27px; }
-  .conversation-heading { font-size:12px; }
+  .conversation-heading { gap:7px; font-size:12px; }
+  .conversation-heading .labcd-logo { width:96px; }
   .run-stepper { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .st-key-conversation_file_panel {
     top:auto; right:12px; bottom:102px; left:12px; width:auto;

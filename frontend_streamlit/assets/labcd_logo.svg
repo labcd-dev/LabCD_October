@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="labcd-logo" width="148" height="40" viewBox="0 0 148 40" role="img" aria-label="LabCD">
+  <rect x="1" y="2" width="36" height="36" rx="12" fill="#8178ff"/>
+  <path d="M11 27V15h15V10" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="45" y="26" fill="#f4f6fb" font-family="Arial, sans-serif" font-size="16" font-weight="600" letter-spacing="-.3">LabCD</text>
+</svg>

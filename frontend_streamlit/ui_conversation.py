@@ -19,11 +19,12 @@ from backend_core.AgentSysID import config as cfg
 from backend_core.AgentSysID.utils import request_stop
 
 try:
-    from . import conversation_core as core, conversation_analysis as analysis, conversation_agent as agent
+    from . import ui_brand, conversation_core as core, conversation_analysis as analysis, conversation_agent as agent
     from . import ui_data_analysis as data_ui, ui_history as hist, ui_activity as activity
     from . import excel_maker, pinn_maker, run_setup_agent
     from . import ui_results_workspace as workspace, ui_run_chat as diagnosis_ui
 except ImportError:
+    import ui_brand
     import conversation_core as core
     import conversation_analysis as analysis
     import conversation_agent as agent
@@ -106,7 +107,11 @@ def _open_run(entry):
 
 def _sidebar(chat):
     with st.sidebar:
-        st.markdown('<div class="conversation-brand"><span class="labcd-symbol">L</span> LabCD <span class="brand-muted">workspace</span></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="conversation-brand">{ui_brand.LOGO_MARKUP}'
+            '<span class="brand-muted">workspace</span></div>',
+            unsafe_allow_html=True,
+        )
         st.button("New conversation", icon=":material/edit_square:", width="stretch", on_click=_new, key="conversation_new")
         query = st.text_input("Search conversations", placeholder="Search conversations", label_visibility="collapsed", key="conversation_search")
         with st.popover("Library", icon=":material/inventory_2:", width="stretch"):
@@ -523,7 +528,12 @@ def _compare_dialog(chat):
 def _header(chat, busy, has_files=False):
     with st.container(key="conversation_header"):
         title, controls = st.columns([3, 4], vertical_alignment="center")
-        title.markdown(f'<div class="conversation-heading">LabCD <span>/</span> {html.escape(chat["title"])}</div>', unsafe_allow_html=True)
+        title.markdown(
+            f'<div class="conversation-heading"><span class="header-brand">{ui_brand.LOGO_MARKUP}</span>'
+            f'<span class="conversation-heading-separator">/</span>'
+            f'<span class="conversation-heading-title">{html.escape(chat["title"])}</span></div>',
+            unsafe_allow_html=True,
+        )
         with controls:
             with st.container(horizontal=True, horizontal_alignment="right", gap="small"):
                 is_open = st.session_state.get("conversation_files", False)
@@ -1078,7 +1088,7 @@ def _messages(chat, busy, file_items=None):
     latest_plan = next((m["id"] for m in reversed(chat["messages"]) if m.get("kind") == "plan"), None)
     latest_setup = next((m["id"] for m in reversed(chat["messages"]) if m.get("kind") == "setup_question"), None)
     for message in chat["messages"]:
-        with st.chat_message(message["role"], avatar=":material/person:" if message["role"] == "user" else ":material/graphic_eq:"):
+        with st.chat_message(message["role"], avatar=":material/person:" if message["role"] == "user" else str(ui_brand.ICON_PATH)):
             if message.get("diagnosis"):
                 diagnosis_ui.render_answer(message["diagnosis"])
             elif message.get("evidence") or message.get("kind") in ("excel_maker", "pinn_maker", "clarification", "column_review", "column_correction", "pasted_table_preview", "run_setup"):
@@ -1891,7 +1901,7 @@ def _human_checkpoint_card(chat, task, state):
     runner = task["runner"]
     checkpoint_id = checkpoint.get("id", "review")
     phase = checkpoint.get("phase")
-    with st.chat_message("assistant", avatar=":material/graphic_eq:"):
+    with st.chat_message("assistant", avatar=str(ui_brand.ICON_PATH)):
         with st.container(border=True, key=f"human_tuning_checkpoint_{chat['id']}_{checkpoint_id}"):
             if phase == "initializer":
                 config = checkpoint.get("config") or {}
@@ -1990,7 +2000,7 @@ def _working(chat):
         if task["runner"].running:
             state = task["state"]
             _human_checkpoint_card(chat, task, state)
-            with st.chat_message("assistant", avatar=":material/graphic_eq:"):
+            with st.chat_message("assistant", avatar=str(ui_brand.ICON_PATH)):
                 stage = str(state.get("stage", "Preparing run"))
                 milestones = (
                     ("Inspect", {"Questionnaire", "Loading dataset", "Data Inspector"}),
@@ -2068,7 +2078,7 @@ def _working(chat):
     job = (core.REGISTRY.conversations.get(identity) or core.REGISTRY.planning.get(identity)
            or core.REGISTRY.diagnostics.get(identity))
     if job:
-        with st.chat_message("assistant", avatar=":material/graphic_eq:"):
+        with st.chat_message("assistant", avatar=str(ui_brand.ICON_PATH)):
             with st.status(getattr(job, "phase", "Reviewing your request"), expanded=False):
                 st.caption("Using your configured model and the context of this conversation.")
 
@@ -2083,7 +2093,7 @@ def _live_thread(chat, hooks):
 
 
 def _welcome():
-    st.markdown('''<div class="conversation-welcome"><div class="welcome-glyph" aria-hidden="true">∿</div>
+    st.markdown(f'''<div class="conversation-welcome"><div class="welcome-glyph" aria-hidden="true">{ui_brand.ICON_MARKUP}</div>
       <h1>What are we identifying?</h1>
       <p>Ask anything about system identification. When you’re ready, paste a table or attach a CSV/Excel file.<br>
       A time column and one measured state are a good start; include inputs if you recorded them. We can sort out the headers together.</p>
