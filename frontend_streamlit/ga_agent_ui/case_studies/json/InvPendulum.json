@@ -1,0 +1,25 @@
+{
+  "system_name": "Inverted Pendulum",
+  "python_code": "import numpy as np\n\ndef system_dynamics(t, x, u):\n    m = 0.1  # mass (kg)\n    l = 0.5  # length (m)\n    b = 0.1  # damping\n    g = 9.81 # gravity\n    theta, theta_dot = x[0], x[1]\n    u_scalar = u[0] if isinstance(u, (list, np.ndarray)) else u\n    theta_dotdot = (u_scalar - m * g * l * np.sin(theta) - b * theta_dot) / (m * l**2)\n    return np.array([theta_dot, theta_dotdot])",
+  "system_description": "An inverted pendulum on a pivot with a mass at the end of a rigid rod. Control torque is applied at the pivot to balance the pendulum in the upright position (theta = pi).",
+  "control_objective": "Design a controller to balance the inverted pendulum in the upright position (theta = pi) with minimal settling time, overshoot, and steady-state error, while respecting torque limits.",
+  "target": 3.141592653589793,
+  "num_inputs": 1,
+  "trim_values": 0.0,
+  "trim_ics": [0.0, 0.0],
+  "input_channel": 0,
+  "output_channel": 0,
+  "num_states": 2,
+  "min_ctrl": -1.0,
+  "max_ctrl": 1.0,
+  "fixed_targets": {
+    "mse": 0.2,
+    "settling_time": 1.0,
+    "overshoot": 5.0,
+    "control_effort": 0.1
+  },
+  "simulation_params": {
+    "dt": 0.01,
+    "max_time": 20.0
+  }
+}

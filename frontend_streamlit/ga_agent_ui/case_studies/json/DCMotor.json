@@ -1,0 +1,25 @@
+{
+  "system_name": "DC Motor",
+  "python_code": "import numpy as np\n\ndef system_dynamics(t, x, u):\n    # DC Motor armature-controlled model\n    # States: x[0] = omega_m (rad/s), x[1] = i_a (A)\n    # Input: u[0] = V_a (V)\n\n    Jm = 0.01\n    bm = 0.001\n    Kt = 0.1\n    Ke = 0.1\n    R = 1\n    L = 0.01\n\n    omega = x[0]\n    ia = x[1]\n\n    Va = u[0] if isinstance(u, (list, np.ndarray)) else u\n\n    didt = (-R * ia - Ke * omega + Va) / L\n    domegadt = (Kt * ia - bm * omega) / Jm\n\n    return np.array([domegadt, didt])",
+  "system_description": "A DC motor modeled for inner-loop armature current control. The states are angular velocity and armature current, with armature voltage as the control input.",
+  "control_objective": "Minimize settling time.",
+  "target": 1.0,
+  "num_inputs": 1,
+  "trim_values": [0.0],
+  "trim_ics": [0.0, 0.0],
+  "input_channel": 0,
+  "output_channel": 0,
+  "num_states": 2,
+  "min_ctrl": -24.0,
+  "max_ctrl": 24.0,
+  "fixed_targets": {
+    "mse": 0.1,
+    "settling_time": 3.0,
+    "overshoot": 10.0,
+    "control_effort": 0.1
+  },
+  "simulation_params": {
+    "dt": 0.01,
+    "max_time": 20.0
+  }
+}

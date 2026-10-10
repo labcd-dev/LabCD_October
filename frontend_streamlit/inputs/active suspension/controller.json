@@ -1,0 +1,35 @@
+{
+  "control_architecture": "Cascaded",
+  "pid_loops": [
+    {
+      "loop_number": 1,
+      "loop_name": "inner_velocity_control",
+      "controllers": [
+        {
+          "controlled_variable": "velocity of first mass",
+          "controlled_variable_in_equation": "X[1]",
+          "setpoint_variable_in_equation": "X_sp[1]",
+          "output_signal": "Force command to plant",
+          "output_variable_in_equation": "U[0]",
+          "output_unit": "N",
+          "input_unit": "m/s"
+        }
+      ]
+    },
+    {
+      "loop_number": 2,
+      "loop_name": "outer_position_control",
+      "controllers": [
+        {
+          "controlled_variable": "position of first mass",
+          "controlled_variable_in_equation": "X[0]",
+          "setpoint_variable_in_equation": "X_sp[0]",
+          "output_signal": "Velocity setpoint for inner loop",
+          "output_variable_in_equation": "X_sp[1]",
+          "output_unit": "m/s",
+          "input_unit": "m"
+        }
+      ]
+    }
+  ]
+}

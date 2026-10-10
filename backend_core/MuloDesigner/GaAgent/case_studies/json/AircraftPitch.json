@@ -1,0 +1,25 @@
+{
+  "system_name": "Transport Aircraft Longitudinal",
+  "python_code": "import numpy as np\n\n# Helper function for air data calculations\ndef system_dynamics(VT, ALT):\n    \"\"\"Air Data Computer: Compute Mach number and dynamic pressure\"\"\"\n    R0 = 2.377e-3\n    TFAC = 1.0 - 0.703e-5 * ALT\n    T = 519.0 * TFAC\n    if ALT >= 35000.0:\n        T = 390.0\n    RHO = R0 * (TFAC ** 4.14)\n    AMACH = VT / np.sqrt(1.4 * 1716.3 * T)\n    QBAR = 0.5 * RHO * VT * VT\n    return AMACH, QBAR\n\ndef dynamics(t, x, u):\n    \"\"\"\n    Longitudinal dynamics for medium transport aircraft (Stevens et al., 2015)\n    State vector: x = [VT, alpha, theta, Q, H]\n    Control vector: u = [throttle, elevator_deg]\n    \n    Args:\n        t: time (unused, but required for interface compatibility)\n        x: state vector\n        u: control vector\n    \n    Returns:\n        xdot: state derivatives\n    \"\"\"\n    # Aircraft parameters\n    S = 2170.0          # Wing area [ft^2]\n    CBAR = 17.5         # Mean aerodynamic chord [ft]\n    MASS = 5.0e3        # Mass [slugs]\n    IYY = 4.1e6         # Pitch moment of inertia [slug-ft^2]\n    TSTAT = 6.0e4       # Static thrust [lb]\n    DTDV = -38.0        # Thrust variation with velocity [lb/(ft/s)]\n    ZE = 2.0            # Thrust moment arm [ft]\n    CDCLS = 0.042       # Drag polar coefficient\n    \n    # Aerodynamic derivatives (stability axes)\n    CLA = 0.085         # Lift curve slope [per degree]\n    CMA = -0.022        # Pitch moment derivative [per degree]\n    CMDE = -0.016       # Elevator effectiveness [per degree]\n    CMQ = -16.0         # Pitch damping [per rad/s]\n    CMADOT = -6.0       # Alpha-dot damping [per rad/s]\n    CLADOT = 0.0        # Lift due to alpha-dot [per rad/s]\n    \n    # Clean configuration (LAND = 0)\n    CLO = 0.20          # Zero-alpha lift coefficient\n    CDO = 0.016         # Zero-lift drag coefficient\n    CMO = 0.05          # Zero-alpha moment coefficient\n    DCDG = 0.0          # Landing gear drag increment\n    DCMG = 0.0          # Landing gear moment increment\n    \n    # Fixed parameters\n    XCG = 0.25          # CG position (fraction of MAC)\n    RTOD = 57.29578     # Radians to degrees\n    GD = 32.17          # Gravitational acceleration [ft/s^2]\n    \n    # Extract states\n    VT = x[0]           # True airspeed [ft/s]\n    alpha = x[1]        # Angle of attack [rad]\n    theta = x[2]        # Pitch attitude [rad]\n    Q = x[3]            # Pitch rate [rad/s]\n    H = x[4]            # Altitude [ft]\n    \n    # Extract controls\n    THTL = u[0]         # Throttle [0-1]\n    ELEV = -u[1]         # Elevator deflection [deg]\n    \n    # Air data calculations\n    MACH, QBAR = ADC(VT, H)\n    QS = QBAR * S\n    \n    # Trigonometric quantities\n    SALP = np.sin(alpha)\n    CALP = np.cos(alpha)\n    ALPHA_DEG = RTOD * alpha\n    \n    # Flight path angle\n    gamma = theta - alpha\n    SGAM = np.sin(gamma)\n    CGAM = np.cos(gamma)\n    \n    # Thrust\n    THR = (TSTAT + VT * DTDV) * max(THTL, 0)\n    \n    # Aerodynamic coefficients\n    CL = CLO + CLA * ALPHA_DEG\n    CM = DCMG + CMO + CMA * ALPHA_DEG + CMDE * ELEV + CL * (XCG - 0.25)\n    CD = DCDG + CDO + CDCLS * CL * CL\n    \n    # State derivatives\n    xdot = np.zeros(5)\n    \n    # Velocity derivative\n    xdot[0] = (THR * CALP - QS * CD) / MASS - GD * SGAM\n    \n    # Alpha derivative (with alpha-dot damping)\n    # Note: This requires solving implicitly. We'll use an iterative approach.\n    # First compute alpha_dot without the damping term\n    alpha_dot_initial = (-THR * SALP - QS * CL + MASS * (VT * Q + GD * CGAM)) / (MASS * VT)\n    \n    # Now compute with damping\n    D = 0.5 * CBAR * (CMQ * Q + CMADOT * alpha_dot_initial) / VT\n    CM_total = CM + D\n    \n    # Recompute alpha_dot with updated CM\n    xdot[1] = (-THR * SALP - QS * CL + MASS * (VT * Q + GD * CGAM)) / (MASS * VT + QS * CLADOT)\n    \n    # Theta derivative\n    xdot[2] = Q\n    \n    # Pitch acceleration (with pitch damping)\n    # Recompute D with the final alpha_dot\n    D = 0.5 * CBAR * (CMQ * Q + CMADOT * xdot[1]) / VT\n    xdot[3] = (QS * CBAR * (CM + D) + THR * ZE) / IYY\n    \n    # Altitude rate\n    xdot[4] = VT * SGAM\n    \n    return xdot",
+  "system_description": "Medium-sized transport aircraft longitudinal dynamics (Stevens et al., 2015) with 5 states (VT, alpha, theta, Q, H) and 2 controls (throttle, elevator). Clean configuration at 30,000 ft cruise.",
+  "control_objective": "Design a controller to regulate pitch attitude (theta) to a desired setpoint with minimal settling time, overshoot, and steady-state error",
+  "target": 0.0948,
+  "num_inputs": 2,
+  "trim_values": [0.204, 4.1],
+  "trim_ics": [500.0, 0.0948, 0.0, 0.0, 30000.0],
+  "input_channel": 1,
+  "output_channel": 2,
+  "num_states": 5,
+  "min_ctrl": -25.0,
+  "max_ctrl": 25.0,
+  "fixed_targets": {
+    "mse": 0.001,
+    "settling_time": 7.0,
+    "overshoot": 10.0,
+    "control_effort": 0.25
+  },
+  "simulation_params": {
+    "dt": 0.01,
+    "max_time": 50.0
+  }
+}

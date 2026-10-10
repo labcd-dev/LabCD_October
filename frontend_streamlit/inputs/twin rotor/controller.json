@@ -1,0 +1,53 @@
+{
+  "control_architecture": "Cascaded",
+  "pid_loops": [
+    {
+      "loop_number": 1,
+      "loop_name": "inner_rate_control",
+      "controllers": [
+        {
+          "controlled_variable": "pitch_rate",
+          "controlled_variable_in_equation": "X[1]",
+          "setpoint_variable_in_equation": "X_sp[1]",
+          "output_signal": "U_main",
+          "output_variable_in_equation": "U[0]",
+          "output_unit": "V",
+          "input_unit": "rad/s"
+        },
+        {
+          "controlled_variable": "yaw_rate",
+          "controlled_variable_in_equation": "X[3]",
+          "setpoint_variable_in_equation": "X_sp[3]",
+          "output_signal": "U_tail",
+          "output_variable_in_equation": "U[1]",
+          "output_unit": "%",
+          "input_unit": "rad/s"
+        }
+      ]
+    },
+    {
+      "loop_number": 2,
+      "loop_name": "outer_angle_control",
+      "controllers": [
+        {
+          "controlled_variable": "pitch_angle",
+          "controlled_variable_in_equation": "X[0]",
+          "setpoint_variable_in_equation": "X_sp[0]",
+          "output_signal": "dtheta_setpoint",
+          "output_variable_in_equation": "X_sp[1]",
+          "output_unit": "rad/s",
+          "input_unit": "rad"
+        },
+        {
+          "controlled_variable": "yaw_angle",
+          "controlled_variable_in_equation": "X[2]",
+          "setpoint_variable_in_equation": "X_sp[2]",
+          "output_signal": "dpsi_setpoint",
+          "output_variable_in_equation": "X_sp[3]",
+          "output_unit": "rad/s",
+          "input_unit": "rad"
+        }
+      ]
+    }
+  ]
+}

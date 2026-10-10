@@ -1,0 +1,25 @@
+{
+  "system_name": "Ball Beam",
+  "python_code": "import numpy as np\n\ndef system_dynamics(t, x, u):\n    # Ball and Beam dynamics (only ball states)\n    # States:\n    #   x[0]: ball position r (m)\n    #   x[1]: ball velocity dr (m/s)\n    # Input u: beam angle alpha (rad) - motor dynamics removed\n\n    g = 9.8                  # gravity (m/s²)\n\n    r, dr = x[0], x[1]\n    alpha = u[0] if isinstance(u, (list, np.ndarray)) else u\n\n    # Ball rolling dynamics (exact match to MATLAB model)\n    ddr = (5/7) * g * np.sin(alpha)\n\n    return np.array([dr, ddr])",
+  "system_description": "Ball and beam system. Only ball position and velocity are states. The control input is directly the beam tilt angle alpha (radians).",
+  "control_objective": "Design a stable controller to balance the ball at the target position (0.1 m) with minimal settling time, overshoot, and steady-state error.",
+  "target": 0.0,
+  "num_inputs": 1,
+  "trim_values": 0.0,
+  "trim_ics": [1.0, 0.0],
+  "input_channel": 0,
+  "output_channel": 0,
+  "num_states": 2,
+  "min_ctrl": -0.5,
+  "max_ctrl": 0.5,
+  "fixed_targets": {
+    "mse": 0.05,
+    "settling_time": 1.0,
+    "overshoot": 1.0,
+    "control_effort": 0.1
+  },
+  "simulation_params": {
+    "dt": 0.01,
+    "max_time": 20.0
+  }
+}

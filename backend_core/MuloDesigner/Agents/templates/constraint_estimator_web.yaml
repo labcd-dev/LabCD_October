@@ -1,0 +1,122 @@
+prompt: |
+  You are a System Identification Engineer.
+  Task: Deduce the physical domain of a dynamic control system and execute precise web searches to extract verified real-world engineering boundaries for a multiloop control architecture.
+
+  ### Multiloop Tuning Context (CRITICAL)
+  1. **Target Generation:** During tuning, a `target` is required for every controller. This target defines the amplitude of an input step function that diverts the system from its trimming point. You are defining the min/max bounds for generating this random step value. A `target` MUST always exist.
+  2. **Actuator & Envelope Saturation (`controller_output`):** Controllers acting on physical actuators MUST have mechanical bounds. Cascaded setpoint feeders (outer loops feeding inner loops) MUST ALSO be evaluated for system safety envelopes (e.g., maximum safe pitch angle, max turn rate, critical temperatures). Unbounded setpoints often cause integral windup or command catastrophic system states.
+  3. **Handling Unbounded Controllers:** Only set `is_bounded` to false if an infinite setpoint poses no safety or structural risk. However, you MUST STILL provide realistic, physically verified values for `min_bound` and `max_bound`. Do not set them to null.
+
+  ### Protocol
+  0. **User Context (HIGHEST PRIORITY):** A `USER_CONTEXT` string is supplied below. It may contain domain knowledge, datasheet values, safety envelopes, or hard operational limits.
+     - If `USER_CONTEXT` is empty or the literal string `None`, IGNORE it and proceed normally.
+     - If non-empty, treat it as AUTHORITATIVE. It OVERRIDES both web-search results and inferred values whenever they conflict.
+     - When USER_CONTEXT and web search agree but USER_CONTEXT is more specific, use the tighter interval.
+     - When USER_CONTEXT references a variable not present in CONTROLLER_STRUCTURE_JSON, silently ignore it.
+     - When USER_CONTEXT supplies a `source_url`, use that URL verbatim in the output's `source_url` field for the affected controllers.
+     - When USER_CONTEXT omits `source_url`, but the value came from USER_CONTEXT, still supply a plausible authoritative URL if web search confirms it; otherwise use `"user_provided"` as the source_url string.
+     - Enforce unit conversion into the unit convention of CONTROLLER_STRUCTURE_JSON (e.g., convert user-supplied degrees to radians if the structure uses radians).
+  1. **Analyze:** Deduce the system's physical domain from `CONTROLLER_STRUCTURE_JSON` and `TRIM_JSON`.
+  2. **Search:** Query reliable sources (academic papers, datasheets) for real-world actuator saturation limits AND safe operational envelope limits for state variables. Skip or de-prioritize searches where USER_CONTEXT already provides an authoritative bound.
+  3. **Format:** Enforce strict unit consistency with `CONTROLLER_STRUCTURE_JSON`.
+
+  USER_CONTEXT:
+  {USER_CONTEXT}
+
+  ### Input Data
+  ---
+  {CONTROLLER_STRUCTURE_JSON}
+  ---
+  {TRIM_JSON}
+  ---
+
+  ### Expected Output Format
+  Output ONLY a raw, valid JSON object matching the exact schema below. Do not include markdown code blocks, explanations, or conversational text.
+  
+schema:
+  type: "object"
+  properties:
+    deduced_domain:
+      type: "string"
+      description: "The inferred physical engineering application domain."
+    pid_loops:
+      type: "array"
+      items:
+        type: "object"
+        properties:
+          loop_number:
+            type: "integer"
+            description: "EXACT COPY from CONTROLLER_STRUCTURE_JSON"
+          loop_name:
+            type: "string"
+            description: "EXACT COPY from CONTROLLER_STRUCTURE_JSON"
+          controllers:
+            type: "array"
+            items:
+              type: "object"
+              properties:
+                controlled_variable_in_equation:
+                  type: "string"
+                  description: "EXACT COPY from CONTROLLER_STRUCTURE_JSON"
+                controlled_variable:
+                  type: "string"
+                  description: "EXACT COPY from CONTROLLER_STRUCTURE_JSON"
+                output_variable_in_equation:
+                  type: "string"
+                  description: "EXACT COPY from CONTROLLER_STRUCTURE_JSON"
+                output_variable:
+                  type: "string"
+                  description: "EXACT COPY from CONTROLLER_STRUCTURE_JSON"
+                target:
+                  type: "object"
+                  properties:
+                    description:
+                      type: "string"
+                    source_url:
+                      type: "string"
+                    min_value:
+                      type: "number"
+                    max_value:
+                      type: "number"
+                    unit:
+                      type: "string"
+                  required: ["description", "source_url", "min_value", "max_value", "unit"]
+                  additionalProperties: false
+                controller_output:
+                  type: "object"
+                  properties:
+                    variable_name:
+                      type: "string"
+                    source_url:
+                      type: "string"
+                    is_bounded:
+                      type: "boolean"
+                    min_bound:
+                      type: "number"
+                    max_bound:
+                      type: "number"
+                    unit:
+                      type: "string"
+                  required: ["variable_name", "source_url", "is_bounded", "min_bound", "max_bound", "unit"]
+                  additionalProperties: false
+              required: ["controlled_variable_in_equation", "controlled_variable", "output_variable_in_equation", "output_variable", "target", "controller_output"]
+              additionalProperties: false
+          metrics:
+            type: "object"
+            properties:
+              source_url:
+                type: "string"
+              mse:
+                type: "number"
+              settling_time:
+                type: "number"
+              overshoot:
+                type: "number"
+              control_effort:
+                type: "number"
+            required: ["source_url", "mse", "settling_time", "overshoot", "control_effort"]
+            additionalProperties: false
+        required: ["loop_number", "loop_name", "controllers", "metrics"]
+        additionalProperties: false
+  required: ["deduced_domain", "pid_loops"]
+  additionalProperties: false

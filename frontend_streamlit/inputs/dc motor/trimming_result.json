@@ -1,0 +1,112 @@
+{
+  "system": {
+    "name": "dc_motor_model",
+    "n_states": 3,
+    "n_inputs": 1,
+    "n_outputs": 3,
+    "state_variables": [
+      "i",
+      "omega",
+      "theta"
+    ],
+    "input_variables": [
+      "V"
+    ],
+    "parameters": {
+      "R": 1.0,
+      "L": 0.5,
+      "Kt": 0.01,
+      "Ke": 0.01,
+      "J": 0.01,
+      "b": 0.1,
+      "TL": 0.0
+    }
+  },
+  "equilibrium": {
+    "x_e": [
+      100.0,
+      10.0,
+      0.0
+    ],
+    "u_e": [
+      100.1
+    ],
+    "y_e": [
+      100.0,
+      10.0,
+      0.0
+    ]
+  },
+  "linearized": {
+    "A": [
+      [
+        -2.0,
+        -0.02,
+        0.0
+      ],
+      [
+        1.0,
+        -10.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ]
+    ],
+    "B": [
+      [
+        2.0
+      ],
+      [
+        0.0
+      ],
+      [
+        0.0
+      ]
+    ],
+    "C": [
+      [
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "D": [
+      [
+        0.0
+      ],
+      [
+        0.0
+      ],
+      [
+        0.0
+      ]
+    ]
+  },
+  "stability": {
+    "eigenvalues": [
+      "0.000000",
+      "-2.002500",
+      "-9.997500"
+    ],
+    "classification": "marginally_stable"
+  },
+  "diagnostics": {
+    "converged": true,
+    "feasible": true,
+    "equilibrium_match": true,
+    "timestamp": "2026-08-23T09:17:28.000000"
+  }
+}

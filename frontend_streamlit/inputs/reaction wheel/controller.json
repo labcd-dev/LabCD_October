@@ -1,0 +1,35 @@
+{
+  "control_architecture": "Cascaded",
+  "pid_loops": [
+    {
+      "loop_number": 1,
+      "loop_name": "inner_wheel_velocity_control",
+      "controllers": [
+        {
+          "controlled_variable": "wheel_angular_velocity",
+          "controlled_variable_in_equation": "X[3]",
+          "setpoint_variable_in_equation": "X_sp[3]",
+          "output_signal": "torque_command",
+          "output_variable_in_equation": "U[0]",
+          "output_unit": "Nm",
+          "input_unit": "rad/s"
+        }
+      ]
+    },
+    {
+      "loop_number": 2,
+      "loop_name": "outer_pendulum_angle_control",
+      "controllers": [
+        {
+          "controlled_variable": "pendulum_angle",
+          "controlled_variable_in_equation": "X[0]",
+          "setpoint_variable_in_equation": "X_sp[0]",
+          "output_signal": "wheel_velocity_setpoint",
+          "output_variable_in_equation": "X_sp[3]",
+          "output_unit": "rad/s",
+          "input_unit": "rad"
+        }
+      ]
+    }
+  ]
+}

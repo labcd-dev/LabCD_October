@@ -1,0 +1,230 @@
+{
+  "control_architecture": "Cascaded",
+  "pid_loops": [
+    {
+      "loop_number": 1,
+      "loop_name": "rate_control",
+      "controllers": [
+        {
+          "controlled_variable": "Angular velocity around x-axis",
+          "controlled_variable_in_equation": "X[9]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 0.81,
+            "min_bound": -0.81,
+            "unit": "Nm",
+            "variable_name": "Roll Torque"
+          },
+          "setpoint_variable_in_equation": "X_sp[9]",
+          "output_signal": "Roll Torque",
+          "output_variable_in_equation": "U[1]",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 0.1,
+            "min_value": 0.1,
+            "unit": "rad/s"
+          },
+          "output_unit": "Nm",
+          "input_unit": "rad/s",
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        },
+        {
+          "controlled_variable": "Angular velocity around y-axis",
+          "controlled_variable_in_equation": "X[10]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 0.81,
+            "min_bound": -0.81,
+            "unit": "Nm",
+            "variable_name": "Pitch Torque"
+          },
+          "setpoint_variable_in_equation": "X_sp[10]",
+          "output_signal": "Pitch Torque",
+          "output_variable_in_equation": "U[2]",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 0.1,
+            "min_value": 0.1,
+            "unit": "rad/s"
+          },
+          "output_unit": "Nm",
+          "input_unit": "rad/s",
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        },
+        {
+          "controlled_variable": "Angular velocity around z-axis",
+          "controlled_variable_in_equation": "X[11]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 0.14,
+            "min_bound": -0.14,
+            "unit": "Nm",
+            "variable_name": "Yaw Torque"
+          },
+          "setpoint_variable_in_equation": "X_sp[11]",
+          "output_signal": "Yaw Torque",
+          "output_variable_in_equation": "U[3]",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 0.1,
+            "min_value": 0.1,
+            "unit": "rad/s"
+          },
+          "output_unit": "Nm",
+          "input_unit": "rad/s",
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        }
+      ]
+    },
+    {
+      "loop_number": 2,
+      "loop_name": "attitude_control",
+      "controllers": [
+        {
+          "controlled_variable": "Orientation angle phi (roll)",
+          "controlled_variable_in_equation": "X[6]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 5.24,
+            "min_bound": -5.24,
+            "unit": "rad/s",
+            "variable_name": "Angular velocity around x-axis"
+          },
+          "setpoint_variable_in_equation": "X_sp[6]",
+          "output_signal": "Angular velocity around x-axis",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 0.08,
+            "min_value": 0.08,
+            "unit": "rad"
+          },
+          "output_variable_in_equation": "X_sp[9]",
+          "output_unit": "rad/s",
+          "input_unit": "rad",
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        },
+        {
+          "controlled_variable": "Orientation angle theta (pitch)",
+          "controlled_variable_in_equation": "X[7]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 5.24,
+            "min_bound": -5.24,
+            "unit": "rad/s",
+            "variable_name": "Angular velocity around y-axis"
+          },
+          "setpoint_variable_in_equation": "X_sp[7]",
+          "output_signal": "Angular velocity around y-axis",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 0.08,
+            "min_value": 0.08,
+            "unit": "rad"
+          },
+          "output_variable_in_equation": "X_sp[10]",
+          "output_unit": "rad/s",
+          "input_unit": "rad",
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        },
+        {
+          "controlled_variable": "Orientation angle psi (yaw)",
+          "controlled_variable_in_equation": "X[8]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 3.14,
+            "min_bound": -3.14,
+            "unit": "rad/s",
+            "variable_name": "Angular velocity around z-axis"
+          },
+          "setpoint_variable_in_equation": "X_sp[8]",
+          "output_signal": "Angular velocity around z-axis",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 0.08,
+            "min_value": 0.08,
+            "unit": "rad"
+          },
+          "output_variable_in_equation": "X_sp[11]",
+          "output_unit": "rad/s",
+          "input_unit": "rad",
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        }
+      ]
+    },
+    {
+      "loop_number": 3,
+      "loop_name": "position_control",
+      "controllers": [
+        {
+          "controlled_variable": "Position in y-direction",
+          "controlled_variable_in_equation": "X[1]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 0.61,
+            "min_bound": -0.61,
+            "unit": "rad",
+            "variable_name": "Orientation angle phi (roll)"
+          },
+          "setpoint_variable_in_equation": "X_sp[1]",
+          "output_signal": "Orientation angle phi (roll)",
+          "output_variable_in_equation": "X_sp[6]",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 5,
+            "min_value": 5,
+            "unit": "rad"
+          },
+          "output_unit": "rad",
+          "input_unit": "m",
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        },
+        {
+          "controlled_variable": "Position in x-direction",
+          "controlled_variable_in_equation": "X[0]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 0.61,
+            "min_bound": -0.61,
+            "unit": "rad",
+            "variable_name": "Orientation angle theta (pitch)"
+          },
+          "setpoint_variable_in_equation": "X_sp[0]",
+          "output_signal": "Orientation angle theta (pitch)",
+          "output_variable_in_equation": "X_sp[7]",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 5,
+            "min_value": 5,
+            "unit": "rad"
+          },
+          "output_unit": "rad",
+          "input_unit": "m",
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        },
+        {
+          "controlled_variable": "Position in z-direction",
+          "controlled_variable_in_equation": "X[2]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 19.62,
+            "min_bound": 0,
+            "unit": "rad",
+            "variable_name": "Total thrust"
+          },
+          "setpoint_variable_in_equation": "X_sp[2]",
+          "output_signal": "Total thrust",
+          "output_variable_in_equation": "U[0]",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 8.0,
+            "min_value": 8.0,
+            "unit": "m"
+          },
+          "output_unit": "N",
+          "input_unit": "m",
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        }
+      ]
+    }
+  ]
+}

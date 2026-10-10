@@ -1,0 +1,25 @@
+{
+  "system_name": "CSTR Exothermic Reactor",
+  "python_code": "import numpy as np\n\ndef system_dynamics(t, x, u):\n    \"\"\"\n    CSTR dynamics with exothermic first-order reaction (A -> B)\n    State vector: x = [x1, x2, x3]\n      x1: Dimensionless concentration\n      x2: Dimensionless reactor temperature\n      x3: Dimensionless cooling-jacket temperature\n    Control vector: u = [qc]\n      qc: Cooling-jacket flow rate\n    \n    Based on Esfandyari et al., 2013\n    \"\"\"\n    \n    # Model parameters (from Esfandyari et al., 2013)\n    phi = 0.072        # Nominal Damkohler number\n    beta = 8.0         # Dimensionless heat of reaction\n    delta = 0.3        # Dimensionless heat-transfer coefficient\n    gamma = 20.0       # Dimensionless activation energy\n    q = 1.0            # Reactor flow rate\n    delta1 = 10.0      # Reactor-to-cooling-jacket volume ratio\n    delta2 = 1.0       # Reactor-to-cooling-jacket density heat capacity ratio\n    \n    # Feed conditions (steady-state reference)\n    x1f = 1.0          # Dimensionless concentration in feed\n    x2f = 0.0          # Dimensionless reactor temperature in feed\n    x3f = -1.0         # Dimensionless cooling-jacket temperature in feed\n    \n    # Extract states\n    x1 = x[0]          # Dimensionless concentration\n    x2 = x[1]          # Dimensionless reactor temperature\n    x3 = x[2]          # Dimensionless cooling-jacket temperature\n    \n    # Extract control input\n    qc = -u[0]         # Cooling-jacket flow rate\n    \n    # Arrhenius reaction rate nonlinearity\n    # Note: The MATLAB code has exp(x2 / (1 + x2/gamma))\n    # This seems unusual - typically it's exp(x2 / (1 + x2/gamma))\n    # Let's keep it as in the original\n    k_x2 = np.exp(x2 / (1 + x2/gamma))\n    \n    # State derivatives\n    xdot = np.zeros(3)\n    \n    # Concentration dynamics\n    xdot[0] = q * (x1f - x1) - phi * x1 * k_x2\n    \n    # Reactor temperature dynamics\n    xdot[1] = q * (x2f - x2) - delta * (x2 - x3) + beta * phi * x1 * k_x2\n    \n    # Cooling-jacket temperature dynamics\n    xdot[2] = delta1 * (qc * (x3f - x3) + delta * delta2 * (x2 - x3))\n    \n    return xdot",
+  "system_description": "Continuous Stirred Tank Reactor (CSTR) with exothermic first-order reaction (A → B). System exhibits ignition/extinction behavior. Operating at stable high-temperature steady state (Op2) with 3 states (concentration, reactor temperature, cooling-jacket temperature) and 1 control (cooling-jacket flow rate).",
+  "control_objective": "Design a controller to regulate reactor temperature (x2) to a desired setpoint with minimal settling time, overshoot, and steady-state error by manipulating the cooling-jacket flow rate (qc)",
+  "target": 5.0,
+  "num_inputs": 1,
+  "trim_values": [-0.9782],
+  "trim_ics": [0.2028, 4.5, 0.2083],
+  "input_channel": 0,
+  "output_channel": 1,
+  "num_states": 3,
+  "min_ctrl": -3.0,
+  "max_ctrl": 0.0,
+  "fixed_targets": {
+    "mse": 0.02,
+    "settling_time": 0.75,
+    "overshoot": 10.0,
+    "control_effort": 0.4
+  },
+  "simulation_params": {
+    "dt": 0.001,
+    "max_time": 10.0
+  }
+}

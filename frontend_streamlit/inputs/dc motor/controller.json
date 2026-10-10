@@ -1,0 +1,75 @@
+{
+  "control_architecture": "Cascaded",
+  "pid_loops": [
+    {
+      "loop_number": 1,
+      "loop_name": "inner_current_control",
+      "metrics": {
+        "mse": 0.01,
+        "settling_time": 1.5,
+        "overshoot": 5.0,
+        "control_effort": 10.0
+      },
+      "controllers": [
+        {
+          "controlled_variable": "i",
+          "controlled_variable_in_equation": "X[0]",
+          "setpoint_variable_in_equation": "X_sp[0]",
+          "output_signal": "voltage_command",
+          "output_variable_in_equation": "U[0]",
+          "controller_output": {
+            "variable_name": "voltage_command",
+            "is_bounded": true,
+            "min_bound": 0.0,
+            "max_bound": 120.0,
+            "unit": "Volts"
+          },
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "min_value": 1.0,
+            "max_value": 1.0,
+            "unit": "Amperes"
+          },
+          "output_unit": "Volts",
+          "input_unit": "Amperes",
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        }
+      ]
+    },
+    {
+      "loop_number": 2,
+      "loop_name": "outer_speed_control",
+      "metrics": {
+        "mse": 1.0,
+        "settling_time": 3.0,
+        "overshoot": 10.0,
+        "control_effort": 1.0
+      },
+      "controllers": [
+        {
+          "controlled_variable": "omega",
+          "controlled_variable_in_equation": "X[1]",
+          "setpoint_variable_in_equation": "X_sp[1]",
+          "output_signal": "current_setpoint",
+          "output_variable_in_equation": "X_sp[0]",
+          "controller_output": {
+            "variable_name": "current_setpoint",
+            "is_bounded": true,
+            "min_bound": 0.0,
+            "max_bound": 150.0,
+            "unit": "Amperes"
+          },
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "min_value": 0.5,
+            "max_value": 0.5,
+            "unit": "rad/s"
+          },
+          "output_unit": "Amperes",
+          "input_unit": "rad/s",
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        }
+      ]
+    }
+  ]
+}

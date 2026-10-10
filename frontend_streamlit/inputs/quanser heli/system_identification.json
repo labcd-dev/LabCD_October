@@ -1,0 +1,74 @@
+{
+  "system_name": "Helicopter",
+  "description": "The system describes the dynamics of a helicopter's pitch and yaw angles controlled by two actuator inputs.",
+  "system_properties": {
+    "continuous": "Continuous",
+    "linear": "Nonlinear",
+    "order": 2,
+    "type": "MIMO",
+    "n_states": 4,
+    "n_inputs": 2
+  },
+  "inputs": [
+    {
+      "physical_meaning": "Pitch actuator command",
+      "variable_name": "U[1]",
+      "variable_in_equation": "U[0]",
+      "unit": "N*m"
+    },
+    {
+      "physical_meaning": "Yaw actuator command",
+      "variable_name": "U[2]",
+      "variable_in_equation": "U[1]",
+      "unit": "N*m"
+    }
+  ],
+  "outputs": [
+    {
+      "physical_meaning": "Pitch angle",
+      "variable_in_equation": "pitch",
+      "unit": "radians"
+    },
+    {
+      "physical_meaning": "Yaw angle",
+      "variable_in_equation": "yaw",
+      "unit": "radians"
+    },
+    {
+      "physical_meaning": "Pitch angular velocity",
+      "variable_in_equation": "dpitch",
+      "unit": "radians/s"
+    },
+    {
+      "physical_meaning": "Yaw angular velocity",
+      "variable_in_equation": "dyaw",
+      "unit": "radians/s"
+    }
+  ],
+  "state_variables": [
+    {
+      "physical_meaning": "Pitch angle",
+      "variable_name": "pitch",
+      "variable_in_equation": "X[0]",
+      "unit": "radians"
+    },
+    {
+      "physical_meaning": "Yaw angle",
+      "variable_name": "yaw",
+      "variable_in_equation": "X[1]",
+      "unit": "radians"
+    },
+    {
+      "physical_meaning": "Pitch angular velocity",
+      "variable_name": "dpitch",
+      "variable_in_equation": "X[2]",
+      "unit": "radians/s"
+    },
+    {
+      "physical_meaning": "Yaw angular velocity",
+      "variable_name": "dyaw",
+      "variable_in_equation": "X[3]",
+      "unit": "radians/s"
+    }
+  ]
+}

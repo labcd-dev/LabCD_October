@@ -30,3 +30,8 @@ pydantic
 
 # Tests
 pytest
+
+# MuloDesigner
+plotly
+pygad
+shap

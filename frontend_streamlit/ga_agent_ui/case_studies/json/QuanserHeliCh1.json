@@ -1,0 +1,25 @@
+{
+  "system_name": "Quanser Helicopter",
+  "python_code": "import numpy as np\n\ndef system_dynamics(t, x, u):\n    # Nonlinear system dynamics for 2-DOF pitch-yaw system\n    m = 1.3872\n    g = 9.81  # Gravitational acceleration\n    B_p = 0.8  # Pitch viscous damping\n    B_y = 0.318  # Yaw viscous damping\n    K_pp = 0.2040  # Pitch torque gain from front motor\n    K_yy = 0.0720  # Yaw torque gain from rear motor\n    K_py = 0.0068  # Cross-coupling pitch torque gain from rear motor\n    K_yp = 0.0219  # Cross-coupling yaw torque gain from front motor\n    J_p = 0.0178  # Pitch moment of inertia about pivot\n    J_y = 0.0084  # Yaw moment of inertia about pivot\n    l_cm = 0.186  # Distance from pivot to center of mass\n    J_Tp = J_p + m * l_cm**2  # Total pitch moment of inertia\n    J_Ty = J_y + m * l_cm**2  # Total yaw moment of inertia\n    \n    # State variables\n    pitch = x[0]\n    yaw = x[1]\n    dpitch = x[2]\n    dyaw = x[3]\n    \n    # Inputs: u = [u1, u2] (e.g., front and rear motor voltages/commands)\n    u1 = u[0]\n    u2 = u[1]\n    \n    # Motor torques (linear in inputs, with cross-coupling)\n    Tp = K_pp * u1 + K_py * u2\n    Ty = K_yp * u1 + K_yy * u2\n    \n    # State derivatives\n    xdot = np.zeros(4)\n    xdot[0] = dpitch  # dot{pitch}\n    xdot[1] = dyaw    # dot{yaw}\n    xdot[2] = (Tp - B_p * dpitch - m * g * l_cm * np.sin(pitch)) / J_Tp  # ddot{pitch}\n    xdot[3] = (Ty - B_y * dyaw) / J_Ty  # ddot{yaw}\n    return xdot",
+  "system_description": "Quanser 2-DOF helicopter (pitch and yaw axes) with cross-coupled dynamics from two propellers",
+  "control_objective": "Design a controller to regulate pitch angle to a desired setpoint with minimal settling time, overshoot, and steady-state error, while handling cross-coupling to yaw",
+  "target": 0.1,
+  "num_inputs": 2,
+  "trim_values": [0.0, 0.0],
+  "trim_ics": [0.0, 0.0, 0.0, 0.0],
+  "input_channel": 0,
+  "output_channel": 0,
+  "num_states": 4,
+  "min_ctrl": -24.0,
+  "max_ctrl": 24.0,
+  "fixed_targets": {
+    "mse": 0.001,
+    "settling_time": 1.0,
+    "overshoot": 1.0,
+    "control_effort": 0.1
+  },
+  "simulation_params": {
+    "dt": 0.01,
+    "max_time": 10.0
+  }
+}

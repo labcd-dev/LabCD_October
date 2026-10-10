@@ -1,0 +1,141 @@
+{
+  "control_architecture": "Cascaded",
+  "pid_loops": [
+    {
+      "loop_number": 1,
+      "loop_name": "inner_rate_control",
+      "metrics": {
+        "control_effort": 0.5,
+        "mse": 0.01,
+        "overshoot": 5.0,
+        "settling_time": 1.5
+      },
+      "controllers": [
+        {
+          "controlled_variable": "dpitch",
+          "controlled_variable_in_equation": "X[2]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 10.0,
+            "min_bound": -10.0,
+            "unit": "N*m",
+            "variable_name": "pitch_actuator_command"
+          },
+          "setpoint_variable_in_equation": "X_sp[2]",
+          "output_signal": "pitch_actuator_command",
+          "output_variable_in_equation": "U[0]",
+          "output_unit": "N*m",
+          "input_unit": "radians/s",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 0.1,
+            "min_value": 0.1,
+            "unit": "radians/s"
+          },
+          "skip": true,
+          "name":"X2PID_0",
+          "kp": 9.68,
+          "ki": 3.69,
+          "kd": 6.55,
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        },
+        {
+          "controlled_variable": "dyaw",
+          "controlled_variable_in_equation": "X[3]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 10.0,
+            "min_bound": -10.0,
+            "unit": "N*m",
+            "variable_name": "yaw_actuator_command"
+          },
+          "setpoint_variable_in_equation": "X_sp[3]",
+          "output_signal": "yaw_actuator_command",
+          "output_variable_in_equation": "U[1]",
+          "output_unit": "N*m",
+          "input_unit": "radians/s",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 0.1,
+            "min_value": 0.1,
+            "unit": "radians/s"
+          },
+          "skip": true,
+          "name":"X3PID_0",
+          "kp": 0.49,
+          "ki": 10.0,
+          "kd": 0.0,
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        }
+      ]
+    },
+    {
+      "loop_number": 3,
+      "loop_name": "outer_angle_control",
+      "metrics": {
+        "control_effort": 0.6,
+        "mse": 0.02,
+        "overshoot": 4.0,
+        "settling_time": 2.0
+      },
+      "controllers": [
+        {
+          "controlled_variable": "pitch",
+          "controlled_variable_in_equation": "X[0]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 0.8,
+            "min_bound": -0.8,
+            "unit": "radians/s",
+            "variable_name": "inner_pitch_setpoint"
+          },
+          "setpoint_variable_in_equation": "X_sp[0]",
+          "output_signal": "inner_pitch_setpoint",
+          "output_variable_in_equation": "X_sp[2]",
+          "output_unit": "radians/s",
+          "input_unit": "radians",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 0.08,
+            "min_value": 0.08,
+            "unit": "radians/s"
+          },
+          "skip": true,
+          "name":"X0PID_0",
+          "kp": 46.96,
+          "ki": 10.0,
+          "kd": 0.11,
+          "param_ranges": {"Kp": [-5.0, 5.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        },
+        {
+          "controlled_variable": "yaw",
+          "controlled_variable_in_equation": "X[1]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 0.8,
+            "min_bound": -0.8,
+            "unit": "radians/s",
+            "variable_name": "inner_yaw_setpoint"
+          },
+          "setpoint_variable_in_equation": "X_sp[1]",
+          "output_signal": "inner_yaw_setpoint",
+          "output_variable_in_equation": "X_sp[3]",
+          "output_unit": "radians/s",
+          "input_unit": "radians",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 0.08,
+            "min_value": 0.08,
+            "unit": "radians/s"
+          },
+          "skip": true,
+          "name":"X1PID_0",
+          "kp": 4.39,
+          "ki": 0.02,
+          "kd": 0.73,
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,286 @@
+[
+  {
+    "current_attempt": 1,
+    "max_attempts": 5,
+    "max_wall_clock": 10.0,
+    "total_elapsed_time": 56.96159839630127,
+    "prompt_variant": "elaborate",
+    "buffer_size": 3,
+    "feedback_history": [
+      {
+        "attempt_num": 1,
+        "ga_config": {
+          "population_size": 10,
+          "generations": 20,
+          "param_ranges": {
+            "PID": {
+              "Kp": [-10.0, 10.0],
+              "Ki": [-5.0, 5.0],
+              "Kd": [-5.0, 5.0]
+            }
+          },
+          "reasoning": "This is the first attempt, so I have chosen equal weights for all objectives to explore their relative importance without bias. A small population size of 10 and 20 generations allows for quick exploration of the weight configurations while remaining within the resource constraints. The PID parameter ranges are set symmetrically to allow for both positive and negative gains, which is important for tuning the controller effectively. This configuration will help identify which metrics need more emphasis in subsequent attempts."
+        },
+        "tuning_specs": {
+          "fixed_targets": {
+            "mse": 0.01,
+            "settling_time": 1.5,
+            "overshoot": 0.05,
+            "control_effort": 0.1
+          },
+          "weights": {
+            "mse": 1.0,
+            "settling_time": 1.0,
+            "overshoot": 1.0,
+            "control_effort": 1.0
+          },
+          "simulation_params": {
+            "dt": 0.001,
+            "max_time": 50.0
+          }
+        },
+        "controller_gains": {
+          "Kp": -7.210122786959163,
+          "Ki": -1.9575775704046228,
+          "Kd": -1.089393924267592
+        },
+        "performance_metrics": {
+          "mse": 0.04404104820079247,
+          "settling_time": 49.999,
+          "overshoot": 7.9615188812054445,
+          "control_effort": 0.9684170054477904,
+          "rise_time": 0.48500000000000004,
+          "steady_state_error": 0.1529601370675775,
+          "control_zero_crossings": 1
+        },
+        "metric_comparisons": {
+          "mse": {
+            "achieved": 0.04404104820079247,
+            "target": 0.01,
+            "passed": false
+          },
+          "settling_time": {
+            "achieved": 49.999,
+            "target": 1.5,
+            "passed": false
+          },
+          "overshoot": {
+            "achieved": 7.9615188812054445,
+            "target": 0.05,
+            "passed": false
+          },
+          "control_effort": {
+            "achieved": 0.9684170054477904,
+            "target": 0.1,
+            "passed": false
+          }
+        },
+        "success_score": 0,
+        "ga_cost": 2564.225555006158,
+        "baseline_cost": 202.6513191653327,
+        "elapsed_time": 56.96159839630127,
+        "boundary_analysis": {
+          "Kp": {
+            "value": -7.210122786959163,
+            "range": [-10.0, 10.0],
+            "hitting_lower": 0.13949386065204186,
+            "hitting_upper": 0.860506139347958,
+            "boundary_issue": false
+          },
+          "Ki": {
+            "value": -1.9575775704046228,
+            "range": [-5.0, 5.0],
+            "hitting_lower": 0.3042422429595377,
+            "hitting_upper": 0.6957577570404623,
+            "boundary_issue": false
+          },
+          "Kd": {
+            "value": -1.089393924267592,
+            "range": [-5.0, 5.0],
+            "hitting_lower": 0.3910606075732408,
+            "hitting_upper": 0.6089393924267592,
+            "boundary_issue": false
+          }
+        },
+        "warnings": [],
+        "progress": {
+          "iteration": [1],
+          "best_cost": [2564.225555006158],
+          "mean_cost": [8384.44349908177],
+          "best_params": [[-7.210122786959163, -1.9575775704046228, -1.089393924267592]],
+          "Kp": [-7.210122786959163],
+          "Ki": [-1.9575775704046228],
+          "Kd": [-1.089393924267592],
+          "mse": [0.04404104820079247],
+          "settling_time": [49.999],
+          "overshoot": [7.9615188812054445],
+          "control_effort": [0.9684170054477904],
+          "metrics_success": [true],
+          "warnings": [[]],
+          "best_baseline_cost": [202.6513191653327],
+          "mean_baseline_cost": [1018.7496648168271],
+          "cumulative_nfe": [19],
+          "cumulative_wall_time": [32.208117961883545],
+          "best_baseline_so_far": [202.6513191653327],
+          "best_ga_cost": [2564.225555006158],
+          "mean_ga_cost": [8384.44349908177],
+          "success_score": [0],
+          "best_score_so_far": [0]
+        },
+        "llm_call_cost": 0.00045885,
+        "llm_tokens_in": 2167,
+        "llm_tokens_out": 223,
+        "num_evaluations": 28,
+        "target_hit_nfe": null,
+        "target_hit_time": null
+      }
+    ],
+    "best_result": {
+      "best_attempt": 1,
+      "best_baseline_cost": 202.6513191653327,
+      "best_ga_cost": 2564.225555006158,
+      "best_score": 0,
+      "best_ga_config": {
+        "population_size": 10,
+        "generations": 20,
+        "param_ranges": {
+          "PID": {
+            "Kp": [-10.0, 10.0],
+            "Ki": [-5.0, 5.0],
+            "Kd": [-5.0, 5.0]
+          }
+        },
+        "reasoning": "This is the first attempt, so I have chosen equal weights for all objectives to explore their relative importance without bias. A small population size of 10 and 20 generations allows for quick exploration of the weight configurations while remaining within the resource constraints. The PID parameter ranges are set symmetrically to allow for both positive and negative gains, which is important for tuning the controller effectively. This configuration will help identify which metrics need more emphasis in subsequent attempts."
+      },
+      "controller_parameters": {
+        "Kp": -7.210122786959163,
+        "Ki": -1.9575775704046228,
+        "Kd": -1.089393924267592
+      },
+      "achieved_metrics": {
+        "mse": 0.04404104820079247,
+        "settling_time": 49.999,
+        "overshoot": 7.9615188812054445,
+        "control_effort": 0.9684170054477904,
+        "rise_time": 0.48500000000000004,
+        "steady_state_error": 0.1529601370675775,
+        "control_zero_crossings": 1
+      },
+      "best_target_hit_nfe": null,
+      "best_target_hit_time": null
+    },
+    "ga_config": {
+      "population_size": 10,
+      "generations": 20,
+      "param_ranges": {
+        "PID": {
+          "Kp": [-10.0, 10.0],
+          "Ki": [-5.0, 5.0],
+          "Kd": [-5.0, 5.0]
+        }
+      },
+      "reasoning": "This is the first attempt, so I have chosen equal weights for all objectives to explore their relative importance without bias. A small population size of 10 and 20 generations allows for quick exploration of the weight configurations while remaining within the resource constraints. The PID parameter ranges are set symmetrically to allow for both positive and negative gains, which is important for tuning the controller effectively. This configuration will help identify which metrics need more emphasis in subsequent attempts."
+    },
+    "optimization_results": {
+      "success": true,
+      "controller_parameters": {
+        "Kp": -7.210122786959163,
+        "Ki": -1.9575775704046228,
+        "Kd": -1.089393924267592
+      },
+      "achieved_metrics": {
+        "mse": 0.04404104820079247,
+        "settling_time": 49.999,
+        "overshoot": 7.9615188812054445,
+        "control_effort": 0.9684170054477904,
+        "rise_time": 0.48500000000000004,
+        "steady_state_error": 0.1529601370675775,
+        "control_zero_crossings": 1
+      },
+      "ga_cost": 2564.225555006158,
+      "baseline_cost": 202.6513191653327,
+      "warnings": [],
+      "progress": {
+        "iteration": [1],
+        "best_cost": [2564.225555006158],
+        "mean_cost": [8384.44349908177],
+        "best_params": [[-7.210122786959163, -1.9575775704046228, -1.089393924267592]],
+        "Kp": [-7.210122786959163],
+        "Ki": [-1.9575775704046228],
+        "Kd": [-1.089393924267592],
+        "mse": [0.04404104820079247],
+        "settling_time": [49.999],
+        "overshoot": [7.9615188812054445],
+        "control_effort": [0.9684170054477904],
+        "metrics_success": [true],
+        "warnings": [[]],
+        "best_baseline_cost": [202.6513191653327],
+        "mean_baseline_cost": [1018.7496648168271],
+        "cumulative_nfe": [19],
+        "cumulative_wall_time": [32.208117961883545],
+        "best_baseline_so_far": [202.6513191653327],
+        "best_ga_cost": [2564.225555006158],
+        "mean_ga_cost": [8384.44349908177],
+        "success_score": [0],
+        "best_score_so_far": [0]
+      },
+      "num_evaluations": 28,
+      "stop_reason": "wall_clock",
+      "target_hit_nfe": null,
+      "target_hit_time": null,
+      "target_hit_generation": null,
+      "elapsed_time": 56.96159839630127
+    },
+    "decision": {
+      "action": "accept_suboptimal",
+      "reason": "Max wall clock reached (56.96s >= 10.0s)"
+    },
+    "tuning_specs": {
+      "fixed_targets": {
+        "mse": 0.01,
+        "settling_time": 1.5,
+        "overshoot": 0.05,
+        "control_effort": 0.1
+      },
+      "weights": {
+        "mse": 1.0,
+        "settling_time": 1.0,
+        "overshoot": 1.0,
+        "control_effort": 1.0
+      },
+      "simulation_params": {
+        "dt": 0.001,
+        "max_time": 50.0
+      }
+    },
+    "llm_model": "gpt-4o-mini",
+    "run_id": 1,
+    "seed": 42,
+    "temperature": 0.0,
+    "system_name": "Aircraft Pitch Dynamics",
+    "num_states": 3,
+    "control_objective": "",
+    "dt": 0.001,
+    "max_time": 50.0,
+    "target": 2.74,
+    "num_inputs": 1,
+    "input_channel": 0,
+    "output_channel": 1,
+    "trim_values": [-0.09238500244211394],
+    "trim_ics": [1, 2.4220494980613878e-30, 6.973571955806361],
+    "min_ctrl": -0.5,
+    "max_ctrl": 0.5,
+    "system_description": "Aircraft pitch angle, rate, and vertical velocity controlled by elevator deflection.",
+    "python_code": "from numpy import *\n\ndef system_dynamics(t, x, u):\n    # =========================================================================\n    # UNIVERSAL PLANT MODEL\n    # Target: Python solve_ivp / State-Space\n    #\n    # Structure:\n    # x = [state1, state2, ..., stateN]\n    # u = [input1, input2, ..., inputM]\n    # =========================================================================\n    ## 1. PARAMETERS (Hard-coded constants)\n    # [LLM: Define all coefficients, mass, inertia, or gains here]\n    # [PARAM_START]\n    m = 1000  # mass[kg]\n    Iy = 3000  # pitch moment of inertia[kg*m**2]\n    S = 16  # wing area[m**2]\n    c = 1.5  # mean aerodynamic chord[m]\n    rho = 1.225  # air density[kg/m**3]\n    V = 50  # airspeed[m/s]\n    CL_alpha = 4.5\n    CM_alpha = -0.8\n    CM_q = -15\n    CM_delta = -1.2\n    g = 9.81  # gravity[m/s^2]\n    # [PARAM_END]\n\n    ## 2. UNPACK STATES & INPUTS\n    # [LLM: Mapping for readability]\n    # [UNPACK_START]\n    theta = x[0]  # pitch angle\n    q = x[1]  # pitch rate\n    w = x[2]  # vertical velocity\n    delta_e = u[0]  # elevator deflection\n    # [UNPACK_END]\n\n    ## 3. DYNAMICS / EQUATIONS OF MOTION\n    # [LLM: Implement the differential equations]\n    # [EOM_START]\n    alpha = arctan(w / V)  # angle of attack\n    Q = 0.5 * rho * V**2  # dynamic pressure\n    L = Q * S * CL_alpha * alpha\n    M = Q * S * c * (CM_alpha * alpha + CM_q * q * c / (2*V) + CM_delta * delta_e)\n    theta_dot = q\n    q_dot = M / Iy\n    w_dot = (L * cos(theta) - m * g * sin(theta)) / m - V * q\n    # [EOM_END]\n\n    ## 4. DERIVATIVE VECTOR CONSTRUCTION\n    # [LLM: Must be a vector/array matching the state order]\n    # [DERIVATIVE_START]\n    dxdt = array([theta_dot, q_dot, w_dot])\n    # [DERIVATIVE_END]\n    return dxdt",
+    "system_aware": true,
+    "max_cost_budget": 1.0,
+    "total_cost_consumed": 0.00045885,
+    "llm_call_cost": 0.00045885,
+    "llm_tokens_in": 2167,
+    "llm_tokens_out": 223,
+    "experiment_start_time": 1785944941.91605,
+    "warm_start_config": null,
+    "working_function": "system_dynamics",
+    "input_name": "U[0]"
+  }
+]

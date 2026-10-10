@@ -1,0 +1,25 @@
+{
+  "system_name": "Two Link Manipulator",
+  "python_code": "import numpy as np\n\ndef system_dynamics(t, x, u):\n    # Physical parameters (typical small robotic arm)\n    m1 = 1.0  # Mass of link 1 (kg)\n    m2 = 0.8  # Mass of link 2 (kg)\n    L1 = 0.5  # Length of link 1 (m)\n    L2 = 0.4  # Length of link 2 (m)\n    Lc1 = 0.25  # Distance to center of mass of link 1 (m)\n    Lc2 = 0.2  # Distance to center of mass of link 2 (m)\n    I1 = 0.02  # Moment of inertia of link 1 (kg*m^2)\n    I2 = 0.01  # Moment of inertia of link 2 (kg*m^2)\n    g = 9.81  # Gravitational acceleration (m/s^2)\n    b1 = 0.1  # Viscous friction coefficient joint 1 (N*m*s/rad)\n    b2 = 0.1  # Viscous friction coefficient joint 2 (N*m*s/rad)\n\n    # State variables\n    theta1 = x[0]\n    theta2 = x[1]\n    theta1_dot = x[2]\n    theta2_dot = x[3]\n\n    # Inputs\n    tau1 = u[0]\n    tau2 = u[1]\n\n    # Shorthand notations\n    s1 = np.sin(theta1)\n    c1 = np.cos(theta1)\n    s2 = np.sin(theta2)\n    c2 = np.cos(theta2)\n    s12 = np.sin(theta1 + theta2)\n    c12 = np.cos(theta1 + theta2)\n\n    # Mass matrix M(q)\n    M11 = m1 * Lc1 ** 2 + m2 * (L1 ** 2 + Lc2 ** 2 + 2 * L1 * Lc2 * c2) + I1 + I2\n    M12 = m2 * (Lc2 ** 2 + L1 * Lc2 * c2) + I2\n    M21 = M12\n    M22 = m2 * Lc2 ** 2 + I2\n\n    M = np.array([[M11, M12], [M21, M22]])\n\n    # Coriolis and centrifugal terms C(q,q_dot)*q_dot\n    h = -m2 * L1 * Lc2 * s2\n    C11 = h * theta2_dot\n    C12 = h * (theta1_dot + theta2_dot)\n    C21 = -h * theta1_dot\n    C22 = 0\n\n    C = np.array([[C11, C12], [C21, C22]])\n\n    # Gravity vector G(q)\n    G1 = (m1 * Lc1 + m2 * L1) * g * s1 + m2 * g * Lc2 * s12\n    G2 = m2 * g * Lc2 * s12\n\n    G = np.array([G1, G2])\n\n    # Friction\n    B = np.diag([b1, b2])\n\n    # Control torques\n    tau = np.array([tau1, tau2])\n\n    # Equation of motion: M(q)*q_ddot + C(q,q_dot)*q_dot + G(q) + B*q_dot = tau\n    # Solve for q_ddot\n    theta_dot = np.array([theta1_dot, theta2_dot])\n    theta_ddot = np.linalg.solve(M, tau - C @ theta_dot - G - B @ theta_dot)\n\n    # State derivatives\n    dq1 = theta1_dot\n    dq2 = theta2_dot\n    ddq1 = theta_ddot[0]\n    ddq2 = theta_ddot[1]\n    xdot = [dq1, dq2, ddq1, ddq2]\n    return np.array(xdot)",
+  "system_description": "Two-link planar robotic manipulator with joint torques as inputs and joint angles as states",
+  "control_objective": "Design a stable decentralized PID controller for joint position tracking with minimal settling time, overshoot, and steady-state error.",
+  "target": 0.0,
+  "num_inputs": 2,
+  "trim_values": [0.0, 0.0],
+  "trim_ics": [0.1, 0.0, 0.0, 0.0],
+  "input_channel": 0,
+  "output_channel": 0,
+  "num_states": 4,
+  "min_ctrl": -1.0,
+  "max_ctrl": 1.0,
+  "fixed_targets": {
+    "mse": 0.01,
+    "settling_time": 1.0,
+    "overshoot": 1.0,
+    "control_effort": 0.5
+  },
+  "simulation_params": {
+    "dt": 0.01,
+    "max_time": 20.0
+  }
+}

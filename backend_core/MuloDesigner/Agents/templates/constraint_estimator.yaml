@@ -1,0 +1,66 @@
+prompt: |
+  You are an expert Control Systems Engineer.
+  Task: Analyze CONTROLLER_STRUCTURE_JSON and TRIM_JSON to deduce the system's physical domain and synthesize operational constraints for automated multiloop PID tuning.
+
+  ### Multiloop Tuning Context (CRITICAL)
+  1. **Target Generation:** During tuning, each controller requires a target value. This `target` defines the amplitude of an input step function that diverts the system from its initial trimming point. You are defining the `min_value` and `max_value` from which this random step target will be generated. Target information MUST always exist for every controller.
+  2. **Actuator & Envelope Saturation (`controller_output`):** Controllers directly driving physical actuators MUST have strict mechanical bounds. Furthermore, outer or intermediate controllers that feed setpoints to inner loops MUST OFTEN be bounded to enforce system safety envelopes (e.g., aerodynamic stall limits, structural load maximums, or critical thermal thresholds). An unbounded intermediate setpoint can command the inner loop into a catastrophic failure state.
+  3. **Handling Unbounded Controllers:** Only set `is_bounded` to false if an infinite setpoint poses absolutely no physical, structural, or safety risk to the system. You MUST STILL provide realistic, mathematically or physically sound values for `min_bound` and `max_bound` even when false, ensuring default options exist if boundaries are manually enabled later.
+  4. **Target Metrics:** This one is used for computing cost function during optimization process. Generally more inner loops need more strict targets but prioritize User Context on this one. If user context isn't provided start from outer loop consider logical target for each metric and set more inner ones based on that. 
+  
+  ### Direct Field Mapping Rules
+  Copy the following fields EXACTLY from `CONTROLLER_STRUCTURE_JSON` without modification:
+  - `loop_number`, `loop_name`, `controlled_variable`, `controlled_variable_in_equation`, `setpoint_variable_in_equation`, `output_signal`, `output_variable_in_equation`.
+  - Only synthesize the nested keys: `target`, `controller_output`, and `metrics`.
+  - Ensure all bounds and targets use the exact unit conventions established in the inputs.
+  - If fields that you're going to make already exist inside CONTROLLER_STRUCTURE_JSON don't change them and use exact default values
+
+  USER_CONTEXT:
+  {USER_CONTEXT}
+
+  ### Input Data
+  ---
+  {CONTROLLER_STRUCTURE_JSON}
+  ---
+  {TRIM_JSON}
+  ---
+
+  ### Expected Output Format
+  Output ONLY a raw, valid JSON object matching the schema below. Do not include markdown code blocks, explanations, or conversational text.
+
+  {{
+    "deduced_domain": "string (e.g., Robotics, Process Control, Automotive, Aerospace)",
+    "pid_loops": [
+      {{
+        "loop_number": integer,
+        "loop_name": "string",
+        "controllers": [
+          {{
+            "controlled_variable_in_equation": "string",
+            "controlled_variable": "string",
+            "output_variable_in_equation": "string",
+            "output_variable": "string",
+            "target": {{
+              "description": "Deduced operational range of this state under typical tracking conditions",
+              "min_value": float,
+              "max_value": float,
+              "unit": "string" 
+            }},
+            "controller_output": {{
+              "variable_name": "string",
+              "is_bounded": boolean,
+              "min_bound": float,
+              "max_bound": float,
+              "unit": "string" 
+            }}
+          }}
+        ],
+        "metrics": {{
+          "mse": float,
+          "settling_time": float,
+          "overshoot": float,
+          "control_effort": float
+        }}
+      }}
+    ]
+  }}

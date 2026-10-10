@@ -1,0 +1,25 @@
+{
+  "system_name": "AUV",
+  "python_code": "import numpy as np\n\ndef system_dynamics(t, x, u):\n    # AUV pitch and depth dynamics (heave-pitch coupled model)\n    # States: q (pitch rate, rad/s), theta (pitch angle, rad), z (depth positive down, m)\n    # Input: fs (stern plane deflection angle, rad)\n    \n    q     = x[0]\n    theta = x[1]\n    z     = x[2]\n    \n    fs = u[0]\n    \n    Iy = 469.0\n    Mq_added = -458.0\n    Mfs = -1575.9\n    Mq_damp = 9826.2\n    Mtheta = 13719.6\n    mu1 = 20.0\n    \n    Iy_eff = Iy - Mq_added\n    \n    q_dot = -(Mq_damp * q + Mtheta * theta + Mfs * fs) / Iy_eff\n    \n    theta_dot = q\n    z_dot = mu1 * theta\n    \n    return np.array([q_dot, theta_dot, z_dot])",
+  "system_description": "Autonomous Underwater Vehicle (AUV) pitch and depth dynamics with stern plane control",
+  "control_objective": "Design a depth control system to regulate the AUV depth with minimal settling time, overshoot, and steady-state error",
+  "target": 1.0,
+  "num_inputs": 1,
+  "trim_values": [0.0],
+  "trim_ics": [0.0, 0.0, 0.0],
+  "input_channel": 0,
+  "output_channel": 2,
+  "num_states": 3,
+  "min_ctrl": -0.5,
+  "max_ctrl": 0.5,
+  "fixed_targets": {
+    "mse": 0.1,
+    "settling_time": 2.0,
+    "overshoot": 5.0,
+    "control_effort": 0.1
+  },
+  "simulation_params": {
+    "dt": 0.01,
+    "max_time": 20.0
+  }
+}

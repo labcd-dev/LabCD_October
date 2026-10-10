@@ -1,0 +1,68 @@
+{
+  "system_name": "Underwater Vehicle",
+  "description": "The system describes the dynamics of an underwater vehicle where the states are controlled by the input force or thrust applied to the vehicle.",
+  "system_properties": {
+    "continuous": "Continuous",
+    "linear": "Nonlinear",
+    "order": 4,
+    "type": "SISO",
+    "n_states": 4,
+    "n_inputs": 1
+  },
+  "inputs": [
+    {
+      "physical_meaning": "Thrust or force applied to the vehicle",
+      "variable_name": "thrust",
+      "variable_in_equation": "U[0]",
+      "unit": "N"
+    }
+  ],
+  "outputs": [
+    {
+      "physical_meaning": "Vertical position of the vehicle",
+      "variable_in_equation": "z",
+      "unit": "m"
+    },
+    {
+      "physical_meaning": "Vertical velocity of the vehicle",
+      "variable_in_equation": "w",
+      "unit": "m/s"
+    },
+    {
+      "physical_meaning": "Pitch angle of the vehicle",
+      "variable_in_equation": "theta",
+      "unit": "rad"
+    },
+    {
+      "physical_meaning": "Pitch rate of the vehicle",
+      "variable_in_equation": "q",
+      "unit": "rad/s"
+    }
+  ],
+  "state_variables": [
+    {
+      "physical_meaning": "Vertical position of the vehicle",
+      "variable_name": "z",
+      "variable_in_equation": "X[0]",
+      "unit": "m"
+    },
+    {
+      "physical_meaning": "Vertical velocity of the vehicle",
+      "variable_name": "w",
+      "variable_in_equation": "X[1]",
+      "unit": "m/s"
+    },
+    {
+      "physical_meaning": "Pitch angle of the vehicle",
+      "variable_name": "theta",
+      "variable_in_equation": "X[2]",
+      "unit": "rad"
+    },
+    {
+      "physical_meaning": "Pitch rate of the vehicle",
+      "variable_name": "q",
+      "variable_in_equation": "X[3]",
+      "unit": "rad/s"
+    }
+  ]
+}

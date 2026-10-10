@@ -1,0 +1,20 @@
+{
+  "control_architecture": "Single-loop",
+  "pid_loops": [
+    {
+      "loop_number": 1,
+      "loop_name": "most_inner_control",
+      "controllers": [
+        {
+          "controlled_variable": "pim",
+          "controlled_variable_in_equation": "X[0]",
+          "setpoint_variable_in_equation": "X_sp[0]",
+          "output_signal": "Wt",
+          "output_variable_in_equation": "U[0]",
+          "output_unit": "Watts",
+          "input_unit": "Pascals"
+        }
+      ]
+    }
+  ]
+}

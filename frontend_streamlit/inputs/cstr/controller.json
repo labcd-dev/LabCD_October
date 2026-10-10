@@ -1,0 +1,110 @@
+{
+  "control_architecture": "Cascaded",
+  "pid_loops": [
+    {
+      "loop_number": 1,
+      "loop_name": "inner_Tc_control",
+      "metrics": {
+        "control_effort": 1.5,
+        "mse": 0.01,
+        "overshoot": 2.0,
+        "settling_time": 5.0
+      },
+      "controllers": [
+        {
+          "controlled_variable": "Coolant Temperature",
+          "controlled_variable_in_equation": "X[2]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 3.5,
+            "min_bound": 0.0,
+            "unit": "m^3/s",
+            "variable_name": "actuator_command"
+          },
+          "setpoint_variable_in_equation": "X_sp[2]",
+          "output_signal": "actuator_command",
+          "output_variable_in_equation": "U[0]",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 1.0,
+            "min_value": 1.0,
+            "unit": "K"
+          },
+          "output_unit": "m^3/s",
+          "input_unit": "K",
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        }
+      ]
+    },
+    {
+      "loop_number": 2,
+      "loop_name": "middle_T_control",
+      "metrics": {
+        "control_effort": 1.0,
+        "mse": 0.02,
+        "overshoot": 1.5,
+        "settling_time": 4.0
+      },
+      "controllers": [
+        {
+          "controlled_variable": "Reactor Temperature",
+          "controlled_variable_in_equation": "X[1]",
+          "controller_output": {
+            "is_bounded": false,
+            "max_bound": "",
+            "min_bound": "",
+            "unit": "m^3/s",
+            "variable_name": "actuator_command"
+          },
+          "setpoint_variable_in_equation": "X_sp[1]",
+          "output_signal": "inner_loop_input",
+          "output_variable_in_equation": "X_sp[2]",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 2.0,
+            "min_value": 2.0,
+            "unit": "K"
+          },
+          "output_unit": "K",
+          "input_unit": "K",
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        }
+      ]
+    },
+    {
+      "loop_number": 3,
+      "loop_name": "outer_CA_control",
+      "metrics": {
+        "control_effort": 2.0,
+        "mse": 0.03,
+        "overshoot": 3.0,
+        "settling_time": 6.0
+      },
+      "controllers": [
+        {
+          "controlled_variable": "Reactor Concentration",
+          "controlled_variable_in_equation": "X[0]",
+          "controller_output": {
+            "is_bounded": false,
+            "max_bound": "",
+            "min_bound": "",
+            "unit": "m^3/s",
+            "variable_name": "actuator_command"
+          },
+          "setpoint_variable_in_equation": "X_sp[0]",
+          "output_signal": "inner_loop_input",
+          "output_variable_in_equation": "X_sp[1]",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 0.05,
+            "min_value": 0.05,
+            "unit": "mol/m^3"
+          },
+          "output_unit": "mol/m^3",
+          "input_unit": "mol/m^3",
+          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        }
+      ]
+    }
+  ]
+}

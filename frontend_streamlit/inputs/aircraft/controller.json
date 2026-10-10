@@ -1,0 +1,112 @@
+{
+  "control_architecture": "Cascaded",
+  "pid_loops": [
+    {
+      "loop_number": 1,
+      "loop_name": "most_inner_control",
+      "metrics": {
+        "control_effort": 10,
+        "mse": 0.01,
+        "overshoot": 5,
+        "settling_time": 1.5
+      },
+      "controllers": [
+        {
+          "controlled_variable": "q",
+          "controlled_variable_in_equation": "X[1]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 0.35,
+            "min_bound": -0.35,
+            "unit": "radians",
+            "variable_name": "delta_e"
+          },
+          "setpoint_variable_in_equation": "X_sp[1]",
+          "output_signal": "delta_e",
+          "output_variable_in_equation": "U[0]",
+          "output_unit": "radians",
+          "input_unit": "rad/s",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 0.1,
+            "min_value": 0.1,
+            "unit": "rad/s"
+          },
+          "param_ranges": {"Kp": [-5.0, 5.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]},
+          "signal_type": "Pulse"
+
+        }
+      ]
+    },
+    {
+      "loop_number": 2,
+      "loop_name": "intermediate_control",
+      "metrics": {
+        "control_effort": 15,
+        "mse": 0.02,
+        "overshoot": 3,
+        "settling_time": 2.0
+      },
+      "controllers": [
+        {
+          "controlled_variable": "theta",
+          "controlled_variable_in_equation": "X[0]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 0.5,
+            "min_bound": -0.5,
+            "unit": "rad/s",
+            "variable_name": "q_setpoint"
+          },
+          "setpoint_variable_in_equation": "X_sp[0]",
+          "output_signal": "q_setpoint",
+          "output_variable_in_equation": "X_sp[1]",
+          "output_unit": "rad/s",
+          "input_unit": "radians",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 0.08,
+            "min_value": 0.08,
+            "unit": "rad"
+          },
+          "param_ranges": {"Kp": [-5.0, 5.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        }
+      ]
+    },
+    {
+      "loop_number": 3,
+      "loop_name": "outer_control",
+      "metrics": {
+        "control_effort": 20,
+        "mse": 0.03,
+        "overshoot": 4,
+        "settling_time": 2.5
+      },
+      "controllers": [
+        {
+          "controlled_variable": "w",
+          "controlled_variable_in_equation": "X[2]",
+          "controller_output": {
+            "is_bounded": true,
+            "max_bound": 0.35,
+            "min_bound": -0.35,
+            "unit": "rad",
+            "variable_name": "theta_setpoint"
+          },
+          "setpoint_variable_in_equation": "X_sp[2]",
+          "output_signal": "theta_setpoint",
+          "output_variable_in_equation": "X_sp[0]",
+          "output_unit": "radians",
+          "input_unit": "m/s",
+          "target": {
+            "description": "Deduced operational range of this state under typical tracking conditions",
+            "max_value": 1,
+            "min_value": 1,
+            "unit": "m/s"
+          },
+          "param_ranges": {"Kp": [-5.0, 5.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+        }
+      ]
+    }
+  ]
+}

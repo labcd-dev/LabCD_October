@@ -1,0 +1,52 @@
+{
+  "system_name": "DC Motor",
+  "description": "The system describes the dynamics of a DC motor where the input voltage controls the motor's angular velocity and position.",
+  "system_properties": {
+    "continuous": "Continuous",
+    "linear": "Linear",
+    "order": 3,
+    "type": "SISO",
+    "n_states": 3,
+    "n_inputs": 1
+  },
+  "inputs": [
+    {
+      "physical_meaning": "Voltage applied to the motor",
+      "variable_name": "V",
+      "variable_in_equation": "U[0]",
+      "unit": "Volts"
+    }
+  ],
+  "outputs": [
+    {
+      "physical_meaning": "Motor angular velocity",
+      "variable_in_equation": "omega",
+      "unit": "rad/s"
+    },
+    {
+      "physical_meaning": "Motor angular position",
+      "variable_in_equation": "theta",
+      "unit": "radians"
+    }
+  ],
+  "state_variables": [
+    {
+      "physical_meaning": "Current through the motor",
+      "variable_name": "i",
+      "variable_in_equation": "X[0]",
+      "unit": "Amperes"
+    },
+    {
+      "physical_meaning": "Motor angular velocity",
+      "variable_name": "omega",
+      "variable_in_equation": "X[1]",
+      "unit": "rad/s"
+    },
+    {
+      "physical_meaning": "Motor angular position",
+      "variable_name": "theta",
+      "variable_in_equation": "X[2]",
+      "unit": "radians"
+    }
+  ]
+}
