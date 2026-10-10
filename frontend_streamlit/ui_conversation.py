@@ -108,8 +108,7 @@ def _open_run(entry):
 def _sidebar(chat):
     with st.sidebar:
         st.markdown(
-            f'<div class="conversation-brand">{ui_brand.LOGO_MARKUP}'
-            '<span class="brand-muted">workspace</span></div>',
+            f'<div class="conversation-brand">{ui_brand.LOGO_MARKUP}</div>',
             unsafe_allow_html=True,
         )
         st.button("New conversation", icon=":material/edit_square:", width="stretch", on_click=_new, key="conversation_new")

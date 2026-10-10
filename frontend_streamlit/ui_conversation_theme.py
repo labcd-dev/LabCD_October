@@ -26,16 +26,16 @@ CSS = """
 [data-testid="stSidebar"] button p { font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 [class*="st-key-conversation_nav_selected"] button { background:#303030; }
 [class*="st-key-conversation_nav"] button p { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; }
-.conversation-brand { display:flex; align-items:center; gap:10px; padding:15px 0 24px; font-size:17px; font-weight:600; }
-.conversation-brand .labcd-logo { width:130px; height:auto; flex:none; }
-.labcd-icon { display:block; width:40px; height:40px; }
+.conversation-brand { display:flex; align-items:center; gap:0; padding:15px 0 24px; font-size:17px; font-weight:600; }
+.conversation-brand .labcd-logo { width:116px; height:61px; flex:none; mix-blend-mode:lighten; }
+.labcd-icon { display:block; width:40px; height:40px; mix-blend-mode:lighten; }
 .brand-muted { color:#888; font-size:11px; font-weight:400; padding-top:4px; }
 .sidebar-footnote { color:#888; font-size:11px; line-height:1.8; padding:35px 8px 15px; }
 [data-testid="stLayoutWrapper"]:has(> .st-key-conversation_header) { position:sticky; top:0; z-index:30; background:var(--chat-bg); }
 .st-key-conversation_header { padding:10px 0 18px; margin-bottom:12px; }
 .conversation-heading { display:flex; align-items:center; gap:10px; min-width:0; font-size:14px; color:#ddd; overflow:hidden; white-space:nowrap; }
 .conversation-heading .header-brand { display:inline-flex; flex:none; align-items:center; }
-.conversation-heading .labcd-logo { width:118px; height:auto; }
+.conversation-heading .labcd-logo { width:116px; height:61px; mix-blend-mode:lighten; }
 .conversation-heading .conversation-heading-separator { color:#727272; flex:none; }
 .conversation-heading-title { overflow:hidden; text-overflow:ellipsis; }
 .st-key-conversation_header button { background:transparent; border-color:transparent; font-size:12px; min-height:34px; }
@@ -45,7 +45,7 @@ CSS = """
 .st-key-conversation_center { max-width:820px; margin:0 auto; }
 .conversation-welcome { text-align:center; padding:clamp(48px,10vh,120px) 0 27px; }
 .welcome-glyph { display:flex; justify-content:center; height:58px; margin-bottom:17px; }
-.welcome-glyph .labcd-icon { width:56px; height:56px; filter:drop-shadow(0 5px 18px #756cff44); }
+.welcome-glyph .labcd-icon { width:56px; height:56px; filter:drop-shadow(0 5px 18px #756cff44); mix-blend-mode:lighten; }
 .conversation-welcome h1 { font-family:Arial,sans-serif; font-size:32px; font-weight:500; letter-spacing:-1px; margin:0 0 14px; padding:0; color:#ececec; }
 .conversation-welcome p { font-size:15px; color:#aaa; line-height:1.8; }
 .st-key-conversation_suggestions { margin:3px auto 55px; }
@@ -56,6 +56,7 @@ CSS = """
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) { background:#303030; border-radius:18px; margin:14px 0 10px auto; padding:16px 20px; max-width:90%; }
 [data-testid="stChatMessageAvatarUser"] { display:none; }
 [data-testid="stChatMessageAvatarAssistant"] { background:transparent; color:#dadada; }
+[data-testid="stChatMessageAvatarAssistant"] img { mix-blend-mode:lighten; }
 [data-testid="stChatMessage"] [data-testid="stExpander"] { border-color:#414141; border-radius:10px; }
 [data-testid="stChatMessage"] [data-testid="stVerticalBlockBorderWrapper"] { border-color:#414141; border-radius:12px; }
 [data-testid="stBottomBlockContainer"] { background:var(--chat-bg); padding:0 2.6rem .7rem; }
