@@ -29,6 +29,9 @@ def _restore_config():
             "USE_PINN",
             "USE_STATE_FILTER",
             "OVERFIT_RATIO_LIMIT",
+            "ANGLE_INDICES",
+            "PHYSICS_MODE",
+            "PCNN_HARD_CONSTRAINT_INDICES",
         )
     }
     cfg.NETWORK_ARCHITECTURE = "MLP"
@@ -36,6 +39,9 @@ def _restore_config():
     cfg.ROLLOUT_HORIZON = 1
     cfg.USE_PINN = False
     cfg.USE_STATE_FILTER = False
+    cfg.ANGLE_INDICES = []
+    cfg.PHYSICS_MODE = "pinn"
+    cfg.PCNN_HARD_CONSTRAINT_INDICES = []
     yield
     for k, v in saved.items():
         setattr(cfg, k, v)
@@ -133,6 +139,29 @@ def test_scalers_are_baked_into_the_model_buffers():
     assert model.state_mean.shape == (2,)
 
 
+def test_trainer_fits_scaler_on_periodic_features_for_confirmed_angles():
+    def angular_trajectory(n):
+        theta = np.linspace(-np.pi, np.pi, n, endpoint=False, dtype=np.float32)
+        return {
+            "states": theta[:, None],
+            "actions": np.zeros((n, 0), dtype=np.float32),
+            "xdots": np.cos(theta)[:, None].astype(np.float32),
+            "dts": np.full(n, 0.01, dtype=np.float32),
+            "times": np.arange(n, dtype=np.float64) * 0.01,
+        }
+
+    model, *_ = train_dynamics_model(
+        [angular_trajectory(120)], [angular_trajectory(60)], state_dim=1,
+        action_encoding_dim=0, hidden_layers=[8], learning_rate=1e-3,
+        epochs=2, batch_size=32, patience=2, architecture="MLP",
+        angle_indices=[0], verbose=False,
+    )
+
+    assert model.angle_indices == (0,)
+    assert model.state_feature_dim == 2
+    assert model.state_mean.shape == (2,)
+
+
 def test_pinn_residual_is_applied_when_enabled(monkeypatch):
     """With USE_PINN on, the physics hook must be consulted during training."""
     calls = {"n": 0}
@@ -156,6 +185,63 @@ def test_pinn_residual_is_applied_when_enabled(monkeypatch):
         verbose=False,
     )
     assert calls["n"] > 0, "PINN physics function was never called"
+
+
+def test_pcnn_trains_equation_anchored_model_and_preserves_exact_state(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_physics(states, actions):
+        calls["n"] += 1
+        return torch.stack((2 * states[:, 0] + actions[:, 0], states[:, 1] - actions[:, 0]), dim=1)
+
+    monkeypatch.setattr(
+        "backend_core.AgentSysID.training.trainer.load_analytical_xdot",
+        lambda _path: fake_physics,
+    )
+    cfg.USE_PINN = True
+    cfg.PHYSICS_MODE = "pcnn"
+    cfg.PCNN_HARD_CONSTRAINT_INDICES = [0]
+
+    train = [_linear_trajectory(n=200)]
+    val = [_linear_trajectory(n=80)]
+    model, *_ = train_dynamics_model(
+        train, val, state_dim=2, action_encoding_dim=1,
+        hidden_layers=[8], learning_rate=1e-3, epochs=2,
+        batch_size=64, patience=5, activation="relu", architecture="MLP",
+        verbose=False,
+    )
+    sample_states = torch.tensor([[0.4, -0.2]])
+    sample_actions = torch.tensor([[0.3]])
+    exact = fake_physics(sample_states, sample_actions)
+    model.cpu()
+    predicted, _ = model(sample_states, sample_actions, torch.tensor([[0.01]]))
+
+    assert calls["n"] > 0
+    assert model.physics_mode == "pcnn"
+    assert model.hard_constraint_indices == [0]
+    torch.testing.assert_close(predicted[:, 0], exact[:, 0])
+
+
+def test_equation_loader_does_not_reuse_same_named_file_from_another_run(tmp_path):
+    from backend_core.AgentSysID.model.pinn import load_analytical_xdot
+
+    functions = []
+    for folder, value in (("run_one", 1.0), ("run_two", 2.0)):
+        target = tmp_path / folder / "physics_equation.py"
+        target.parent.mkdir()
+        target.write_text(
+            "import torch\n"
+            "def compute_analytical_xdot(states, actions):\n"
+            f"    return torch.full((len(states), 1), {value}, device=states.device)\n",
+            encoding="utf-8",
+        )
+        functions.append(load_analytical_xdot(target))
+
+    probe = torch.zeros((1, 1))
+    action = torch.zeros((1, 0))
+    assert functions[0] is not None and functions[1] is not None
+    assert functions[0](probe, action).item() == 1.0
+    assert functions[1](probe, action).item() == 2.0
 
 
 def test_pinn_enabled_fails_preflight_instead_of_silently_training_without_physics(monkeypatch):

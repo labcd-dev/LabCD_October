@@ -4,8 +4,8 @@ Excel / CSV trajectory loader for AgentSysID.
 Expects columns (see DATA_CONTRACT.md):
   - time
   - s_*    (states)
-  - a_*    (actions)
-  - xdot_* (optional true derivatives)
+  - a_*    (required actions / inputs)
+  - xdot_* (measured state time-rates; missing rates are estimated from states)
 
 This is the full ``_legacy/framework.ExcelDataLoader`` pipeline:
 
@@ -91,6 +91,12 @@ class ExcelDataLoader:
                 "A time column is strictly required to calculate physical derivatives "
                 "correctly. Execution stopped."
             )
+        if not self.action_cols:
+            raise ValueError(
+                "At least one input/action column with the 'a_' prefix is required for training. "
+                "A time-rate with the 'xdot_' prefix is needed for every state; "
+                "when measured rates are absent, they are estimated from measured states."
+            )
         self.time_col = time_col
         self.has_time_column = True
         self.median_dt = 0.01
@@ -104,6 +110,19 @@ class ExcelDataLoader:
             print("    ⚠️  No 'xdot_' columns found. X_dot will be estimated via finite differences.")
             print("    💡  TIP: If you can provide true X_dot directly from your simulation or hardware sensors,")
             print("         the neural network will achieve much better accuracy without noise amplification.")
+
+        # Resolve the client's explicit periodic-state choice before estimating
+        # reset thresholds. A real +pi/-pi seam is normal angular motion, not a
+        # trajectory teleportation.
+        if getattr(cfg, "AUTO_DETECT_ANGLES", False) is True:
+            print("    ⚙️ Questionnaire requested AUTO-DETECT for angles. Scanning data...")
+            self.angle_indices: List[int] = self._run_angle_auto_detect()
+        elif getattr(cfg, "ANGLE_INDICES", None):
+            self.angle_indices = [int(i) for i in cfg.ANGLE_INDICES if 0 <= int(i) < self.state_dim]
+            print(f"    ⚙️ Locked angular states from questionnaire: {self.angle_indices}")
+        else:
+            self.angle_indices = []
+            print("    ⚙️ Questionnaire confirmed NO angular states.")
 
         # --- Automated reset-threshold detection -----------------------------
         if reset_threshold is not None:
@@ -126,17 +145,6 @@ class ExcelDataLoader:
 
         print(f"    ⚙️ Auto-calibrated Reset Thresholds: {self.reset_threshold}")
 
-        # --- Smart angle index selection -------------------------------------
-        if getattr(cfg, "AUTO_DETECT_ANGLES", False) is True:
-            print("    ⚙️ Questionnaire requested AUTO-DETECT for angles. Scanning data...")
-            self.angle_indices: List[int] = self._run_angle_auto_detect()
-        elif getattr(cfg, "ANGLE_INDICES", None):
-            self.angle_indices = list(cfg.ANGLE_INDICES)
-            print(f"    ⚙️ Locked angular states from questionnaire: {self.angle_indices}")
-        else:
-            self.angle_indices = []
-            print("    ⚙️ Questionnaire confirmed NO angular states.")
-
         # --- Apply the dynamic state filter ----------------------------------
         self._apply_state_filter()
 
@@ -154,6 +162,13 @@ class ExcelDataLoader:
     # ------------------------------------------------------------------
     def drop_columns(self, cols_to_drop: Sequence[str]) -> None:
         """Physically remove columns and their corresponding derivatives."""
+        removed_actions = set(self.action_cols) & set(cols_to_drop)
+        if self.action_cols and len(removed_actions) == len(self.action_cols):
+            raise ValueError("At least one input/action column with the 'a_' prefix must remain for training.")
+        old_state_cols = list(self.state_cols)
+        removed_state_positions = {
+            index for index, name in enumerate(old_state_cols) if name in cols_to_drop
+        }
         dropped: List[str] = []
         for c in cols_to_drop:
             # 1. Drop the state / action column
@@ -177,6 +192,11 @@ class ExcelDataLoader:
         self.state_dim = len(self.state_cols)
         self.action_dim = len(self.action_cols)
         self.has_xdot = len(self.xdot_cols) == self.state_dim and self.state_dim > 0
+        self.angle_indices = [
+            index - sum(removed < index for removed in removed_state_positions)
+            for index in self.angle_indices if index not in removed_state_positions
+        ]
+        cfg.ANGLE_INDICES = list(self.angle_indices)
 
         # Recalculate thresholds for the new dimensions to avoid broadcast errors
         if isinstance(self.reset_threshold, list):
@@ -197,11 +217,13 @@ class ExcelDataLoader:
         if not self.state_cols:
             return []
 
-        diffs = self.df[self.state_cols].diff().abs()
         thresholds: List[float] = []
 
-        for col in self.state_cols:
-            col_diffs = diffs[col].dropna()
+        for index, col in enumerate(self.state_cols):
+            col_diffs = self.df[col].diff().abs().dropna().to_numpy(dtype=np.float64)
+            if index in self.angle_indices:
+                raw_diffs = self.df[col].diff().dropna().to_numpy(dtype=np.float64)
+                col_diffs = np.abs((raw_diffs + np.pi) % (2.0 * np.pi) - np.pi)
             if len(col_diffs) == 0:
                 thresholds.append(10.0)
                 continue
@@ -468,7 +490,12 @@ class ExcelDataLoader:
 
         boundaries = [0]
         for j in range(1, n_rows):
-            state_jump = bool(np.any(np.abs(states[j] - states[j - 1]) > reset_limit))
+            state_delta = np.abs(states[j] - states[j - 1])
+            for index in self.angle_indices:
+                if index < len(state_delta):
+                    raw_delta = float(states[j, index] - states[j - 1, index])
+                    state_delta[index] = abs((raw_delta + np.pi) % (2.0 * np.pi) - np.pi)
+            state_jump = bool(np.any(state_delta > reset_limit))
             time_reset = bool(times[j] < times[j - 1])
             if state_jump or time_reset:
                 boundaries.append(j)

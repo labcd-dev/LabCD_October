@@ -49,6 +49,20 @@ def test_general_excel_question_does_not_start_workbook_creation():
     assert not maker.is_excel_request("What is the difference between Excel and CSV?")
 
 
+@pytest.mark.parametrize("question", [
+    "How do I make an Excel workbook with LabCD?",
+    "How to create a spreadsheet?",
+    "Can you show me how to make an Excel file?",
+])
+def test_excel_how_to_questions_are_separate_from_creation(question):
+    assert maker.is_excel_help_request(question)
+    assert maker.is_excel_request(question)
+
+
+def test_direct_excel_creation_request_is_not_misread_as_how_to():
+    assert not maker.is_excel_help_request("Create an Excel workbook from this table")
+
+
 def test_create_workbook_preserves_data_and_stores_formula_like_text_safely(tmp_path):
     raw = ('Make an Excel workbook:\nName,Postal Code,Score,Note\n'
            'Ali,00120,0.25,"=HYPERLINK(""https://example.test"",""open"")"')

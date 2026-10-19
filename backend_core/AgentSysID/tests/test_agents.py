@@ -326,6 +326,30 @@ def test_initializer_prompt_uses_the_clients_training_priority(monkeypatch):
         cfg.OPTIMIZATION_GOAL = previous_goal
 
 
+def test_initializer_uses_circular_jumps_for_client_confirmed_angles(monkeypatch):
+    import pandas as pd
+
+    loader = _FakeLoader()
+    t = np.linspace(0.0, 1.0, 101)
+    physical_angle = np.linspace(2.8, 3.5, len(t))
+    wrapped_angle = (physical_angle + np.pi) % (2.0 * np.pi) - np.pi
+    loader.df = pd.DataFrame({"time": t, "s_x": wrapped_angle, "a_u": np.ones_like(t)})
+    loader.angle_indices = [0]
+    captured = {}
+
+    def fake_invoke(_system, prompt, **_kwargs):
+        captured["prompt"] = prompt
+        return ""
+
+    monkeypatch.setattr("backend_core.AgentSysID.agents.initializer.invoke_llm", fake_invoke)
+    monkeypatch.setattr(cfg, "MULTI_TRAJECTORY", True)
+    InitializerAgent(loader).determine_initial_setup()
+
+    assert "Client-confirmed periodic angle states: s_x" in captured["prompt"]
+    assert "shortest circular distance" in captured["prompt"]
+    assert "Absolute Max): [0.0070" in captured["prompt"]
+
+
 def test_initializer_fallback_keeps_the_calibrated_reset_threshold(monkeypatch):
     """A failed agent call must not shatter trajectories with a bogus threshold."""
     _no_llm(monkeypatch, "initializer")
@@ -358,7 +382,9 @@ def test_report_agent_parses_abstract_and_conclusion(monkeypatch):
         max_latency=2.0, success_score=88.0, model_status="STABLE & HIGH-FIDELITY",
     )
     assert abstract == "A concise technical abstract."
-    assert conclusion == "A concise conclusion."
+    assert "88.0/100" in conclusion
+    assert "The score and latency do not establish closed-loop stability" in conclusion
+    assert "A concise conclusion." not in conclusion
 
 
 def test_report_agent_fallback_is_fully_populated(monkeypatch):
@@ -373,4 +399,17 @@ def test_report_agent_fallback_is_fully_populated(monkeypatch):
     assert "[64, 64]" in abstract
     assert "Physics-Informed" in abstract
     assert "88.5/100" in conclusion
-    assert "STABLE & HIGH-FIDELITY" in conclusion
+    assert "The score and latency do not establish closed-loop stability" in conclusion
+    assert "readiness for MPC" in conclusion
+    assert "STABLE & HIGH-FIDELITY" not in conclusion
+
+
+def test_report_agent_marks_missing_rollout_score_unavailable(monkeypatch):
+    _no_llm(monkeypatch, "report_agent")
+    abstract, conclusion = ReportAgent().generate_report_text(
+        "plant", 2, 1, {"hidden_layers": [16]}, 0.02, 0.14, 1.2, False,
+        max_latency=2.0, success_score=None, model_status="ROLLOUT UNVERIFIED",
+    )
+    assert "0.020000" in abstract
+    assert "score is unavailable" in conclusion
+    assert "The score and latency do not establish closed-loop stability" in conclusion

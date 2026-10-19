@@ -13,6 +13,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENTS = ("data_inspector", "initializer", "critic", "actor", "explorer", "report")
+AGENT_LOG_ALIASES = {
+    "data_inspector": ("data inspector", "inspector"),
+    "initializer": ("initializer",),
+    "critic": ("critic",),
+    "actor": ("actor",),
+    "explorer": ("explorer",),
+    "report": ("report",),
+}
 MAX_FILE_BYTES = 2_000_000
 MAX_CONTEXT_CHARS = 110_000
 
@@ -126,7 +134,38 @@ def snapshot_run(run_dir: Path, options, config, *, phase="initial", data_summar
     return write_json(path, previous)
 
 
-def save_verification(run_dir, true_data, predicted_data, state_names, *, protocol=None) -> bool:
+def _verification_metrics(true, predicted, state_names, angle_indices=()):
+    import numpy as np
+    from backend_core.AgentSysID.model.angles import circular_difference
+    true, predicted = np.asarray(true, dtype=float), np.asarray(predicted, dtype=float)
+    if true.ndim != 2 or predicted.ndim != 2 or true.shape[1:] != predicted.shape[1:]:
+        return {"aligned_samples": 0, "states": []}
+    n = min(len(true), len(predicted))
+    summary = {"aligned_samples": n,
+               "nonfinite_values": int((~np.isfinite(true[:n])).sum() + (~np.isfinite(predicted[:n])).sum()),
+               "states": []}
+    for i in range(true.shape[1]):
+        valid = np.isfinite(true[:n, i]) & np.isfinite(predicted[:n, i])
+        actual, forecast = true[:n, i][valid], predicted[:n, i][valid]
+        is_angle = i in set(() if angle_indices is None else angle_indices)
+        error = circular_difference(forecast, actual) if is_angle else forecast - actual
+        if is_angle and len(actual):
+            resultant = float(abs(np.mean(np.exp(1j * actual))))
+            scale = float(np.sqrt(max(0.0, -2.0 * np.log(max(resultant, 1e-12)))))
+        else:
+            scale = float(np.std(actual)) if len(actual) else 0.0
+        rmse = float(np.sqrt(np.mean(error**2))) if len(error) else None
+        summary["states"].append({"state": state_names[i] if i < len(state_names) else str(i),
+                                  "valid_samples": len(actual),
+                                  "mae": float(np.mean(np.abs(error))) if len(error) else None,
+                                  "rmse": rmse,
+                                  "rmse_over_test_std": rmse/scale if rmse is not None and scale > 0 else None,
+                                  "error_type": "circular" if is_angle else "linear"})
+    return summary
+
+
+def save_verification(run_dir, true_data, predicted_data, state_names, *, protocol=None,
+                      trajectory_ranges=None, angle_indices=()) -> bool:
     import numpy as np
     true, predicted = np.asarray(true_data, dtype=float), np.asarray(predicted_data, dtype=float)
     summary = {"true_shape": list(true.shape), "predicted_shape": list(predicted.shape),
@@ -134,20 +173,56 @@ def save_verification(run_dir, true_data, predicted_data, state_names, *, protoc
     if protocol is not None:
         summary["protocol"] = clean(protocol)
     if true.ndim == predicted.ndim == 2 and true.shape[1] == predicted.shape[1]:
-        n = min(len(true), len(predicted))
-        summary["aligned_samples"] = n
-        summary["nonfinite_values"] = int((~np.isfinite(true)).sum() + (~np.isfinite(predicted)).sum())
-        summary["states"] = []
-        for i in range(true.shape[1]):
-            valid = np.isfinite(true[:n, i]) & np.isfinite(predicted[:n, i])
-            actual, forecast = true[:n, i][valid], predicted[:n, i][valid]
-            error = forecast - actual
-            scale = float(np.std(actual)) if len(actual) else 0.0
-            rmse = float(np.sqrt(np.mean(error**2))) if len(error) else None
-            summary["states"].append({"state": state_names[i] if i < len(state_names) else str(i),
-                                      "valid_samples": len(actual), "mae": float(np.mean(np.abs(error))) if len(error) else None,
-                                      "rmse": rmse, "rmse_over_test_std": rmse/scale if rmse is not None and scale > 0 else None})
+        summary.update(_verification_metrics(true, predicted, state_names, angle_indices))
+        per_trajectory = []
+        for item in trajectory_ranges or []:
+            start, stop = int(item["start"]), int(item["stop"])
+            start, stop = max(0, start), min(len(true), len(predicted), stop)
+            metrics = _verification_metrics(true[start:stop], predicted[start:stop], state_names, angle_indices)
+            per_trajectory.append({"trajectory_index": int(item["trajectory_index"]), **metrics})
+        if per_trajectory:
+            summary["per_trajectory"] = per_trajectory
     return write_json(Path(run_dir) / "verification_summary.json", summary)
+
+
+def save_verification_series(run_dir, time_seconds, measured, predicted, state_names,
+                             *, trajectory_index: int) -> bool:
+    """Save one held-out trajectory for the interactive Sandbox chart.
+
+    This stays in a private run subfolder and is not included in the client ZIP.
+    """
+    import numpy as np
+
+    times = np.asarray(time_seconds, dtype=float).reshape(-1)
+    truth = np.asarray(measured, dtype=float)
+    forecast = np.asarray(predicted, dtype=float)
+    names = [str(name) for name in state_names]
+    if (truth.ndim != 2 or forecast.shape != truth.shape or truth.shape[1] != len(names)
+            or len(times) != len(truth) or len(times) < 2):
+        return False
+    if not (np.isfinite(times).all() and np.isfinite(truth).all() and np.isfinite(forecast).all()):
+        return False
+
+    path = Path(run_dir) / "verification" / "single_heldout_trajectory.npz"
+    temporary = path.with_name(f".{path.stem}.tmp.npz")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            temporary,
+            time_seconds=times,
+            measured=truth,
+            predicted=forecast,
+            state_names=np.asarray(names, dtype=str),
+            trajectory_index=np.asarray([max(1, int(trajectory_index))], dtype=np.int32),
+        )
+        os.replace(temporary, path)
+        return True
+    except (OSError, TypeError, ValueError, OverflowError):
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return False
 
 
 @dataclasses.dataclass
@@ -171,12 +246,27 @@ class RunEvidence:
                 "sources": [dataclasses.asdict(source) for source in self.sources]}
 
 
-def collect_evidence(run_dir, question="", *, live_state=None, max_chars=MAX_CONTEXT_CHARS) -> RunEvidence:
+def _canonical_agent_id(agent_name):
+    normalized = re.sub(r"[^a-z0-9 ]+", " ", str(agent_name).casefold()).strip()
+    for agent_id, aliases in AGENT_LOG_ALIASES.items():
+        if any(alias in normalized for alias in aliases):
+            return agent_id
+    return None
+
+
+def collect_evidence(run_dir, question="", *, live_state=None, max_chars=MAX_CONTEXT_CHARS,
+                     agent_targets=None, cycle_numbers=None, evidence_targets=None) -> RunEvidence:
     base = Path(run_dir).resolve()
     if not base.is_dir():
         raise ValueError("This run folder is no longer available.")
     sources = []
     coverage = {"missing": [], "notes": [], "agent_turns": 0, "templates": 0, "plot_pixels_read": False}
+    selected_agents = None if agent_targets is None else set(agent_targets)
+    selected_cycles = None if cycle_numbers is None else {int(value) for value in cycle_numbers}
+    requested = None if evidence_targets is None else set(evidence_targets)
+
+    def wants(target):
+        return requested is None or target in requested
 
     def add(identity, title, kind, content, provenance="Saved with this run"):
         if content:
@@ -191,41 +281,78 @@ def collect_evidence(run_dir, question="", *, live_state=None, max_chars=MAX_CON
         coverage["missing"].append(filename)
         return None
 
-    manifest = add_json("M1", "run_manifest.json", "results") or {}
+    manifest_path = base / "run_manifest.json"
+    manifest = read_json(manifest_path) if base in manifest_path.resolve().parents else None
     if not isinstance(manifest, dict):
+        if wants("run_summary"):
+            coverage["missing"].append("run_manifest.json")
         manifest = {}
+    manifest_summary = {key: value for key, value in manifest.items() if key != "performance_history"}
+    if wants("run_summary"):
+        add("M1", "run_manifest.json", "results",
+            json.dumps(clean(manifest_summary), ensure_ascii=False, indent=2))
     # Cycle evidence is separate to allow precise references even with long searches.
-    if "performance_history" in manifest:
-        sources[0].content = json.dumps(clean({k: v for k, v in manifest.items() if k != "performance_history"}), ensure_ascii=False, indent=2)
     history = manifest.get("performance_history", [])
-    if live_state:
+    if live_state and wants("live_state"):
         add("F1", "Last observed run state", "runtime", json.dumps(clean(live_state), ensure_ascii=False, indent=2), "Observed by the UI; may be incomplete")
         history = history or live_state.get("history", [])
-    if isinstance(history, list):
+    if wants("cycle_history") and isinstance(history, list):
         for i, row in enumerate(history):
             if isinstance(row, dict):
+                cycle = row.get("cycle", i + 1)
+                if selected_cycles and int(cycle) not in selected_cycles:
+                    continue
                 add(f"C{i+1}", f"Training cycle {row.get('cycle', i+1)}", "cycle", json.dumps(clean(row), indent=2))
     context_path = base / "run_context.json"
     context = read_json(context_path, {}) if base in context_path.resolve().parents else {}
     if isinstance(context, dict) and context:
-        add("R1", "Recorded run settings and data split", "settings", json.dumps({k:v for k,v in context.items() if k not in ("prompts", "implementation")}, indent=2))
+        if wants("recorded_settings"):
+            add("R1", "Recorded run settings and data split", "settings", json.dumps({k:v for k,v in context.items() if k not in ("prompts", "implementation")}, indent=2))
         prompts, implementation = context.get("prompts", {}), context.get("implementation", {})
         provenance = "Captured for this run"
     else:
         coverage["missing"].append("run_context.json")
         coverage["notes"].append("Original settings/templates were not captured. Current reference templates and code cannot prove what this older run used; recorded agent turns take priority.")
-        prompts = {name: (ROOT / "prompts" / f"{name}.yaml").read_text(encoding="utf-8") for name in AGENTS}
-        implementation = implementation_reference()
+        prompts = ({name: (ROOT / "prompts" / f"{name}.yaml").read_text(encoding="utf-8")
+                    for name in AGENTS if selected_agents is None or name in selected_agents}
+                   if wants("agent_templates") else {})
+        implementation = implementation_reference() if wants("implementation") else {}
         provenance = "Current reference; historical version not verified"
-    for name, text in prompts.items():
-        add(f"P_{name}", f"{name.replace('_', ' ').title()} prompt template", "template", str(text), provenance)
-        coverage["templates"] += 1
-    for i, (name, text) in enumerate(implementation.items()):
-        add(f"I{i+1}", name, "implementation", str(text), provenance)
-    add_json("V1", "verification_summary.json", "verification")
-    add_json("S1", "diagnostic_state.json", "runtime")
-    activity = add_json("E1", "agent_activity.json", "activity")
-    log_paths = sorted((base / "Agents_log").glob("*")) + [base / "llm_conversation_history.txt"]
+    if wants("agent_templates"):
+        for name, text in prompts.items():
+            if selected_agents is not None and name not in selected_agents:
+                continue
+            add(f"P_{name}", f"{name.replace('_', ' ').title()} prompt template", "template", str(text), provenance)
+            coverage["templates"] += 1
+    if wants("implementation"):
+        for i, (name, text) in enumerate(implementation.items()):
+            add(f"I{i+1}", name, "implementation", str(text), provenance)
+    if wants("verification"):
+        add_json("V1", "verification_summary.json", "verification")
+    if wants("live_state"):
+        add_json("S1", "diagnostic_state.json", "runtime")
+    if wants("agent_activity"):
+        activity_path = base / "agent_activity.json"
+        activity = read_json(activity_path) if base in activity_path.resolve().parents else None
+        if isinstance(activity, list) and selected_agents is not None:
+            selected_activity = []
+            for item in activity:
+                if not isinstance(item, dict):
+                    continue
+                agent_id = _canonical_agent_id(item.get("id", ""))
+                if agent_id not in selected_agents:
+                    continue
+                cycle_match = re.search(r":(\d+)$", str(item.get("id", "")))
+                if selected_cycles and cycle_match and int(cycle_match.group(1)) not in selected_cycles:
+                    continue
+                selected_activity.append(item)
+            activity = selected_activity
+        if isinstance(activity, (dict, list)):
+            add("E1", "agent_activity.json", "activity", json.dumps(clean(activity), ensure_ascii=False, indent=2))
+        else:
+            coverage["missing"].append("agent_activity.json")
+    log_paths = (sorted((base / "Agents_log").glob("*")) + [base / "llm_conversation_history.txt"]
+                 if wants("agent_logs") else [])
     index = 0
     for path in log_paths:
         # Ignore symlinks outside the selected run and never read manifest-provided paths.
@@ -238,24 +365,29 @@ def collect_evidence(run_dir, question="", *, live_state=None, max_chars=MAX_CON
             if "AGENT: [" not in block:
                 continue
             agent = re.search(r"AGENT: \[([^\]]+)\]", block)
+            agent_id = _canonical_agent_id(agent.group(1) if agent else "")
+            if selected_agents is not None and agent_id not in selected_agents:
+                continue
             coverage["agent_turns"] += 1
             # Split long real prompts into individually citable excerpts.
             for start in range(0, len(block), 7000):
                 index += 1
                 add(f"A{index}", f"{agent.group(1) if agent else 'Agent'} · {path.name} · excerpt {start//7000+1}", "agent_turn", block[start:start+7500])
-    if not index:
+    if wants("agent_logs") and not index:
         coverage["missing"].append("Recorded agent prompts and replies")
-    runtime_path = base / "runtime_console.log"
-    runtime, truncated = _read(runtime_path) if base in runtime_path.resolve().parents else ("", False)
-    if truncated:
-        coverage["notes"].append("runtime_console.log: middle of very large log omitted.")
-    if runtime:
-        for i, start in enumerate(range(0, len(runtime), 6000)):
-            add(f"L{i+1}", f"Runtime console · excerpt {i+1}", "console", runtime[start:start+6500])
-    else:
-        coverage["missing"].append("runtime_console.log")
-    knowledge = (ROOT / "prompts" / "diagnostic_knowledge.md").read_text(encoding="utf-8")
-    add("K1", "System identification diagnostic guide", "knowledge", knowledge, "Diagnostic reference; not an observation about this run")
+    if wants("runtime_logs"):
+        runtime_path = base / "runtime_console.log"
+        runtime, truncated = _read(runtime_path) if base in runtime_path.resolve().parents else ("", False)
+        if truncated:
+            coverage["notes"].append("runtime_console.log: middle of very large log omitted.")
+        if runtime:
+            for i, start in enumerate(range(0, len(runtime), 6000)):
+                add(f"L{i+1}", f"Runtime console · excerpt {i+1}", "console", runtime[start:start+6500])
+        else:
+            coverage["missing"].append("runtime_console.log")
+    if wants("diagnostic_reference"):
+        knowledge = (ROOT / "prompts" / "diagnostic_knowledge.md").read_text(encoding="utf-8")
+        add("K1", "System identification diagnostic guide", "knowledge", knowledge, "Diagnostic reference; not an observation about this run")
     coverage["notes"].append("Plot files and model weights are not interpreted by this text analysis. Use recorded verification metrics; visual conclusions require inspecting the plots.")
 
     # Prioritize measured data and instructions, then retrieve relevant actual agent turns.
@@ -297,4 +429,4 @@ def collect_evidence(run_dir, question="", *, live_state=None, max_chars=MAX_CON
                     fingerprint=hashlib.sha256("\n".join(s.id+s.content for s in selected).encode()).hexdigest())
     if len(selected) < len(sources):
         coverage["notes"].append("The context budget selected relevant excerpts, representative agent turns and measured cycles; not every log excerpt was included.")
-    return RunEvidence(base.name, manifest, selected, coverage)
+    return RunEvidence(base.name, manifest_summary if wants("run_summary") else {}, selected, coverage)

@@ -25,8 +25,8 @@ def test_zero_metrics_and_missing_training_time_remain_distinct():
     rows = {row["Metric"]: row for row in workspace.compare_rows(
         {"success_score": 0, "best_mse": 0, "best_rmse": float("nan")},
         {"success_score": 50, "best_mse": 0.01, "training_seconds": 60})}
-    assert rows["Score / 100"]["Run A"] == "0.00"
-    assert rows["Score / 100"]["B vs A"] == "+50.00 points"
+    assert rows["Fit + rollout score / 100"]["Run A"] == "0.00"
+    assert rows["Fit + rollout score / 100"]["B vs A"] == "+50.00 points"
     assert rows["Validation MSE"]["Run A"] == "0.000e+00"
     assert rows["Validation MSE"]["B vs A"] == "Higher"
     assert rows["Validation RMSE"]["Run A"] == "Not recorded"

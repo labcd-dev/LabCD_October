@@ -263,7 +263,7 @@ def generate_all_plots(
 # ---------------------------------------------------------------------------
 # Pure data-driven held-out verification (no physics equations)
 # ---------------------------------------------------------------------------
-def plot_test_dataset_verification(
+def _plot_single_test_dataset_verification(
     dyn_model,
     test_trajs: List[Dict[str, Any]],
     state_dim: int,
@@ -277,6 +277,7 @@ def plot_test_dataset_verification(
     integrator: Optional[str] = None,
     target_horizon_seconds: float = 10.0,
     save_plot: bool = True,
+    angle_indices: Optional[List[int]] = None,
 ) -> tuple:
     """
     Roll the trained network forward over the held-out test set and plot it
@@ -295,6 +296,7 @@ def plot_test_dataset_verification(
     from collections import deque
 
     import torch
+    from backend_core.AgentSysID.model.angles import wrap_angle_values
 
     from backend_core.AgentSysID import config as cfg
 
@@ -419,11 +421,13 @@ def plot_test_dataset_verification(
         if plot_dim == 1:
             axes = np.array([axes])
         nn_arr = np.array(nn_history)
+        plot_true_states = wrap_angle_values(true_states, angle_indices)
+        plot_nn_states = wrap_angle_values(nn_arr, angle_indices)
         for idx in range(plot_dim):
             ax = axes[idx]
-            ax.plot(steps_axis, true_states[:, idx], "--", color="blue", linewidth=2.5,
+            ax.plot(steps_axis, plot_true_states[:, idx], "--", color="blue", linewidth=2.5,
                     label="True Test Data")
-            ax.plot(steps_axis, nn_arr[:, idx], "-", color="black", linewidth=1.5,
+            ax.plot(steps_axis, plot_nn_states[:, idx], "-", color="black", linewidth=1.5,
                     label="NN Prediction")
             ax.grid(True, alpha=0.3)
             ax.set_ylabel(f"State {idx}", fontsize=10, fontweight="bold")
@@ -445,3 +449,58 @@ def plot_test_dataset_verification(
         print("    ⚠️ No verification plot was written.")
 
     return np.array(master_true_traj), np.array(master_nn_traj)
+
+
+def plot_test_dataset_verification(
+    dyn_model,
+    test_trajs: List[Dict[str, Any]],
+    state_dim: int,
+    action_dim: int,
+    output_dir: str | Path,
+    timestamp: str,
+    prefix: str = "system_id",
+    env_name: str = "system",
+    architecture: Optional[str] = None,
+    lstm_seq_length: Optional[int] = None,
+    integrator: Optional[str] = None,
+    target_horizon_seconds: float = 10.0,
+    save_plot: bool = True,
+    return_trajectory_ranges: bool = False,
+    angle_indices: Optional[List[int]] = None,
+):
+    """Evaluate each held-out trajectory independently, then combine aligned errors.
+
+    Trajectory boundaries reset recurrent context and initial state. The returned
+    arrays are concatenated only after each trajectory has been rolled out; the
+    optional ranges preserve those boundaries for per-trajectory reporting.
+    """
+    import numpy as np
+
+    if not test_trajs:
+        print("    ⚠️ No test trajectories available; skipping verification.")
+        empty = np.zeros((0, state_dim))
+        return (empty, empty, []) if return_trajectory_ranges else (empty, empty)
+
+    true_parts, predicted_parts, ranges = [], [], []
+    offset = 0
+    for index, trajectory in enumerate(test_trajs):
+        trajectory_prefix = f"{prefix}_trajectory_{index + 1}" if len(test_trajs) > 1 else prefix
+        true_part, predicted_part = _plot_single_test_dataset_verification(
+            dyn_model, [trajectory], state_dim, action_dim, output_dir, timestamp,
+            prefix=trajectory_prefix, env_name=env_name, architecture=architecture,
+            lstm_seq_length=lstm_seq_length, integrator=integrator,
+            target_horizon_seconds=target_horizon_seconds, save_plot=save_plot,
+            angle_indices=angle_indices,
+        )
+        n = min(len(true_part), len(predicted_part))
+        if n:
+            true_parts.append(np.asarray(true_part[:n], dtype=float))
+            predicted_parts.append(np.asarray(predicted_part[:n], dtype=float))
+            ranges.append({"trajectory_index": index + 1, "start": offset, "stop": offset + n})
+            offset += n
+
+    true_all = np.concatenate(true_parts, axis=0) if true_parts else np.zeros((0, state_dim))
+    predicted_all = np.concatenate(predicted_parts, axis=0) if predicted_parts else np.zeros((0, state_dim))
+    if return_trajectory_ranges:
+        return true_all, predicted_all, ranges
+    return true_all, predicted_all

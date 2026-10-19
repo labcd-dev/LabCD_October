@@ -44,6 +44,7 @@ class ActorAgent:
                 "weight_decay": initial_config.get("weight_decay", cfg.MANUAL_WEIGHT_DECAY),
                 "batch_size": initial_config.get("batch_size", cfg.BATCH_SIZE),
                 "patience": initial_config.get("early_stop_patience", cfg.EARLY_STOP_PATIENCE),
+                "epochs": initial_config.get("epochs", cfg.EPOCHS),
             }
             self.lr_min = initial_config.get("lr_search_min", cfg.LEARNING_RATE_MIN)
             self.lr_max = initial_config.get("lr_search_max", cfg.LEARNING_RATE_MAX)
@@ -59,6 +60,7 @@ class ActorAgent:
                 "weight_decay": cfg.MANUAL_WEIGHT_DECAY,
                 "batch_size": cfg.BATCH_SIZE,
                 "patience": cfg.EARLY_STOP_PATIENCE,
+                "epochs": cfg.EPOCHS,
             }
             self.lr_min = cfg.LEARNING_RATE_MIN
             self.lr_max = cfg.LEARNING_RATE_MAX

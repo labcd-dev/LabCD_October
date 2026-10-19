@@ -8,7 +8,7 @@ from pathlib import Path
 import streamlit as st
 
 from backend_core.AgentSysID.agents.run_diagnostic import (
-    DiagnosticJob, DiagnosticSettings, clear_chat, load_chat,
+    DiagnosticJob, DiagnosticSettings, clear_chat, feedback_message_id, load_chat, set_chat_feedback,
 )
 from backend_core.AgentSysID.agents.run_evidence import collect_evidence
 
@@ -22,7 +22,7 @@ except ImportError:
 
 SUGGESTIONS = (
     ("Explain this result", "Did this model actually fail? Explain the result and the most important remaining risks."),
-    ("Audit the agents", "Audit the other agents' prompts and decisions. Identify contradictions or possible problems and what the run evidence actually proves."),
+    ("Audit the agents", "Audit the other agents' prompts and decisions. Identify contradictions or possible problems and what the run records support."),
     ("Choose my next test", "What should I test next to improve identification and held-out rollout quality? Prioritize controlled experiments supported by this run."),
 )
 
@@ -33,16 +33,16 @@ def _text(value):
 
 def _citations(refs):
     for ref in refs:
-        st.caption(f"{ref.get('source_id', '')} · {ref.get('title', 'Run evidence')} · {ref.get('provenance', 'Saved with this run')}")
+        st.caption(f"{ref.get('source_id', '')} · {ref.get('title', 'Run source')} · {ref.get('provenance', 'Saved with this run')}")
         st.text(ref.get("quote", ""))
 
 
 def render_answer(answer):
-    """Show conclusions and verifiable evidence, never private reasoning."""
+    """Show supported conclusions and their sources, never private reasoning."""
     mode = answer.get("mode")
     issue = answer.get("diagnostic_error") or {}
     rejected = issue.get("code") in ("unverified_citations", "invalid_answer_format")
-    label = "Evidence reviewed" if answer.get("reviewed") else (
+    label = "Sources checked" if answer.get("reviewed") else (
         "Unreviewed AI draft" if mode == "ai_draft" else (
             "Local checks · AI answer rejected" if rejected else "Local checks · AI unavailable"
         )
@@ -53,7 +53,7 @@ def render_answer(answer):
         st.warning(warning)
     findings = answer.get("findings", [])
     if findings:
-        with st.expander(f"Findings & evidence · {len(findings)}", icon=":material/fact_check:"):
+        with st.expander(f"Findings & sources · {len(findings)}", icon=":material/fact_check:"):
             for i, finding in enumerate(findings):
                 if i:
                     st.divider()
@@ -74,7 +74,7 @@ def render_answer(answer):
                 _citations(experiment.get("evidence", []))
     with st.expander("Scope & uncertainty", icon=":material/info:"):
         coverage = answer.get("coverage", {})
-        st.caption(f"{coverage.get('sources_used', 0)} evidence excerpts · {coverage.get('agent_turns', 0)} recorded agent turns · {coverage.get('templates', 0)} prompt templates")
+        st.caption(f"{coverage.get('sources_used', 0)} source excerpts · {coverage.get('agent_turns', 0)} recorded agent turns · {coverage.get('templates', 0)} prompt templates")
         for limitation in dict.fromkeys(answer.get("limitations", []) + coverage.get("notes", [])):
             _text(f"• {limitation}")
         if coverage.get("missing"):
@@ -88,7 +88,7 @@ def _settings():
     with st.popover("Diagnostic model", icon=":material/psychology:"):
         st.markdown("**Uses your current API settings**")
         st.text(f"Provider: {settings.provider}\nModel: {settings.model}")
-        st.caption("Follows the provider and model configured for the other agents. Each answer still uses an investigator pass and an evidence review with your existing credentials.")
+        st.caption("Follows the provider and model configured for the other agents. Each answer still uses an investigator pass and a source review with your existing credentials.")
     return settings
 
 
@@ -103,7 +103,7 @@ def _inventory(run_dir):
 @st.cache_data(ttl=300, max_entries=8, show_spinner=False)
 def _cached_inventory(run_dir, stamp):
     evidence = collect_evidence(run_dir)
-    return evidence.coverage, [{"Source": s.id, "Evidence": s.title, "Provenance": s.provenance} for s in evidence.sources]
+    return evidence.coverage, [{"Source": s.id, "Record": s.title, "Provenance": s.provenance} for s in evidence.sources]
 
 
 def _submit(run_dir, question, settings, live_state=None):
@@ -128,12 +128,29 @@ def _conversation(run_dir, job):
                     render_answer(message["diagnosis"])
                 else:
                     _text(message["content"])
+                if message["role"] == "assistant":
+                    feedback_id = feedback_message_id(message)
+                    previous = (message.get("feedback") or {}).get("rating")
+                    selected = st.feedback(
+                        "thumbs",
+                        key=f"diagnostic_answer_feedback_{hashlib.sha256(str(run_dir).encode()).hexdigest()[:10]}_{feedback_id}",
+                        default={"down": 0, "up": 1}.get(previous),
+                    )
+                    if selected is not None:
+                        rating = "up" if selected == 1 else "down"
+                        if rating != previous:
+                            if set_chat_feedback(run_dir, feedback_id, rating):
+                                st.caption("Feedback saved with this conversation.")
+                            else:
+                                st.warning("This rating could not be saved with the run conversation.")
+                        else:
+                            st.caption("Feedback saved with this conversation.")
         if job and job.running:
             with st.chat_message("user"):
                 _text(job.question)
             with st.chat_message("assistant"):
                 with st.status(job.phase, expanded=True, state="running"):
-                    st.caption("Reading the selected run, auditing agent decisions, then challenging the diagnosis against its evidence.")
+                    st.caption("Reading the selected run, auditing agent decisions, then checking the diagnosis against its saved records.")
                     st.caption("You can use the results preview or move to another tab while this runs.")
         elif job and job.error:
             with st.chat_message("user"):
@@ -190,18 +207,18 @@ def render_run_chat(output_dir, *, preferred=None, runner=None):
                     st.rerun()
                 else:
                     st.error("The conversation file could not be cleared.")
-    st.caption(f"{settings.provider.title()} · {settings.model} · Two-pass evidence review")
+    st.caption(f"{settings.provider.title()} · {settings.model} · Two-pass results review")
     st.caption("Deep analysis can take several minutes. The workspace stays available while it runs.")
     with st.expander("What the agent can read", icon=":material/folder_open:"):
         coverage, source_rows = _inventory(identity)
-        st.caption(f"{coverage['agent_turns']} recorded agent turns · {coverage['templates']} prompt templates · {coverage['sources_used']} evidence excerpts")
+        st.caption(f"{coverage['agent_turns']} recorded agent turns · {coverage['templates']} prompt templates · {coverage['sources_used']} source excerpts")
         st.dataframe(source_rows, hide_index=True, width="stretch")
         for note in coverage["notes"]:
             _text(note)
         if coverage["missing"]:
             st.caption("Not recorded: " + ", ".join(coverage["missing"]))
     if training:
-        st.info("This run is still training. Ask when it finishes so the diagnosis has complete evidence, or choose an earlier run.")
+        st.info("This run is still training. Ask when it finishes so the diagnosis has the complete run record, or choose an earlier run.")
     if busy:
         _poll_conversation(identity, job)
     else:

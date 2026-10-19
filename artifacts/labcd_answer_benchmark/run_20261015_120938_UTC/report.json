@@ -1,0 +1,646 @@
+{
+  "benchmark": "LabCD answer routing and quality benchmark",
+  "benchmark_version": 1,
+  "mode": "live",
+  "created_at_utc": "2026-10-15T12:09:38+00:00",
+  "synthetic_data_only": true,
+  "total_cases": 10,
+  "passed": 6,
+  "failed": 4,
+  "blocked": 0,
+  "skipped": 0,
+  "scored_cases": 10,
+  "pass_rate": 0.6,
+  "provider_blocked_cases": 0,
+  "warning_count": 0,
+  "by_category": {
+    "semantic_scope_disambiguation": {
+      "passed": 6,
+      "failed": 4,
+      "blocked": 0,
+      "skipped": 0,
+      "total": 10,
+      "failures": [
+        "semantic_scope_disambiguation-03",
+        "semantic_scope_disambiguation-04",
+        "semantic_scope_disambiguation-06",
+        "semantic_scope_disambiguation-07"
+      ]
+    }
+  },
+  "components": {
+    "routing": {
+      "passed": 9,
+      "total": 10,
+      "pass_rate": 0.9
+    },
+    "llm_scope_selection": {
+      "passed": 9,
+      "total": 10,
+      "pass_rate": 0.9
+    },
+    "agent_role_selection": {
+      "passed": 4,
+      "total": 5,
+      "pass_rate": 0.8
+    },
+    "evidence_target_selection": {
+      "passed": 10,
+      "total": 10,
+      "pass_rate": 1.0
+    },
+    "cycle_target_selection": {
+      "passed": 5,
+      "total": 5,
+      "pass_rate": 1.0
+    },
+    "state_ranking_intent": {
+      "passed": 1,
+      "total": 1,
+      "pass_rate": 1.0
+    },
+    "answerer_selection": {
+      "passed": 7,
+      "total": 10,
+      "pass_rate": 0.7
+    },
+    "evidence_retrieval": {
+      "passed": 10,
+      "total": 10,
+      "pass_rate": 1.0
+    },
+    "settings_edits": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "local_answers": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "completed_live_responses": {
+      "passed": 6,
+      "total": 10,
+      "pass_rate": 0.6
+    },
+    "model_generated_answers": {
+      "passed": 6,
+      "total": 10,
+      "pass_rate": 0.6
+    }
+  },
+  "live_api_answer_cases": 10,
+  "planner_cases": 0,
+  "records": [
+    {
+      "status": "answer",
+      "answer": "An LSTM (Long Short-Term Memory) network retains sequence information through its unique architecture, which includes memory cells and gating mechanisms. The memory cells store information over long periods, while the gates (input, output, and forget gates) control the flow of information. The input gate determines what information to add to the cell state, the forget gate decides what to discard, and the output gate controls what information to send to the next layer. This structure allows LSTMs to effectively learn from sequences and maintain context over time, making them particularly useful for tasks involving sequential data, such as time series prediction or natural language processing.",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "general",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "semantic_scope_disambiguation-01",
+      "category": "semantic_scope_disambiguation",
+      "question": "In general, how does an LSTM retain sequence information?",
+      "mode": "live",
+      "elapsed_seconds": 9.59,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "planner": {
+        "scope": "general",
+        "answerer": "conversation",
+        "agent_ids": [],
+        "evidence_targets": [],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": true,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": null,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "Cycle 2 has a validation MSE of 0.0018 and completed 50 epochs with a training time of 26 seconds [C2]. The architecture used is LSTM with two hidden layers of 64 units each [C2]. Currently, the run is still in progress at cycle 2, with a validation MSE of 0.0023 and a current loss of 0.0031 after 18 epochs completed [LIVE1].",
+      "sources": [
+        "C2",
+        "LIVE1"
+      ],
+      "evidence": [
+        {
+          "id": "C2",
+          "title": "Training cycle 2",
+          "kind": "cycle"
+        },
+        {
+          "id": "LIVE1",
+          "title": "Current live run and cycle checkpoint",
+          "kind": "live_run"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "semantic_scope_disambiguation-02",
+      "category": "semantic_scope_disambiguation",
+      "question": "What does the current checkpoint say about cycle 2?",
+      "mode": "live",
+      "elapsed_seconds": 6.8,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "planner": {
+        "scope": "run",
+        "answerer": "conversation",
+        "agent_ids": [],
+        "evidence_targets": [
+          "cycle_history",
+          "run_summary",
+          "live_state"
+        ],
+        "cycle_numbers": [
+          2
+        ],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": null,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": true,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "After receiving feedback from the Critic, the Actor made changes in cycle 2 [A1] [C2]. The Critic noted that the validation error in cycle 1 was higher than in cycle 2, but did not provide a causal explanation for this change [A1]. In cycle 2, the Actor trained for 50 epochs using an LSTM architecture with two hidden layers of 64 units each, resulting in a validation MSE of 0.0018 [C2].",
+      "sources": [
+        "A1",
+        "C2"
+      ],
+      "evidence": [
+        {
+          "id": "A1",
+          "title": "Critic · synthetic_agents.txt · excerpt 1",
+          "kind": "agent_turn"
+        },
+        {
+          "id": "C2",
+          "title": "Training cycle 2",
+          "kind": "cycle"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "semantic_scope_disambiguation-03",
+      "category": "semantic_scope_disambiguation",
+      "question": "Not the Initializer; what did the Actor change after Critic feedback in cycle 2?",
+      "mode": "live",
+      "elapsed_seconds": 7.39,
+      "failures": [
+        "planner roles: expected ['actor'], got ['actor', 'critic']",
+        "planner answerer: expected run_diagnostic, got conversation"
+      ],
+      "warnings": [],
+      "expected_scope": "run",
+      "planner": {
+        "scope": "run",
+        "answerer": "conversation",
+        "agent_ids": [
+          "actor",
+          "critic"
+        ],
+        "evidence_targets": [
+          "agent_activity",
+          "agent_logs",
+          "cycle_history",
+          "run_summary"
+        ],
+        "cycle_numbers": [
+          2
+        ],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": false,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": true,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": false,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "failed",
+      "answer_passed": false,
+      "model_answer_passed": false
+    },
+    {
+      "status": "answer",
+      "answer": "In cycle 2, the Critic noted that the validation error was higher than in cycle 2, but did not provide a causal explanation for this change [A1]. The actual change in cycle 2 resulted in a validation mean squared error (MSE) of 0.0018, which indicates an improvement in performance compared to cycle 1 [C2]. Therefore, while the Critic acknowledged the improvement, they did not specify why it occurred.",
+      "sources": [
+        "A1",
+        "C2"
+      ],
+      "evidence": [
+        {
+          "id": "A1",
+          "title": "Critic · synthetic_agents.txt · excerpt 1",
+          "kind": "agent_turn"
+        },
+        {
+          "id": "C2",
+          "title": "Training cycle 2",
+          "kind": "cycle"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "semantic_scope_disambiguation-04",
+      "category": "semantic_scope_disambiguation",
+      "question": "Compare the Critic's recommendation with the Actor's actual change in cycle 2.",
+      "mode": "live",
+      "elapsed_seconds": 9.8,
+      "failures": [
+        "planner answerer: expected run_diagnostic, got conversation"
+      ],
+      "warnings": [],
+      "expected_scope": "run",
+      "planner": {
+        "scope": "run",
+        "answerer": "conversation",
+        "agent_ids": [
+          "critic",
+          "actor"
+        ],
+        "evidence_targets": [
+          "cycle_history",
+          "agent_activity",
+          "run_summary",
+          "agent_logs"
+        ],
+        "cycle_numbers": [
+          2
+        ],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": true,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": true,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": false,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "failed",
+      "answer_passed": false,
+      "model_answer_passed": false
+    },
+    {
+      "status": "answer",
+      "answer": "The best validation MSE across the full run was 0.0018 [M1].",
+      "sources": [
+        "M1"
+      ],
+      "evidence": [
+        {
+          "id": "M1",
+          "title": "run_manifest.json",
+          "kind": "results"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "semantic_scope_disambiguation-05",
+      "category": "semantic_scope_disambiguation",
+      "question": "Do not summarize cycle 2. What was the best validation MSE across the full run?",
+      "mode": "live",
+      "elapsed_seconds": 6.69,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "planner": {
+        "scope": "run",
+        "answerer": "conversation",
+        "agent_ids": [],
+        "evidence_targets": [
+          "run_summary"
+        ],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": null,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": true,
+      "planner_ranking_classification_passed": true,
+      "planner_answerer_selection_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "The Initializer proposed using an LSTM architecture with 32 units per layer for this synthetic benchmark run [A1].",
+      "sources": [
+        "A1"
+      ],
+      "evidence": [
+        {
+          "id": "A1",
+          "title": "Initializer · synthetic_agents.txt · excerpt 1",
+          "kind": "agent_turn"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "semantic_scope_disambiguation-06",
+      "category": "semantic_scope_disambiguation",
+      "question": "I do not need the prompt template; what did the Initializer actually propose in this saved run?",
+      "mode": "live",
+      "elapsed_seconds": 6.17,
+      "failures": [
+        "planner answerer: expected run_diagnostic, got conversation"
+      ],
+      "warnings": [],
+      "expected_scope": "run",
+      "planner": {
+        "scope": "run",
+        "answerer": "conversation",
+        "agent_ids": [
+          "initializer"
+        ],
+        "evidence_targets": [
+          "agent_logs",
+          "run_summary",
+          "agent_activity"
+        ],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": true,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": null,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": false,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "failed",
+      "answer_passed": false,
+      "model_answer_passed": false
+    },
+    {
+      "status": "answer",
+      "answer": "In the uploaded dataset, none of the measured signals show evidence of wrapping [D1]. The signals include:\n- **s_speed**: min 0.0, max 4.2, wrap jumps 0\n- **s_heading**: min -1.2, max 1.4, wrap jumps 0\n- **s_temp**: min 19.0, max 26.0, wrap jumps 0\n\nAll signals have a wrap jumps count of 0, indicating no wrapping behavior detected [D1].",
+      "sources": [
+        "D1"
+      ],
+      "evidence": [
+        {
+          "id": "D1",
+          "title": "Measured uploaded dataset profile",
+          "kind": "measurement"
+        }
+      ],
+      "answer_scope": "general",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "semantic_scope_disambiguation-07",
+      "category": "semantic_scope_disambiguation",
+      "question": "Which measured signals could wrap in the uploaded dataset?",
+      "mode": "live",
+      "elapsed_seconds": 9.22,
+      "failures": [
+        "question scope: expected setup, got general"
+      ],
+      "warnings": [],
+      "expected_scope": "setup",
+      "planner": {
+        "scope": "general",
+        "answerer": "conversation",
+        "agent_ids": [],
+        "evidence_targets": [
+          "dataset_profile"
+        ],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": false,
+      "planner_scope_passed": false,
+      "planner_agent_selection_passed": null,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": null,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "failed",
+      "answer_passed": false,
+      "model_answer_passed": false
+    },
+    {
+      "status": "answer",
+      "answer": "The Actor chooses a next candidate by analyzing feedback from the Critic Agent regarding the current model's performance [P_actor]. It considers the historical configurations that have succeeded or failed, ensuring that any new configuration includes at least one structural mutation, such as changing the learning rate or altering the number of neurons in hidden layers [P_actor]. The Actor also adheres to absolute search bounds and applies dynamic regularization rules based on the Critic's diagnosis of overfitting or underfitting [P_actor]. Ultimately, it outputs a precise new configuration to test based on this analysis [P_actor].",
+      "sources": [
+        "P_actor"
+      ],
+      "evidence": [
+        {
+          "id": "P_actor",
+          "title": "Actor prompt template",
+          "kind": "template"
+        }
+      ],
+      "answer_scope": "general",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "semantic_scope_disambiguation-08",
+      "category": "semantic_scope_disambiguation",
+      "question": "How does the Actor choose a next candidate in general?",
+      "mode": "live",
+      "elapsed_seconds": 7.3,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "planner": {
+        "scope": "general",
+        "answerer": "conversation",
+        "agent_ids": [
+          "actor"
+        ],
+        "evidence_targets": [
+          "agent_templates"
+        ],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": true,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": null,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "The recommendation for the LSTM architecture is based on the nature of your data, which consists of sequential measurements [U1]. LSTMs are particularly effective for capturing temporal dependencies in such data [U1]. The suggested effort is 'fast' because a small initial search is sufficient for your setup, allowing for quicker iterations and adjustments [U1]. This approach balances the need for model complexity with the available data and computational resources [U1].",
+      "sources": [
+        "U1"
+      ],
+      "evidence": [
+        {
+          "id": "U1",
+          "title": "Saved starting setup and recommendation",
+          "kind": "setup"
+        }
+      ],
+      "answer_scope": "setup",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "semantic_scope_disambiguation-09",
+      "category": "semantic_scope_disambiguation",
+      "question": "Why?",
+      "mode": "live",
+      "elapsed_seconds": 7.95,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "planner": {
+        "scope": "setup",
+        "answerer": "conversation",
+        "agent_ids": [
+          "run_setup_agent"
+        ],
+        "evidence_targets": [
+          "setup_recommendation"
+        ],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": null,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": null,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "In the second candidate, the model underwent 50 epochs of training, achieving a validation mean squared error (MSE) of 0.0018. The training time for this cycle was 26 seconds, and it utilized an LSTM architecture with two hidden layers, each containing 64 units. Notably, the validation error for cycle 1 was higher than that of cycle 2, although no causal explanation for this difference was established [C2][A1].",
+      "sources": [
+        "C2",
+        "A1"
+      ],
+      "evidence": [
+        {
+          "id": "A1",
+          "title": "Critic · synthetic_agents.txt · excerpt 1",
+          "kind": "agent_turn"
+        },
+        {
+          "id": "C2",
+          "title": "Training cycle 2",
+          "kind": "cycle"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "semantic_scope_disambiguation-10",
+      "category": "semantic_scope_disambiguation",
+      "question": "What happened in the second candidate?",
+      "mode": "live",
+      "elapsed_seconds": 6.86,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "planner": {
+        "scope": "run",
+        "answerer": "conversation",
+        "agent_ids": [
+          "actor",
+          "critic"
+        ],
+        "evidence_targets": [
+          "agent_activity",
+          "agent_logs",
+          "cycle_history",
+          "run_summary"
+        ],
+        "cycle_numbers": [
+          2
+        ],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": null,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": true,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    }
+  ]
+}

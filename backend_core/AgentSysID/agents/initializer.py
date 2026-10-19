@@ -21,6 +21,7 @@ from backend_core.AgentSysID import config as cfg
 from backend_core.AgentSysID.agents.llm_base import invoke_llm, strip_code_fences
 from backend_core.AgentSysID.agents.prompt_library import render, system_prompt
 from backend_core.AgentSysID.data.loader import ExcelDataLoader
+from backend_core.AgentSysID.model.angles import circular_difference
 
 
 class InitializerAgent:
@@ -103,7 +104,14 @@ class InitializerAgent:
         # --- Normal vs teleportation boundaries ---------------------------
         is_multi = getattr(cfg, "MULTI_TRAJECTORY", True)
         if is_multi and self.loader.state_cols:
-            diffs = df[self.loader.state_cols].diff().abs()
+            signed_diffs = df[self.loader.state_cols].diff()
+            for index in self.loader.angle_indices:
+                if 0 <= index < len(self.loader.state_cols):
+                    column = self.loader.state_cols[index]
+                    signed_diffs[column] = circular_difference(
+                        signed_diffs[column].to_numpy(dtype=float), np.zeros(len(signed_diffs))
+                    )
+            diffs = signed_diffs.abs()
             normal_jumps = diffs.quantile(0.999).fillna(0.0).values
             teleport_jumps = diffs.max().fillna(0.0).values
             normal_jumps_str = f"[{', '.join(f'{v:.4f}' for v in normal_jumps)}]"
@@ -112,6 +120,13 @@ class InitializerAgent:
                 f"- Extreme Normal Driving Jumps (99.9th percentile): {normal_jumps_str}\n"
                 f"  - Teleportation/Trajectory Jumps (Absolute Max): {teleport_jumps_str}"
             )
+            if self.loader.angle_indices:
+                periodic_names = [self.loader.state_cols[i] for i in self.loader.angle_indices
+                                  if 0 <= i < len(self.loader.state_cols)]
+                jump_data_str += (
+                    f"\n- Client-confirmed periodic angle states: {', '.join(periodic_names)}. "
+                    "Their differences above use the shortest circular distance; a ±π seam is ordinary motion, not a reset."
+                )
             reset_rule = (
                 "RESET_THRESHOLD: (list of floats) Output limits (one per state) "
                 "positioned between Normal Jumps and Teleportation Jumps."

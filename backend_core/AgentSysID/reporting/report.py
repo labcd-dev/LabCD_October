@@ -10,16 +10,14 @@ The document follows the original nine-section engineering manuscript:
     4. Absolute Error Magnitude (RMSE)
     5. Architecture Topology Space
     6. Hyperparameter Mutation Trajectory
-    7. Real-Time Deployment Viability
+    7. Inference Timing Comparison
     8. Data-Driven Held-Out Verification
     9. Concluding Remarks & Deployment Synthesis
 
-ZIP layout matches the original backend delivery::
+The client ZIP contains the concise delivery package::
 
     SystemID_RunResults_<timestamp>.zip
     ├── README.md
-    ├── Agents_log/
-    ├── figures/
     ├── deployment/
     └── report/
 """
@@ -28,11 +26,10 @@ from __future__ import annotations
 
 import datetime
 import glob
-import hashlib
 import os
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
@@ -77,7 +74,7 @@ class SystemIDReport(FPDF):
         self.set_font("Times", "B", 14)
         self.cell(
             0, 8,
-            _clean_text("System Identification and Dynamic Stability Report"),
+            _clean_text("System Identification Results and Validation Report"),
             border=False, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="L",
         )
 
@@ -166,12 +163,14 @@ def generate_final_pdf(
     timestamp: str,
     abstract_text: str,
     conclusion_text: str,
-    success_score: float,
+    success_score: Optional[float],
     model_status: str,
     complexity_label: str,
     output_dir: str | Path = ".",
     figures_dir: Optional[str | Path] = None,
     architecture: str = "MLP",
+    physics_mode: str = "pinn",
+    pcnn_hard_constraint_states: Optional[list[str]] = None,
     rollout_horizon: int = 1,
     lstm_seq_length: int = 10,
     prefix: str = "system_id",
@@ -217,7 +216,13 @@ def generate_final_pdf(
     else:
         arch_display = "MLP (Memoryless State)"
 
-    arch_mode = f"PINN + {arch_display}" if use_pinn else f"Data-Driven {arch_display}"
+    mode = str(physics_mode or "pinn").strip().lower()
+    if use_pinn and mode == "pcnn":
+        arch_mode = f"PCNN (equation-constrained) + {arch_display}"
+    elif use_pinn:
+        arch_mode = f"PINN (soft physics loss) + {arch_display}"
+    else:
+        arch_mode = f"Data-Driven {arch_display}"
     loss_profile = (
         f"Autoregressive Rollout (Horizon = {rollout_horizon} steps)"
         if rollout_horizon > 1
@@ -230,6 +235,9 @@ def generate_final_pdf(
     pdf.add_table_row("Loss Optimization", loss_profile)
     pdf.add_table_row("Dataset Complexity", complexity_label)
     pdf.add_table_row("Architecture Mode", arch_mode)
+    if use_pinn and mode == "pcnn":
+        constraints = ", ".join(pcnn_hard_constraint_states or []) or "None (learned correction for every state)"
+        pdf.add_table_row("Exact PCNN State Equations", constraints)
 
     # --- SECTION 2: OPTIMAL ARCHITECTURE & SCORES ------------------------
     hidden_layers = (best_config or {}).get("hidden_layers", []) or []
@@ -239,8 +247,8 @@ def generate_final_pdf(
     pdf.add_table_row("Validation MSE", f"{best_mse:.6f}")
     pdf.add_table_row("Validation RMSE", f"{best_rmse:.6f}")
     pdf.add_table_row("Inference Latency", f"{latency:.3f} ms")
-    pdf.add_table_row("Composite Success Score", f"{success_score:.1f} / 100")
-    pdf.add_table_row("Deployment Status", model_status)
+    pdf.add_table_row("Fit + Held-out Rollout Score", f"{success_score:.1f} / 100" if success_score is not None else "Unavailable")
+    pdf.add_table_row("Run Evidence Rating", model_status)
 
     # --- PLOT PATHS -------------------------------------------------------
     target = "Xdot"
@@ -289,11 +297,11 @@ def generate_final_pdf(
 
     # --- 7. LATENCY -------------------------------------------------------
     latency_desc = (
-        "Figure 5: Computational Inference Latency. Tracks the forward-pass execution time "
-        "across topologies. The active constraint ensures the final model remains mathematically "
-        "viable for real-time optimal control."
+        "Figure 5: Measured model inference latency across candidate topologies. The final "
+        "measurement is compared with the configured timing target; it does not establish "
+        "end-to-end real-time behavior on the controller hardware."
     )
-    pdf.add_plot_with_explanation(latency_plot, "7. Real-Time Deployment Viability", latency_desc)
+    pdf.add_plot_with_explanation(latency_plot, "7. Inference Timing Comparison", latency_desc)
 
     # --- 8. VERIFICATION PLOTS -------------------------------------------
     pdf.add_page()
@@ -302,9 +310,10 @@ def generate_final_pdf(
     pdf.multi_cell(
         0, 6,
         _clean_text(
-            "To verify the system learned generalized physical dynamics rather than memorizing "
-            "the training set, the neural network was evaluated on sequentially held-out test "
-            "data. The plots below simulate the network's predictions rolling forward over time."
+            "To estimate prediction error beyond the training data, the neural network was rolled "
+            "forward on each saved held-out test trajectory. Each trajectory is evaluated separately "
+            "with its own initial state and recurrent history. These plots describe this split only; "
+            "they do not prove generalization to other operating conditions or closed-loop stability."
         ),
     )
     pdf.ln(5)
@@ -336,7 +345,7 @@ def generate_final_pdf(
     # --- 9. CONCLUSION ----------------------------------------------------
     if pdf.get_y() > 190:
         pdf.add_page()
-    pdf.add_section_title("9. Concluding Remarks & Deployment Synthesis")
+    pdf.add_section_title("9. Conclusion & Validation Limits")
     pdf.set_font("Times", "", 11)
     pdf.multi_cell(0, 6, _clean_text(conclusion_text))
 
@@ -353,7 +362,8 @@ def package_final_results_to_zip(
 ) -> str:
     """
     Package the run folder into ``SystemID_RunResults_<timestamp>.zip`` with the
-    delivery layout: README.md, figures/, deployment/, report/, Agents_log/.
+    client delivery: README.md, model code and weights, and the PDF report.
+    Internal plots and agent logs remain in the run folder, outside the ZIP.
     """
     run_dir = Path(run_dir)
     zip_filename = run_dir / f"SystemID_RunResults_{timestamp}.zip"
@@ -363,7 +373,7 @@ def package_final_results_to_zip(
     print("📦 PACKAGING FINAL PIPELINE RESULTS")
     print("=" * 80)
 
-    readme_content = f"""# System Identification & Neural Controller Package
+    readme_content = f"""# System Identification Model Package
 
 **Run Timestamp:** {timestamp}
 **Framework:** AgentSysID - Automated Multi-Agent Deep Learning & Control Framework
@@ -372,97 +382,42 @@ def package_final_results_to_zip(
 
 ## Directory Structure
 
-### 1. `figures/`
-Contains all high-resolution diagnostic plots generated during THIS specific run:
-MSE / RMSE convergence, hyperparameter evolution, architecture contour, latency
-evolution and the held-out test verification.
-
-### 2. `deployment/`
-* **Model Weights (`*.pth`):** the final optimized PyTorch neural network weights.
-* **`{controller_script_name}`:** the standalone engine class that parses and executes
+### 1. `deployment/`
+* **Model weights (`*.pth`):** the final optimized neural network weights.
+* **`{controller_script_name}`:** the standalone engine class that loads and executes
   the network (no framework dependency).
 * **`NN.py`:** a ready-to-use inference script that initializes the model and shows the
   kinematic integration loop.
 
-### 3. `report/`
-PDF engineering report documenting the model, its metrics and its deployment status.
-
-### 4. `Agents_log/`
-Full LLM conversation history: prompts, responses and token usage for every agent turn.
+### 2. `report/`
+The PDF engineering report documents the model, validation metrics, and remaining test limits.
 """
     readme_path = run_dir / "README.md"
     readme_path.write_text(readme_content, encoding="utf-8")
 
     with zipfile.ZipFile(zip_filename, "w", compression=zipfile.ZIP_DEFLATED) as zipf:
-        # --- Root README --------------------------------------------------
         zipf.write(readme_path, arcname="README.md")
-        print("  ├── Added root 'README.md' documentation")
 
-        # --- FOLDER 1: FIGURES --------------------------------------------
-        fig_dir = run_dir / "figures"
-        n_fig = 0
-        if fig_dir.is_dir():
-            for img in sorted(fig_dir.glob("*.png")):
-                zipf.write(img, arcname=f"figures/{img.name}")
-                n_fig += 1
-        print(f"  ├── [Folder 1] Added {n_fig} plots to 'figures/'")
-
-        # --- FOLDER 2: DEPLOYMENT -----------------------------------------
+        # Keep the runnable code and its weights together. Do not package the
+        # internal agent transcripts or diagnostic plots as client downloads.
         dep_dir = run_dir / "deployment"
         n_dep = 0
         if dep_dir.is_dir():
             for f in sorted(dep_dir.iterdir()):
-                if f.is_file():
+                if f.is_file() and f.suffix.lower() in {".py", ".pth"}:
                     zipf.write(f, arcname=f"deployment/{f.name}")
                     n_dep += 1
         for m in sorted(run_dir.glob("*.pth")):
             zipf.write(m, arcname=f"deployment/{m.name}")
             n_dep += 1
-        print(f"  ├── [Folder 2] Added {n_dep} deployment files to 'deployment/'")
 
-        # --- FOLDER 3: REPORT ---------------------------------------------
         report_dir = run_dir / "report"
-        n_rep = 0
-        if report_dir.is_dir():
-            for f in sorted(report_dir.glob("*.pdf")):
-                zipf.write(f, arcname=f"report/{f.name}")
-                n_rep += 1
-        if pdf_filename and Path(pdf_filename).is_file():
-            p = Path(pdf_filename)
-            if p.parent.resolve() != report_dir.resolve():
-                zipf.write(p, arcname=f"report/{p.name}")
-                n_rep += 1
-        print(f"  ├── [Folder 3] Added {n_rep} PDF(s) to 'report/'")
-
-        # --- FOLDER 4: AGENTS LOG -----------------------------------------
-        # Agents_log/ wins; a root-level log is only added when it is not the
-        # same content under another name, so a log never ships twice.
-        n_log = 0
-        seen_names: List[str] = []
-        seen_digests: List[str] = []
-
-        def _add_log(path: Path) -> bool:
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            if path.name in seen_names or digest in seen_digests:
-                return False
-            zipf.write(path, arcname=f"Agents_log/{path.name}")
-            seen_names.append(path.name)
-            seen_digests.append(digest)
-            return True
-
-        agents_dir = run_dir / "Agents_log"
-        if agents_dir.is_dir():
-            for logf in sorted(agents_dir.iterdir()):
-                if logf.is_file() and _add_log(logf):
-                    n_log += 1
-
-        for pattern in ("*.txt", "*.log"):
-            for logf in sorted(run_dir.glob(pattern)):
-                if logf.name.lower().startswith("readme"):
-                    continue
-                if _add_log(logf):
-                    n_log += 1
-        print(f"  ├── [Folder 4] Added {n_log} log file(s) to 'Agents_log/'")
+        pdf_path = Path(pdf_filename) if pdf_filename and Path(pdf_filename).is_file() else None
+        if pdf_path is None and report_dir.is_dir():
+            pdf_path = next(iter(sorted(report_dir.glob("*.pdf"))), None)
+        if pdf_path is not None and pdf_path.is_file():
+            zipf.write(pdf_path, arcname=f"report/{pdf_path.name}")
+        print(f"  ├── Added {n_dep} code/weight file(s) and {int(pdf_path is not None)} report PDF")
 
     print("-" * 80)
     print(f"  ✅ ZIP FILE CREATED SUCCESSFULLY: {zip_filename.name}")

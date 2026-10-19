@@ -109,10 +109,13 @@ SMD_LAMBDA_2: float = 10.0  # integral switching gain
 # differences. Higher = smoother but more lag. 0.0 disables it.
 DERIVATIVE_FILTER_TAU: float = _env_float("LABCD_SYSID_DERIV_TAU", 0.005)
 
-# ---- Physics-Informed Neural Network (PINN) toggle --------------------------
+# ---- PINN soft loss / PCNN equation-constrained architecture ----------------
 USE_PINN: bool = _env_bool("LABCD_SYSID_USE_PINN", False)
 PINN_EQUATION_FILE: str = os.getenv("LABCD_SYSID_PINN_FILE", "physics_env.py")
 PINN_LOSS_WEIGHT: float = _env_float("LABCD_SYSID_PINN_WEIGHT", 0.5)  # lambda
+PHYSICS_MODE: str = os.getenv("LABCD_SYSID_PHYSICS_MODE", "pinn").strip().lower()
+PCNN_HARD_CONSTRAINT_STATES: List[str] = []
+PCNN_HARD_CONSTRAINT_INDICES: List[int] = []
 
 # ---- Variable time-step configuration --------------------------------------
 TIME_COLUMN: str = os.getenv("LABCD_SYSID_TIME_COLUMN", "time")
@@ -291,6 +294,7 @@ def get_llm():
         return _llm_client
 
     provider = (API_PROVIDER or "openai").strip().lower()
+    from .api_transport import build_api_http_client
 
     if provider == "groq":
         from langchain_groq import ChatGroq
@@ -299,6 +303,7 @@ def get_llm():
             model=LLM_MODEL,
             temperature=LLM_TEMPERATURE,
             api_key=os.getenv("GROQ_API_KEY"),
+            http_client=build_api_http_client(),
         )
     elif provider == "openrouter":
         from langchain_openai import ChatOpenAI
@@ -308,6 +313,7 @@ def get_llm():
             temperature=LLM_TEMPERATURE,
             api_key=os.getenv("OPENROUTER_API_KEY"),
             base_url="https://openrouter.ai/api/v1",
+            http_client=build_api_http_client(),
         )
     elif provider == "openai":
         from langchain_openai import ChatOpenAI
@@ -316,6 +322,7 @@ def get_llm():
             model=LLM_MODEL,
             temperature=LLM_TEMPERATURE,
             api_key=os.getenv("OPENAI_API_KEY"),
+            http_client=build_api_http_client(),
         )
     else:
         raise ValueError(

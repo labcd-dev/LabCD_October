@@ -16,6 +16,7 @@ class SysIDState(TypedDict, total=False):
     # --- Data ---
     state_dim: int
     action_dim: int
+    angle_indices: List[int]
     complexity_tier: int
     complexity_label: str
     quality_issues: List[str]
@@ -41,7 +42,7 @@ class SysIDState(TypedDict, total=False):
     best_mse: float
     best_rmse: float
     latency_ms: float
-    success_score: float
+    success_score: Optional[float]
     model_status: str
     abstract: str
     conclusion: str

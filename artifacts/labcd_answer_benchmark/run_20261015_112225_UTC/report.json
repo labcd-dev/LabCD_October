@@ -1,0 +1,211 @@
+{
+  "benchmark": "LabCD answer routing and quality benchmark",
+  "benchmark_version": 1,
+  "mode": "live",
+  "created_at_utc": "2026-10-15T11:22:25+00:00",
+  "synthetic_data_only": true,
+  "total_cases": 5,
+  "passed": 5,
+  "failed": 0,
+  "blocked": 0,
+  "scored_cases": 5,
+  "pass_rate": 1.0,
+  "provider_blocked_cases": 0,
+  "warning_count": 0,
+  "by_category": {
+    "dataset_specific_interpretation": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "general_conversation_and_navigation": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "general_data_guidance": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "general_model_concepts": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "general_system_identification": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    }
+  },
+  "components": {
+    "routing": {
+      "passed": 5,
+      "total": 5,
+      "pass_rate": 1.0
+    },
+    "evidence_retrieval": {
+      "passed": 5,
+      "total": 5,
+      "pass_rate": 1.0
+    },
+    "settings_edits": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "local_answers": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "completed_live_responses": {
+      "passed": 5,
+      "total": 5,
+      "pass_rate": 1.0
+    },
+    "model_generated_answers": {
+      "passed": 4,
+      "total": 4,
+      "pass_rate": 1.0
+    }
+  },
+  "live_api_answer_cases": 5,
+  "planner_cases": 0,
+  "records": [
+    {
+      "status": "answer",
+      "answer": "System identification is the process of developing mathematical models of dynamic systems based on measured data. In simple terms, it involves using data from a system's inputs and outputs to figure out how that system behaves. This helps in predicting future behavior, designing controllers, or understanding the system better. Essentially, it's about turning real-world observations into useful models that can be analyzed and applied in various engineering fields.",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "general",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "general_system_identification-01",
+      "category": "general_system_identification",
+      "question": "What is system identification in plain language?",
+      "mode": "live",
+      "elapsed_seconds": 8.81,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "A Multi-Layer Perceptron (MLP) is a type of artificial neural network that consists of multiple layers of nodes (neurons), where each layer is fully connected to the next one. MLPs are useful for tasks that involve supervised learning, such as classification and regression. They can model complex relationships in data, making them suitable for problems where the relationship between inputs and outputs is non-linear. MLPs are particularly effective when you have a large amount of labeled data and need to capture intricate patterns in the data.",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "general",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "general_model_concepts-01",
+      "category": "general_model_concepts",
+      "question": "What is an MLP and when is it useful?",
+      "mode": "live",
+      "elapsed_seconds": 5.23,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "For a dataset suitable for a system-identification model, you should include the following columns:\n\n1. **Time Column**: This records the time at which each measurement was taken, ensuring synchronization of data.\n2. **Measured State Columns**: These represent the states of the system you want to predict (e.g., position, speed, temperature).\n3. **Input Columns**: These are the control inputs or commands applied to the system (e.g., force, voltage, or any actuator commands).\n\nIncluding these elements allows the model to learn the relationship between the current state and the applied inputs to predict future states effectively.",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "general",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "general_data_guidance-01",
+      "category": "general_data_guidance",
+      "question": "What columns should a dataset for this kind of model contain?",
+      "mode": "live",
+      "elapsed_seconds": 5.24,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "Hi! I’m LabCD. You can ask about system identification, describe your system, or share measurements whenever you’re ready.",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "general",
+      "model": "LabCD",
+      "uncertainty": "",
+      "id": "general_conversation_and_navigation-01",
+      "category": "general_conversation_and_navigation",
+      "question": "hello",
+      "mode": "live",
+      "elapsed_seconds": 0.0,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": null
+    },
+    {
+      "status": "answer",
+      "answer": "Your dataset includes the following state and input columns:\n- **States:** `s_speed`, `s_heading`, `s_temp`\n- **Inputs:** `a_drive`, `a_fan`.\nThese columns represent the measured states and the applied inputs in your system [D1].",
+      "sources": [
+        "D1"
+      ],
+      "evidence": [
+        {
+          "id": "D1",
+          "title": "Measured uploaded dataset profile",
+          "kind": "measurement"
+        }
+      ],
+      "answer_scope": "general",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "dataset_specific_interpretation-01",
+      "category": "dataset_specific_interpretation",
+      "question": "What state and input columns are in my dataset?",
+      "mode": "live",
+      "elapsed_seconds": 4.22,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    }
+  ]
+}

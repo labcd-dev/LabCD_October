@@ -20,6 +20,7 @@ matplotlib
 fpdf2
 streamlit[pdf]>=1.57
 streamlit-pdf>=1,<2
+plotly>=5.24
 altair
 tqdm
 

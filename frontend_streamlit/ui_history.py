@@ -192,7 +192,7 @@ def summarise(entry: Dict[str, Any]) -> str:
     if entry.get("run_mode"):
         bits.append(str(entry["run_mode"]))
     if entry.get("use_pinn"):
-        bits.append("PINN")
+        bits.append(str(entry.get("physics_mode") or "pinn").upper())
     cycles = entry.get("cycles_run")
     if cycles:
         bits.append(f"{cycles} cyc")

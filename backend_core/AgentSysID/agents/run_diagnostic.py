@@ -3,16 +3,19 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import hashlib
 import json
 import os
 import re
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
+from ..api_transport import build_api_http_client
 from .prompt_library import block
 from .run_evidence import RunEvidence, clean, collect_evidence, read_json, redact, write_json
 
@@ -91,7 +94,8 @@ class DiagnosticClient:
             raise DiagnosticConfigurationError(f"The diagnostic provider needs {key_name} in your environment.")
         if settings.provider == "openai":
             from openai import OpenAI
-            self.client = OpenAI(api_key=api_key, timeout=420, max_retries=0)
+            self.client = OpenAI(api_key=api_key, timeout=420, max_retries=0,
+                                 http_client=build_api_http_client(timeout=420))
         elif settings.provider == "groq":
             from langchain_groq import ChatGroq
             self.client = ChatGroq(model=settings.model, api_key=api_key, temperature=0.2,
@@ -99,7 +103,8 @@ class DiagnosticClient:
         else:
             from langchain_openai import ChatOpenAI
             self.client = ChatOpenAI(model=settings.model, api_key=api_key, temperature=0.2,
-                                     base_url="https://openrouter.ai/api/v1", timeout=120, max_retries=0, max_tokens=6000)
+                                     base_url="https://openrouter.ai/api/v1", timeout=120, max_retries=0,
+                                     max_tokens=6000, http_client=build_api_http_client(timeout=120))
 
     def complete(self, system, user):
         if self.settings.provider == "openai":
@@ -219,6 +224,10 @@ def _diagnostic_error(exc, stage):
         message = {
             "APITimeoutError": "The model request timed out. Try again or choose a faster model/reasoning setting.",
             "TimeoutError": "The model request timed out. Try again.",
+            "APIConnectionError": "Could not connect to the configured AI provider. Check internet or proxy settings on the computer running LabCD.",
+            "ConnectError": "Could not connect to the configured AI provider. Check internet or proxy settings on the computer running LabCD.",
+            "ProxyError": "The configured network proxy could not reach the AI provider. Check the proxy settings on the computer running LabCD.",
+            "ConnectionRefusedError": "The configured network connection was refused. Check the proxy or firewall on the computer running LabCD.",
             "RateLimitError": "The provider rate or usage limit was reached. Try again after it resets.",
             "AuthenticationError": "The provider rejected its environment credential.",
             "NotFoundError": "The selected model is unavailable to this provider/account.",
@@ -226,11 +235,77 @@ def _diagnostic_error(exc, stage):
     return {"code": code, "stage": stage, "message": message}
 
 
-def local_checks(evidence: RunEvidence) -> dict:
+def local_checks(evidence: RunEvidence, question: str = "") -> dict:
     """Clearly labeled, deterministic observations when AI cannot answer."""
     answer = dict(summary="AI diagnosis is unavailable. These are local evidence checks, not a full answer to your question.",
                   findings=[], experiments=[], limitations=list(evidence.coverage["notes"]))
     sources = {s.id:s for s in evidence.sources}
+    cycle_match = re.search(r"\bcycle\s*#?\s*(\d+)\b", question, re.I)
+    requests_agent_or_cause = bool(re.search(
+        r"\b(?:actor|critic|initializer|explorer|inspector|agent|prompt|log|"
+        r"recommend\w*|feedback|decid\w*|propos\w*|why|cause|diagnos\w*|compare|impact)\b",
+        question, re.I))
+    if cycle_match and not requests_agent_or_cause:
+        requested_cycle = int(cycle_match.group(1))
+        for source in evidence.sources:
+            if source.kind != "cycle":
+                continue
+            try:
+                data = json.loads(source.content)
+            except (ValueError, TypeError):
+                continue
+            cycle_number = data.get("cycle")
+            if cycle_number is None:
+                id_match = re.search(r"(\d+)$", source.id)
+                cycle_number = int(id_match.group(1)) if id_match else None
+            try:
+                if int(cycle_number) != requested_cycle:
+                    continue
+            except (TypeError, ValueError):
+                continue
+
+            details = []
+            architecture = data.get("architecture")
+            if architecture:
+                details.append(f"used {architecture}")
+            layers = data.get("hidden_layers") or data.get("layers")
+            if isinstance(layers, list) and layers:
+                details.append("with layer widths " + " → ".join(str(value) for value in layers))
+            epochs = data.get("epochs") or data.get("epoch")
+            if epochs is not None:
+                details.append(f"ran for {epochs} epochs")
+            validation = next((data.get(key) for key in
+                               ("validation_mse", "val_mse", "validation_loss", "val_loss")
+                               if data.get(key) is not None), None)
+            if validation is not None:
+                details.append(f"recorded validation error {validation}")
+            training_time = next((data.get(key) for key in
+                                  ("training_time_s", "training_time", "duration_s")
+                                  if data.get(key) is not None), None)
+            if training_time is not None:
+                details.append(f"training time {training_time} seconds")
+            if details:
+                facts = ", ".join(details)
+                answer["summary"] = (
+                    f"Cycle {requested_cycle} {facts} [{source.id}]. "
+                    "That is what the saved record confirms; it does not establish why the model performed that way."
+                )
+                answer["_answered_specific_question"] = True
+                quote_lines = [line.strip() for line in source.content.splitlines()
+                               if any(f'\"{key}\"' in line for key in
+                                      ("cycle", "architecture", "hidden_layers", "layers", "epochs", "epoch",
+                                       "validation_mse", "val_mse", "validation_loss", "val_loss",
+                                       "training_time_s", "training_time", "duration_s"))]
+                quote = "\n".join(quote_lines)[:500] or source.content[:500]
+                answer["findings"].append(dict(
+                    title=f"Cycle {requested_cycle} recorded metrics",
+                    explanation=f"The saved cycle record lists {facts}.",
+                    kind="observed", confidence="high",
+                    evidence=[dict(source_id=source.id, quote=quote, title=source.title,
+                                   kind=source.kind, provenance=source.provenance)],
+                ))
+            break
+
     for identity, source in sources.items():
         if source.kind not in ("results", "runtime", "cycle", "verification"):
             continue
@@ -263,7 +338,8 @@ class RunDiagnosticAgent:
         self.settings = settings or DiagnosticSettings.defaults()
         self.client = client
 
-    def ask(self, run_dir, question, *, history=None, live_state=None, progress=None) -> dict:
+    def ask(self, run_dir, question, *, history=None, live_state=None, progress=None,
+            agent_targets=None, cycle_numbers=None, evidence_targets=None) -> dict:
         if not isinstance(question, str) or not question.strip() or len(question) > 6000:
             raise ValueError("Ask a question between 1 and 6000 characters.")
         started = time.perf_counter()
@@ -274,10 +350,16 @@ class RunDiagnosticAgent:
             if progress:
                 progress(label)
         stage("Reading results, settings, and agent logs")
-        evidence = collect_evidence(run_dir, question, live_state=live_state)
+        evidence = collect_evidence(
+            run_dir, question, live_state=live_state,
+            agent_targets=agent_targets, cycle_numbers=cycle_numbers,
+            evidence_targets=evidence_targets,
+        )
         recent = [{"role": item["role"], "content": item.get("content", "")[:4000]}
                   for item in (history or [])[-8:] if item.get("role") in ("user", "assistant")]
         user = redact(json.dumps({"question": question, "previous_messages_for_this_run": recent,
+                                  "selected_agent_roles": agent_targets,
+                                  "selected_evidence_targets": evidence_targets,
                                   "evidence": evidence.to_payload()}, ensure_ascii=False))
         draft = None
         failure = None
@@ -311,12 +393,13 @@ class RunDiagnosticAgent:
                 answer, mode = draft, "ai_draft"
                 warnings.append("The independent review did not finish. This is an unreviewed draft with validated source quotations.")
             else:
-                answer, mode = local_checks(evidence), "local_checks"
+                answer, mode = local_checks(evidence, question), "local_checks"
                 if failure["code"] in ("unverified_citations", "invalid_answer_format"):
-                    answer["summary"] = (
-                        "The AI answer could not be verified. These are local evidence checks, "
-                        "not a full answer to your question."
-                    )
+                    if not answer.pop("_answered_specific_question", False):
+                        answer["summary"] = (
+                            "The AI answer could not be verified. These are local evidence checks, "
+                            "not a full answer to your question."
+                        )
                     warnings.append("The AI answer failed the diagnosis checks; local evidence is shown below.")
                 else:
                     warnings.append("The AI service did not produce a usable evidence-grounded diagnosis.")
@@ -339,12 +422,39 @@ def load_chat(run_dir) -> list:
     return [m for m in data[-80:] if isinstance(m, dict) and m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)]
 
 
+def feedback_message_id(message) -> str:
+    """Return a stable identity for rating a saved answer, including older chats."""
+    if message.get("id"):
+        return str(message["id"])
+    identity = "\0".join((str(message.get("role", "")), str(message.get("timestamp", "")),
+                           str(message.get("content", ""))))
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+
+
+def set_chat_feedback(run_dir, message_id, rating) -> bool:
+    if rating not in ("up", "down"):
+        return False
+    with _CHAT_LOCK:
+        messages = load_chat(run_dir)
+        for message in messages:
+            if message.get("role") != "assistant" or feedback_message_id(message) != message_id:
+                continue
+            message.setdefault("id", message_id)
+            message["feedback"] = {
+                "rating": rating,
+                "submitted_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+            }
+            return write_json(Path(run_dir) / "run_chat.json", messages)
+    return False
+
+
 def append_exchange(run_dir, question, answer) -> bool:
     with _CHAT_LOCK:
         messages = load_chat(run_dir)
         stamp = dt.datetime.now(dt.timezone.utc).isoformat()
         messages.extend([{"role":"user", "content":question, "timestamp":stamp},
-                         {"role":"assistant", "content":answer["summary"], "diagnosis":answer, "timestamp":stamp}])
+                         {"role":"assistant", "id":uuid.uuid4().hex, "content":answer["summary"],
+                          "diagnosis":answer, "timestamp":stamp}])
         messages = messages[-80:]
         # Keep the persisted history within the bounded JSON reader, in whole exchanges.
         while len(messages) > 2 and len(json.dumps(clean(messages), ensure_ascii=False, indent=2).encode("utf-8")) > 1_800_000:
@@ -364,10 +474,16 @@ class DiagnosticJob:
         self.live_state = live_state
         self.phase, self.answer, self.error = "Preparing run evidence", None, None
         self.saved = False
+        self.started_at = None
+        self.cancel_event = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self):
+        self.started_at = time.monotonic()
         self.thread.start()
+
+    def cancel(self):
+        self.cancel_event.set()
 
     @property
     def running(self):
@@ -376,8 +492,10 @@ class DiagnosticJob:
     def _run(self):
         try:
             agent = RunDiagnosticAgent(self.settings)
-            self.answer = agent.ask(self.run_dir, self.question, history=load_chat(self.run_dir),
-                                    live_state=self.live_state, progress=lambda phase:setattr(self, "phase", phase))
-            self.saved = append_exchange(self.run_dir, self.question, self.answer)
+            answer = agent.ask(self.run_dir, self.question, history=load_chat(self.run_dir),
+                               live_state=self.live_state, progress=lambda phase:setattr(self, "phase", phase))
+            if not self.cancel_event.is_set():
+                self.answer = answer
+                self.saved = append_exchange(self.run_dir, self.question, self.answer)
         except Exception as exc:
             self.error = redact(str(exc))[:500]

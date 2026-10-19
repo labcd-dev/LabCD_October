@@ -30,8 +30,9 @@ class ReportAgent:
         best_rmse: float,
         latency: float,
         use_pinn: bool,
+        physics_mode: str = "pinn",
         max_latency: Optional[float] = None,
-        success_score: float = 0.0,
+        success_score: Optional[float] = None,
         model_status: str = "UNKNOWN",
         complexity_label: str = "Unknown",
         architecture: Optional[str] = None,
@@ -49,9 +50,10 @@ class ReportAgent:
             if base_arch == "LSTM"
             else "Multilayer Perceptron (MLP)"
         )
-        arch_type = (
-            f"Physics-Informed {arch_name} (PINN)" if use_pinn else f"Data-Driven {arch_name}"
+        physics_label = {"pcnn": "Physics-Constrained", "pinn": "Physics-Informed"}.get(
+            str(physics_mode or "pinn").lower(), "Physics-Informed"
         )
+        arch_type = f"{physics_label} {arch_name} ({str(physics_mode).upper()})" if use_pinn else f"Data-Driven {arch_name}"
 
         customer_context = str(getattr(cfg, "CUSTOMER_SYSTEM_DESCRIPTION", "")).strip()
         customer_prompt_block = (
@@ -60,6 +62,17 @@ class ReportAgent:
 
         hidden_layers = best_config.get("hidden_layers", "Unknown") if best_config else "Unknown"
 
+        score_text = (f"{float(success_score):.1f} / 100" if success_score is not None
+                      else "Unavailable (no valid held-out rollout)")
+        status_text = {
+            "STABLE & HIGH-FIDELITY": "Legacy high fit/rollout rating",
+            "STABLE & ACCEPTABLE": "Legacy acceptable fit/rollout rating",
+            "UNSTABLE ROLLOUT": "Legacy weak rollout rating",
+            "UNSTABLE / FAILED": "Legacy low fit/rollout rating",
+        }.get(str(model_status).strip().upper(), model_status or "Not rated")
+        latency_text = (f"{float(latency):.3f} ms; configured comparison limit {max_latency:.3f} ms"
+                        if float(latency) <= max_latency else
+                        f"{float(latency):.3f} ms; above configured comparison limit {max_latency:.3f} ms")
         prompt = render(
             "report",
             env_name=env_name,
@@ -73,8 +86,9 @@ class ReportAgent:
             best_rmse=float(best_rmse),
             latency=float(latency),
             max_latency=max_latency,
-            success_score=float(success_score),
-            model_status=model_status,
+            success_score_text=score_text,
+            latency_comparison=latency_text,
+            model_status=status_text,
         )
 
         # --- Professional fallback text (used when the API is unreachable) --
@@ -84,17 +98,24 @@ class ReportAgent:
             f"methodology employed was optimized for a state dimension of {state_dim} and an action dimension "
             f"of {action_dim}, ultimately selecting a final topology of {hidden_layers}. The model achieved a "
             f"validation Mean Squared Error (MSE) of {best_mse:.6f} and a Root Mean Squared Error (RMSE) of "
-            f"{best_rmse:.6f}, indicating a high level of accuracy in capturing the nonlinear dynamics of the "
-            f"target plant."
+            f"{best_rmse:.6f}. These values summarize the saved validation measurements for this run."
         )
 
+        score_summary = (f"The heuristic fit and held-out rollout score is {float(success_score):.1f}/100 "
+                         f"({status_text}). It combines validation fit with the saved rollout comparison."
+                         if success_score is not None else
+                         "A composite fit and rollout score is unavailable because no valid held-out rollout was saved.")
+        timing_summary = (f"Measured inference latency was {latency:.3f} ms against the configured "
+                          f"comparison limit of {max_latency:.3f} ms."
+                          if latency <= max_latency else
+                          f"Measured inference latency was {latency:.3f} ms, above the configured "
+                          f"comparison limit of {max_latency:.3f} ms.")
         conclusion = (
-            f"Achieving a Composite Success Score of {success_score:.1f}/100 ({model_status}), the optimized "
-            f"neural architecture demonstrates robust closed-loop stability. Furthermore, with a measured "
-            f"inference latency of {latency:.3f} ms, the model safely satisfies the real-time threshold limit "
-            f"of {max_latency} ms. These metrics confirm the network's readiness for immediate integration into "
-            f"Model Predictive Control (MPC) or Control Barrier Function (CBF) frameworks for advanced "
-            f"autonomous trajectory regulation."
+            f"{score_summary} {timing_summary} "
+            "The score and latency do not establish closed-loop stability, control safety, or readiness for "
+            "MPC, CBF, or hardware use. Before controller testing, assess "
+            "all held-out trajectories and run separate closed-loop checks with the intended sampling rate, "
+            "actuator limits, operating conditions, and target hardware."
         )
 
         raw = invoke_llm(
@@ -114,9 +135,8 @@ class ReportAgent:
                 candidate = line.split(":", 1)[1].strip()
                 if candidate:
                     abstract = candidate
-            elif line.startswith("CONCLUSION:"):
-                candidate = line.split(":", 1)[1].strip()
-                if candidate:
-                    conclusion = candidate
 
+        # Keep the deployment interpretation deterministic and evidence-bounded.
+        # The language model may improve the abstract, but cannot certify stability
+        # or controller readiness from these run metrics.
         return abstract, conclusion

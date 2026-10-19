@@ -91,7 +91,7 @@ def test_perfect_model_scores_near_100():
     traj = np.linspace(0, 1, 50).reshape(-1, 1)
     score, status = calculate_success_score(0.0, traj, traj, "Level 1", verbose=False)
     assert score == pytest.approx(100.0, abs=1e-6)
-    assert status == "STABLE & HIGH-FIDELITY"
+    assert status == "HIGH FIT/ROLLOUT SCORE"
 
 
 def test_drifting_rollout_is_penalised():
@@ -101,7 +101,16 @@ def test_drifting_rollout_is_penalised():
     good_score, _ = calculate_success_score(0.01, true_traj, good, "Level 3", verbose=False)
     bad_score, bad_status = calculate_success_score(0.01, true_traj, drifting, "Level 3", verbose=False)
     assert bad_score < good_score
-    assert "UNSTABLE" in bad_status or bad_score < 80
+    assert "WEAK" in bad_status or "LOW" in bad_status or bad_score < 80
+
+
+def test_success_score_compares_periodic_angles_circularly():
+    truth = np.array([[3.13], [-3.13]])
+    prediction = np.array([[-3.13], [3.13]])
+    score, _ = calculate_success_score(
+        0.0, truth, prediction, "Level 1", verbose=False, angle_indices=[0]
+    )
+    assert score > 99.0
 
 
 def test_higher_complexity_earns_leniency():
@@ -117,8 +126,16 @@ def test_score_handles_empty_trajectories():
     score, status = calculate_success_score(
         0.001, np.zeros((0, 2)), np.zeros((0, 2)), "Level 3", verbose=False
     )
-    assert 0.0 <= score <= 100.0
-    assert status
+    assert score is None
+    assert status == "ROLLOUT UNVERIFIED"
+
+
+def test_score_handles_nonfinite_validation_as_unverified():
+    score, status = calculate_success_score(
+        float("nan"), np.zeros((10, 2)), np.zeros((10, 2)), "Level 3", verbose=False
+    )
+    assert score is None
+    assert status == "VALIDATION UNVERIFIED"
 
 
 def test_score_handles_mismatched_trajectory_lengths():

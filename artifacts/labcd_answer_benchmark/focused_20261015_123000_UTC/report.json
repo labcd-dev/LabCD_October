@@ -1,0 +1,801 @@
+{
+  "benchmark": "LabCD answer routing and quality benchmark",
+  "benchmark_version": 1,
+  "mode": "live",
+  "created_at_utc": "2026-10-15T12:30:00+00:00",
+  "synthetic_data_only": true,
+  "total_cases": 12,
+  "passed": 12,
+  "failed": 0,
+  "blocked": 0,
+  "skipped": 0,
+  "scored_cases": 12,
+  "pass_rate": 1.0,
+  "provider_blocked_cases": 0,
+  "warning_count": 0,
+  "by_category": {
+    "run_agent_records_and_prompts": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "skipped": 0,
+      "total": 1,
+      "failures": []
+    },
+    "run_settings_and_prompt_snapshot": {
+      "passed": 2,
+      "failed": 0,
+      "blocked": 0,
+      "skipped": 0,
+      "total": 2,
+      "failures": []
+    },
+    "semantic_scope_disambiguation": {
+      "passed": 4,
+      "failed": 0,
+      "blocked": 0,
+      "skipped": 0,
+      "total": 4,
+      "failures": []
+    },
+    "setup_and_initializer_prompts": {
+      "passed": 3,
+      "failed": 0,
+      "blocked": 0,
+      "skipped": 0,
+      "total": 3,
+      "failures": []
+    },
+    "setup_architecture_and_pinn": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "skipped": 0,
+      "total": 1,
+      "failures": []
+    },
+    "setup_dataset_and_assumptions": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "skipped": 0,
+      "total": 1,
+      "failures": []
+    }
+  },
+  "components": {
+    "routing": {
+      "passed": 12,
+      "total": 12,
+      "pass_rate": 1.0
+    },
+    "llm_scope_selection": {
+      "passed": 12,
+      "total": 12,
+      "pass_rate": 1.0
+    },
+    "agent_role_selection": {
+      "passed": 7,
+      "total": 7,
+      "pass_rate": 1.0
+    },
+    "evidence_target_selection": {
+      "passed": 10,
+      "total": 10,
+      "pass_rate": 1.0
+    },
+    "cycle_target_selection": {
+      "passed": 3,
+      "total": 3,
+      "pass_rate": 1.0
+    },
+    "state_ranking_intent": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "answerer_selection": {
+      "passed": 4,
+      "total": 4,
+      "pass_rate": 1.0
+    },
+    "evidence_retrieval": {
+      "passed": 12,
+      "total": 12,
+      "pass_rate": 1.0
+    },
+    "settings_edits": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "local_answers": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "completed_live_responses": {
+      "passed": 12,
+      "total": 12,
+      "pass_rate": 1.0
+    },
+    "model_generated_answers": {
+      "passed": 12,
+      "total": 12,
+      "pass_rate": 1.0
+    }
+  },
+  "live_api_answer_cases": 12,
+  "planner_cases": 0,
+  "records": [
+    {
+      "status": "answer",
+      "answer": "The initializer uses the following prompt template:\n\n- It acts as a strict technical configuration engine, outputting only requested key-value lines.\n- It specializes in data-driven system identification for physical control systems, recommending initial hyperparameters, regularization, and search bounds based on the dataset.\n- The prompt includes specific dataset statistics and emphasizes reasoning based on the evidence provided, while also outlining critical architecture instructions based on dataset complexity tiers.\n\nThis template is not a record of an execution but serves as a guideline for the initializer's recommendations [P_initializer].",
+      "sources": [
+        "P_initializer"
+      ],
+      "evidence": [
+        {
+          "id": "P_initializer",
+          "title": "Training initializer prompt template",
+          "kind": "template"
+        }
+      ],
+      "answer_scope": "setup",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "diagnostic": null,
+      "id": "setup_and_initializer_prompts-01",
+      "category": "setup_and_initializer_prompts",
+      "question": "What prompt does the initializer use?",
+      "mode": "live",
+      "elapsed_seconds": 12.44,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "planner": {
+        "scope": "setup",
+        "answerer": "conversation",
+        "agent_ids": [
+          "initializer"
+        ],
+        "evidence_targets": [
+          "agent_templates"
+        ],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": true,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": null,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": null,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "The initializer agent instructions consist of two main templates:\n\n1. **System Template**: This is a strict configuration engine that outputs only key-value pairs without any additional formatting. It ensures clarity in the recommendations provided. [U1]\n\n2. **User Template**: This template guides the agent to recommend initial hyperparameters and configurations based on the dataset's characteristics. It emphasizes the importance of dataset statistics, such as sample count and complexity, while also considering the client's optimization goals. The agent is instructed to provide reasoning for its recommendations, focusing on the model-capacity tradeoff and the plausibility of the chosen values. [P_initializer]\n\nThe overall goal is to set up an effective training environment tailored to the specific dataset and client needs, ensuring that the recommendations are data-supported and aligned with the client's priorities.",
+      "sources": [
+        "U1",
+        "P_initializer"
+      ],
+      "evidence": [
+        {
+          "id": "U1",
+          "title": "Saved starting setup and recommendation",
+          "kind": "setup"
+        },
+        {
+          "id": "P_initializer",
+          "title": "Training initializer prompt template",
+          "kind": "template"
+        }
+      ],
+      "answer_scope": "setup",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "diagnostic": null,
+      "id": "setup_and_initializer_prompts-02",
+      "category": "setup_and_initializer_prompts",
+      "question": "Show me the initializer agent instructions and explain them briefly.",
+      "mode": "live",
+      "elapsed_seconds": 7.94,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "planner": {
+        "scope": "setup",
+        "answerer": "conversation",
+        "agent_ids": [
+          "initializer"
+        ],
+        "evidence_targets": [
+          "agent_templates"
+        ],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": true,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": null,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": null,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "The initializer decides the first model settings based on the characteristics of the dataset and the client's optimization goals. In this case, it recommended an LSTM architecture because the dataset has sequential measurements, and a small initial search effort is deemed sufficient. The recommended settings include a maximum of 3 cycles and a balanced optimization goal, reflecting medium confidence in these choices. The specific settings are tailored to the dataset's complexity and dimensions, ensuring they align with the client's needs and the data's properties [U1].",
+      "sources": [
+        "U1"
+      ],
+      "evidence": [
+        {
+          "id": "U1",
+          "title": "Saved starting setup and recommendation",
+          "kind": "setup"
+        }
+      ],
+      "answer_scope": "setup",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "diagnostic": null,
+      "id": "setup_and_initializer_prompts-03",
+      "category": "setup_and_initializer_prompts",
+      "question": "How does the initializer decide the first model settings?",
+      "mode": "live",
+      "elapsed_seconds": 7.88,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "planner": {
+        "scope": "setup",
+        "answerer": "conversation",
+        "agent_ids": [
+          "initializer"
+        ],
+        "evidence_targets": [
+          "agent_templates",
+          "setup_recommendation"
+        ],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": true,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": null,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": null,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "In your setup, the term \"sequence memory\" refers to the LSTM (Long Short-Term Memory) architecture's ability to retain information from previous time steps in a sequence [U1]. This feature is particularly useful for modeling systems where past states influence future states, allowing the model to learn patterns over time from your sequential measurements [U1]. The LSTM's design enables it to remember relevant information while discarding less important data, making it effective for tasks involving time-series data like yours [U1].",
+      "sources": [
+        "U1"
+      ],
+      "evidence": [
+        {
+          "id": "U1",
+          "title": "Saved starting setup and recommendation",
+          "kind": "setup"
+        }
+      ],
+      "answer_scope": "setup",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "diagnostic": null,
+      "id": "setup_architecture_and_pinn-03",
+      "category": "setup_architecture_and_pinn",
+      "question": "What does the starting model card in my setup mean by sequence memory?",
+      "mode": "live",
+      "elapsed_seconds": 7.97,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "planner": {
+        "scope": "setup",
+        "answerer": "conversation",
+        "agent_ids": [],
+        "evidence_targets": [
+          "setup_recommendation"
+        ],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": null,
+      "planner_evidence_selection_passed": null,
+      "planner_cycle_selection_passed": null,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": null,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "In the starting setup, no states were marked as possible wrap angles. The `angle_indices` list is empty, indicating that no wrap angles were detected or specified for the states in this setup [U1].",
+      "sources": [
+        "U1"
+      ],
+      "evidence": [
+        {
+          "id": "U1",
+          "title": "Saved starting setup and recommendation",
+          "kind": "setup"
+        }
+      ],
+      "answer_scope": "setup",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "diagnostic": null,
+      "id": "setup_dataset_and_assumptions-03",
+      "category": "setup_dataset_and_assumptions",
+      "question": "Which states were marked as possible wrap angles in the starting setup?",
+      "mode": "live",
+      "elapsed_seconds": 7.67,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "planner": {
+        "scope": "setup",
+        "answerer": "conversation",
+        "agent_ids": [
+          "run_setup_agent"
+        ],
+        "evidence_targets": [
+          "setup_recommendation",
+          "dataset_profile"
+        ],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": null,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": null,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": null,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "The critic rejected the candidate due to a validation mean squared error (MSE) of 0.0041, suggesting that the network may lack capacity. The critic recommended widening the next candidate to 64 units per recurrent layer, indicating that the current architecture might not be sufficient for the task at hand. This recommendation was based on the observed performance, not definitive proof of the cause of the issue [A1].",
+      "sources": [
+        "A1"
+      ],
+      "evidence": [
+        {
+          "id": "A1",
+          "title": "Critic · synthetic_agents.txt · excerpt 1",
+          "kind": "agent_turn"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "diagnostic": null,
+      "id": "run_agent_records_and_prompts-03",
+      "category": "run_agent_records_and_prompts",
+      "question": "Why did the critic reject that candidate in this run?",
+      "mode": "live",
+      "elapsed_seconds": 10.28,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "planner": {
+        "scope": "run",
+        "answerer": "conversation",
+        "agent_ids": [
+          "critic"
+        ],
+        "evidence_targets": [
+          "agent_activity",
+          "agent_logs",
+          "run_summary"
+        ],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": true,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": null,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": null,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "The settings captured when this run started are as follows:\n- **Architecture**: LSTM\n- **Epochs**: 50\n- **Batch Size**: 32\n\nThe states used were: `s_speed`, `s_heading`, and `s_temp`, with inputs `a_drive` and `a_fan` [R1].",
+      "sources": [
+        "R1"
+      ],
+      "evidence": [
+        {
+          "id": "R1",
+          "title": "Recorded run settings and data split",
+          "kind": "settings"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "diagnostic": null,
+      "id": "run_settings_and_prompt_snapshot-01",
+      "category": "run_settings_and_prompt_snapshot",
+      "question": "Which settings were captured when this run started?",
+      "mode": "live",
+      "elapsed_seconds": 6.34,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "planner": {
+        "scope": "run",
+        "answerer": "conversation",
+        "agent_ids": [],
+        "evidence_targets": [
+          "recorded_settings",
+          "run_summary"
+        ],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": null,
+      "planner_evidence_selection_passed": null,
+      "planner_cycle_selection_passed": null,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": null,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "The saved run does not specify a learning rate in the recorded settings or run summary [R1][M1]. Therefore, I cannot provide that information.",
+      "sources": [
+        "R1",
+        "M1"
+      ],
+      "evidence": [
+        {
+          "id": "M1",
+          "title": "run_manifest.json",
+          "kind": "results"
+        },
+        {
+          "id": "R1",
+          "title": "Recorded run settings and data split",
+          "kind": "settings"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "The learning rate was not included in the saved run data.",
+      "diagnostic": null,
+      "id": "run_settings_and_prompt_snapshot-02",
+      "category": "run_settings_and_prompt_snapshot",
+      "question": "What learning rate did the saved run use?",
+      "mode": "live",
+      "elapsed_seconds": 9.16,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "planner": {
+        "scope": "run",
+        "answerer": "conversation",
+        "agent_ids": [],
+        "evidence_targets": [
+          "recorded_settings",
+          "run_summary"
+        ],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": null,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": null,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": null,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "Cycle 2 has a validation MSE of 0.0018 [C2] and completed 50 epochs with a training time of 26 seconds [C2]. The architecture used is LSTM with two hidden layers of 64 units each [C2]. Currently, the run is still in progress, with cycle 2 actively running and at epoch 18 [LIVE1], showing a current loss of 0.0031 [LIVE1] and a validation MSE of 0.0023 [LIVE1].",
+      "sources": [
+        "C2",
+        "LIVE1"
+      ],
+      "evidence": [
+        {
+          "id": "C2",
+          "title": "Training cycle 2",
+          "kind": "cycle"
+        },
+        {
+          "id": "LIVE1",
+          "title": "Current live run and cycle checkpoint",
+          "kind": "live_run"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "diagnostic": null,
+      "id": "semantic_scope_disambiguation-02",
+      "category": "semantic_scope_disambiguation",
+      "question": "What does the current checkpoint say about cycle 2?",
+      "mode": "live",
+      "elapsed_seconds": 9.97,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "planner": {
+        "scope": "run",
+        "answerer": "conversation",
+        "agent_ids": [],
+        "evidence_targets": [
+          "cycle_history",
+          "run_summary",
+          "live_state"
+        ],
+        "cycle_numbers": [
+          2
+        ],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": null,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": true,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "After the Critic's feedback for cycle 1, the Actor changed the recurrent layer widths from [32, 32] to [64, 64] for cycle 2. The Actor kept the starting learning rate at 0.001 and the batch size at 32 [A2].",
+      "sources": [
+        "A2"
+      ],
+      "evidence": [
+        {
+          "id": "A2",
+          "title": "Actor · synthetic_agents.txt · excerpt 1",
+          "kind": "agent_turn"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "diagnostic": null,
+      "id": "semantic_scope_disambiguation-03",
+      "category": "semantic_scope_disambiguation",
+      "question": "Not the Initializer; after the Critic's cycle 1 feedback, what did the Actor change for cycle 2?",
+      "mode": "live",
+      "elapsed_seconds": 5.41,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "planner": {
+        "scope": "run",
+        "answerer": "conversation",
+        "agent_ids": [
+          "actor",
+          "critic"
+        ],
+        "evidence_targets": [
+          "cycle_history",
+          "agent_activity",
+          "run_summary",
+          "agent_logs"
+        ],
+        "cycle_numbers": [
+          2
+        ],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": true,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": true,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "In Cycle 1, the Critic recommended widening the recurrent layers to 64 units each due to a validation MSE of 0.0041, suggesting the network may lack capacity [A1]. For Cycle 2, the Actor implemented this recommendation by changing the recurrent layer widths from [32, 32] to [64, 64], while keeping the learning rate at 0.001 and batch size at 32 [A2]. The validation MSE for Cycle 2 improved to 0.0018 [C2].",
+      "sources": [
+        "A1",
+        "A2",
+        "C2"
+      ],
+      "evidence": [
+        {
+          "id": "A2",
+          "title": "Actor · synthetic_agents.txt · excerpt 1",
+          "kind": "agent_turn"
+        },
+        {
+          "id": "A1",
+          "title": "Critic · synthetic_agents.txt · excerpt 1",
+          "kind": "agent_turn"
+        },
+        {
+          "id": "C2",
+          "title": "Training cycle 2",
+          "kind": "cycle"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "diagnostic": null,
+      "id": "semantic_scope_disambiguation-04",
+      "category": "semantic_scope_disambiguation",
+      "question": "Compare the Critic's cycle 1 recommendation with the Actor's actual change for cycle 2.",
+      "mode": "live",
+      "elapsed_seconds": 16.14,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "planner": {
+        "scope": "run",
+        "answerer": "conversation",
+        "agent_ids": [
+          "critic",
+          "actor"
+        ],
+        "evidence_targets": [
+          "cycle_history",
+          "run_summary",
+          "agent_logs",
+          "agent_activity"
+        ],
+        "cycle_numbers": [
+          1,
+          2
+        ],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": true,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": true,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "The Actor's instructions guide its next-candidate choice by incorporating feedback from the Critic Agent and adhering to specific mutation requirements [P_actor]. It evaluates the current configuration against historical performance, ensuring that any new settings differ from previous failures [P_actor]. The Actor must adjust hyperparameters like learning rate, hidden layers, and batch size based on the Critic's diagnosis of the model's performance, while also respecting defined search bounds and regularization rules [P_actor]. This structured approach helps optimize the model's training process [P_actor].",
+      "sources": [
+        "P_actor"
+      ],
+      "evidence": [
+        {
+          "id": "P_actor",
+          "title": "Actor prompt template",
+          "kind": "template"
+        }
+      ],
+      "answer_scope": "general",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "diagnostic": null,
+      "id": "semantic_scope_disambiguation-08",
+      "category": "semantic_scope_disambiguation",
+      "question": "How do the Actor's own instructions guide its next-candidate choice?",
+      "mode": "live",
+      "elapsed_seconds": 6.78,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "planner": {
+        "scope": "general",
+        "answerer": "conversation",
+        "agent_ids": [
+          "actor"
+        ],
+        "evidence_targets": [
+          "agent_templates"
+        ],
+        "cycle_numbers": [],
+        "ranking_goal": "none",
+        "confidence": 0.7,
+        "needs_clarification": false
+      },
+      "route_passed": true,
+      "planner_scope_passed": true,
+      "planner_agent_selection_passed": true,
+      "planner_evidence_selection_passed": true,
+      "planner_cycle_selection_passed": null,
+      "planner_ranking_classification_passed": null,
+      "planner_answerer_selection_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    }
+  ]
+}

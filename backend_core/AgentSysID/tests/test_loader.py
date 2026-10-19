@@ -65,6 +65,7 @@ def test_load_and_trajectories(synthetic_csv: Path):
     loader = ExcelDataLoader(synthetic_csv)
     assert loader.state_dim == 2
     assert loader.action_dim == 1
+    assert loader.has_xdot is False  # No measured rates were supplied; the loader estimates them.
     trajs = loader.get_trajectories()
     assert len(trajs) >= 1
     t0 = trajs[0]
@@ -79,6 +80,14 @@ def test_missing_time_raises(tmp_path: Path):
     df = pd.DataFrame({"s_x": [1, 2, 3], "a_u": [0, 0, 0]})
     path = _write(tmp_path, df, "bad.csv")
     with pytest.raises(ValueError, match="time"):
+        ExcelDataLoader(path)
+
+
+def test_missing_input_action_column_raises(tmp_path: Path):
+    t = np.linspace(0, 1, 20)
+    path = _write(tmp_path, pd.DataFrame({"time": t, "s_x": np.sin(t)}), "no_input.csv")
+
+    with pytest.raises(ValueError, match="a_.*required"):
         ExcelDataLoader(path)
 
 
@@ -167,6 +176,37 @@ def test_angle_auto_detection(tmp_path: Path):
     assert loader.angle_indices == [0]
 
 
+def test_explicit_angle_choice_works_without_an_observed_boundary_crossing(tmp_path: Path):
+    t = np.arange(100) * 0.01
+    theta = np.linspace(-0.8, 0.8, len(t))
+    df = pd.DataFrame({"time": t, "s_pitch": theta, "a_u": np.ones_like(t)})
+    cfg.ANGLE_INDICES = [0]
+    loader = ExcelDataLoader(_write(tmp_path, df))
+
+    assert loader.angle_indices == [0]
+    trajectory = loader.get_trajectories()[0]
+    assert np.mean(trajectory["xdots"][2:-2, 0]) == pytest.approx(
+        (theta[-1] - theta[0]) / (t[-1] - t[0]), rel=0.02
+    )
+
+
+def test_explicit_angle_wrap_is_not_mistaken_for_a_new_trajectory(tmp_path: Path):
+    t = np.arange(60) * 0.01
+    physical = np.linspace(2.8, 3.5, len(t))
+    wrapped = (physical + np.pi) % (2 * np.pi) - np.pi
+    df = pd.DataFrame({"time": t, "s_pitch": wrapped, "a_u": np.ones_like(t)})
+    cfg.ANGLE_INDICES = [0]
+    cfg.MULTI_TRAJECTORY = True
+    cfg.RESET_THRESHOLD = 99999.0
+    loader = ExcelDataLoader(_write(tmp_path, df))
+
+    trajectories = loader.get_trajectories()
+
+    assert len(trajectories) == 1
+    assert len(trajectories[0]["states"]) == len(t)
+    assert np.max(trajectories[0]["xdots"][:, 0]) < 2.0
+
+
 def test_complexity_tier_is_between_1_and_5(synthetic_csv: Path):
     loader = ExcelDataLoader(synthetic_csv)
     assert 1 <= loader.complexity_tier <= 5
@@ -209,6 +249,12 @@ def test_drop_columns_removes_state_and_its_derivative(tmp_path: Path):
     assert loader.state_dim == 1
     assert "xdot_y" not in loader.df.columns
     assert loader.xdot_cols == ["xdot_x"]
+
+
+def test_drop_columns_cannot_remove_the_only_required_input(synthetic_csv: Path):
+    loader = ExcelDataLoader(synthetic_csv)
+    with pytest.raises(ValueError, match="At least one input/action column"):
+        loader.drop_columns(["a_u"])
 
 
 def test_state_filter_clips_outliers(tmp_path: Path):

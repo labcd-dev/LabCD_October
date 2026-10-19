@@ -90,10 +90,9 @@ hidden_layers, dropout)`. If a proposal repeats, it mutates again.
 ## 4. Data contract
 
 See `data/DATA_CONTRACT.md`. In short: a `time` column, `s_*` states, `a_*`
-actions, optional `xdot_*` true derivatives.
-
-**Provide `xdot_*` when you can.** Otherwise derivatives are estimated, which
-amplifies sensor noise. Three estimators are available via
+actions, and a state time-rate (`xdot_*`) for every state are needed by training.
+Provide measured rates when the source contains them; otherwise they are estimated
+from measured states, which can amplify sensor noise. Three estimators are available via
 `DERIVATIVE_METHOD`:
 
 | Method | Use it when |
@@ -119,6 +118,14 @@ enormous false derivative.
 - `USE_PINN` adds a physics residual weighted by `PINN_LOSS_WEIGHT`, taken from
   `compute_analytical_xdot` in `PINN_EQUATION_FILE`. A template is generated on
   first run and the run pauses so the engineer can fill in the equations.
+- `PHYSICS_MODE=pcnn` uses the validated equation as the derivative baseline
+  and trains a neural correction, regularized by `PINN_LOSS_WEIGHT`.
+  `PCNN_HARD_CONSTRAINT_INDICES` can lock selected state derivatives exactly;
+  leave at least one state unconstrained so the NN can learn a correction.
+- `PHYSICS_MODE=pcnn` uses the validated equation as the derivative baseline
+  and trains a neural correction, regularized by `PINN_LOSS_WEIGHT`.
+  `PCNN_HARD_CONSTRAINT_INDICES` can lock selected state derivatives exactly;
+  leave at least one state unconstrained so the NN can learn a correction.
 
 **Shuffling is forced off for LSTM** so temporal memory stays contiguous.
 

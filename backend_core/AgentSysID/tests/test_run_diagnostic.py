@@ -183,6 +183,16 @@ def test_persistent_citation_failure_is_reported_as_answer_rejection(run):
     assert not any("connection" in warning for warning in result["warnings"])
 
 
+def test_local_cycle_fallback_does_not_answer_agent_feedback_with_metrics(run):
+    packet = evidence.collect_evidence(run)
+
+    result = diagnostic.local_checks(packet, "What did the Critic recommend for cycle 1?")
+
+    assert "AI diagnosis is unavailable" in result["summary"]
+    assert "Cycle 1 used" not in result["summary"]
+    assert not result.get("_answered_specific_question")
+
+
 def test_format_repair_does_not_persist_invalid_response_contents(run):
     class Client:
         count = 0
@@ -264,12 +274,68 @@ def test_verification_metrics_are_state_errors_with_valid_counts(run):
     assert summary["states"][1]["rmse_over_test_std"] is None
 
 
+def test_verification_uses_circular_error_for_client_marked_angle_states(run):
+    assert evidence.save_verification(
+        run, [[3.13], [-3.13]], [[-3.13], [3.13]], ["s_pitch"], angle_indices=[0]
+    )
+    summary = evidence.read_json(run / "verification_summary.json")
+    assert summary["states"][0]["error_type"] == "circular"
+    assert summary["states"][0]["rmse"] < 0.03
+
+
+def test_verification_saves_aggregate_and_per_trajectory_metrics(run):
+    truth = np.array([[0.0], [1.0], [10.0], [12.0]])
+    pred = np.array([[0.0], [2.0], [11.0], [15.0]])
+    ranges = [
+        {"trajectory_index": 1, "start": 0, "stop": 2},
+        {"trajectory_index": 2, "start": 2, "stop": 4},
+    ]
+    assert evidence.save_verification(run, truth, pred, ["s_position"], trajectory_ranges=ranges)
+    summary = evidence.read_json(run / "verification_summary.json")
+    assert summary["aligned_samples"] == 4
+    assert [row["trajectory_index"] for row in summary["per_trajectory"]] == [1, 2]
+    assert summary["per_trajectory"][0]["states"][0]["mae"] == pytest.approx(0.5)
+    assert summary["per_trajectory"][1]["states"][0]["mae"] == pytest.approx(2.0)
+
+
+def test_connection_failure_is_reported_as_network_or_proxy_issue():
+    class APIConnectionError(Exception):
+        pass
+    issue = diagnostic._diagnostic_error(APIConnectionError("proxy refused the connection"), "investigation")
+    assert issue["code"] == "APIConnectionError"
+    assert "internet or proxy" in issue["message"]
+
+
 def test_incomplete_run_retains_failure_evidence(tmp_path):
     evidence.write_json(tmp_path / "diagnostic_state.json", {"status":"failed", "error":"Empty trajectory after preprocessing"})
     packet = evidence.collect_evidence(tmp_path)
     result = diagnostic.local_checks(packet)
     assert "run_manifest.json" in packet.coverage["missing"]
     assert result["findings"][0]["explanation"] == "Empty trajectory after preprocessing"
+
+
+def test_unverified_cycle_answer_falls_back_to_saved_cycle_metrics(tmp_path):
+    run = tmp_path / "cycle-answer-run"
+    run.mkdir()
+    evidence.write_json(run / "run_manifest.json", {
+        "status": "completed",
+        "performance_history": [{
+            "cycle": 1, "architecture": "LSTM", "hidden_layers": [32, 32],
+            "epochs": 40, "validation_mse": 0.0041, "training_time_s": 21.2,
+        }],
+    })
+
+    class InvalidProviderAnswer:
+        def complete(self, *_args):
+            return "not valid diagnosis JSON"
+
+    result = diagnostic.RunDiagnosticAgent(
+        client=InvalidProviderAnswer()).ask(run, "What happened in cycle 1?")
+
+    assert result["mode"] == "local_checks"
+    assert "0.0041" in result["summary"]
+    assert "[C1]" in result["summary"]
+    assert result["findings"][0]["evidence"][0]["source_id"] == "C1"
 
 
 def test_openai_reasoning_request_uses_independent_settings(monkeypatch):

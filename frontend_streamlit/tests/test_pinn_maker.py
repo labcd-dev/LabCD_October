@@ -255,6 +255,146 @@ def test_flattened_markdown_escaped_python_source_falls_back_to_configured_inter
     assert Path(source["path"]).read_bytes() == raw.encode("utf-8")
 
 
+def test_physics_model_agent_maps_client_one_based_aliases_across_the_full_pinn(storage):
+    chat = attached_pitch_yaw_chat()
+    description = (
+        "2 DOF helicopter s1 = pitch, s2 = yaw, s3 = pitch dot, "
+        "s4 = yaw dot; pitch and yaw have no relation together."
+    )
+    chat["settings"]["physics_mode"] = "pinn"
+    response = {
+        "status": "ready", "message": "I drafted a review model for both axes.",
+        "equations": [
+            {"state": "s_pitch", "expression": "s3"},
+            {"state": "s_yaw", "expression": "s4"},
+            {"state": "s_dpitch", "expression": "p0*s1 + p1*a1"},
+            {"state": "s_dyaw", "expression": "p2*s2 + p3*a2"},
+        ],
+        "parameters": [
+            {"alias": f"p{i}", "name": f"provisional gain {i}", "initial": 0.0,
+             "lower": -2.0, "upper": 2.0, "units": "", "rationale": "Review range."}
+            for i in range(4)
+        ],
+        "pcnn_constraints": [], "assumptions": ["Actuator gains are provisional."],
+    }
+
+    result = maker.propose_physics_model(
+        chat, description, client=FakeClient(response), output_dir=storage / "pinn-preview"
+    )
+
+    assert result["status"] == "ready"
+    assert [item["expression"] for item in result["equations"]] == [
+        "s2", "s3", "p0*s0 + p1*a0", "p2*s1 + p3*a1",
+    ]
+    assert Path(result["generated_artifact"]["path"]).is_file()
+    assert result["generated_artifact"]["approved"] is False
+
+
+def test_physics_model_agent_recovers_a_pinn_draft_after_repeated_clarification(storage):
+    chat = attached_pitch_yaw_chat()
+    description = (
+        "2 DOF helicopter: s1 = pitch, s2 = yaw, s3 = pitch dot, s4 = yaw dot; "
+        "pitch and yaw do not have a relation together."
+    )
+    chat["settings"]["physics_mode"] = "pinn"
+    repeated_clarification = {
+        "status": "clarification",
+        "message": "Please provide the equations for the pitch and yaw states.",
+        "equations": [], "parameters": [], "pcnn_constraints": [], "assumptions": [],
+    }
+    client = FakeClient(repeated_clarification)
+
+    result = maker.propose_physics_model(
+        chat, description, client=client, output_dir=storage / "pinn-clarification-preview"
+    )
+
+    assert result["status"] == "ready"
+    assert len(result["equations"]) == len(chat["dataset"]["states"]) == 4
+    assert [item["expression"] for item in result["equations"][:2]] == ["s2", "s3"]
+    assert len(client.calls) == 2
+    assert any("cross-axis state terms" in item for item in result["assumptions"])
+
+
+def test_physics_model_agent_drafts_helicopter_pinn_from_system_name_and_signal_columns(storage):
+    chat = attached_pitch_yaw_chat()
+    chat["settings"]["physics_mode"] = "pinn"
+    client = FakeClient({
+        "status": "clarification", "message": "Please provide the input-to-axis mapping.",
+        "equations": [], "parameters": [], "pcnn_constraints": [], "assumptions": [],
+    })
+
+    result = maker.propose_physics_model(
+        chat, "2 DOF helicopter", client=client,
+        output_dir=storage / "pinn-name-only-preview",
+    )
+
+    assert result["status"] == "ready"
+    assert [item["expression"] for item in result["equations"][:2]] == ["s2", "s3"]
+    assert len(result["equations"]) == 4
+    assert any("inferred from column names" in item for item in result["assumptions"])
+    assert any("actuator-to-axis mapping was not specified" in item for item in result["assumptions"])
+
+
+def test_physics_model_agent_reads_explicit_derivative_notation_and_completes_pinn(storage):
+    chat = attached_pitch_yaw_chat()
+    chat["settings"]["physics_mode"] = "pinn"
+    description = "2 DOF helicopter d(s_pitch) = s_dpitch"
+    client = FakeClient({
+        "status": "clarification", "message": "Please supply the remaining equations.",
+        "equations": [], "parameters": [], "pcnn_constraints": [], "assumptions": [],
+    })
+
+    result = maker.propose_physics_model(
+        chat, description, client=client,
+        output_dir=storage / "pinn-derivative-preview",
+    )
+
+    assert result["status"] == "ready"
+    assert [item["expression"] for item in result["equations"][:2]] == ["s2", "s3"]
+    assert len(result["equations"]) == 4
+    assert any("s_yaw ↔ s_dyaw" in item for item in result["assumptions"])
+
+
+def test_physics_model_agent_recovers_explicit_pcnn_rules_when_provider_fails(storage):
+    chat = attached_pitch_yaw_chat()
+    description = "2 DOF helicopter s1 = pitch, s2 = yaw, s3 = pitch dot, s4 = yaw dot"
+    chat["settings"]["physics_mode"] = "pcnn"
+
+    class UnavailableClient:
+        settings = SimpleNamespace(model="offline-test")
+
+        def complete(self, *_args):
+            raise TimeoutError("test provider unavailable")
+
+    result = maker.propose_physics_model(
+        chat, description, client=UnavailableClient(), output_dir=storage / "pcnn-preview"
+    )
+
+    assert result["status"] == "ready"
+    assert [item["expression"] for item in result["equations"]] == ["s2", "s3"]
+    assert [item["state"] for item in result["equations"]] == ["s_pitch", "s_yaw"]
+    assert all(item["recommended_exact"] for item in result["generated_artifact"]["pcnn_constraint_recommendations"])
+    assert Path(result["generated_artifact"]["path"]).is_file()
+
+
+def test_pcnn_does_not_turn_column_name_pairings_into_hard_constraints(storage):
+    chat = attached_pitch_yaw_chat()
+    chat["settings"]["physics_mode"] = "pcnn"
+    client = FakeClient({
+        "status": "clarification", "message": "Which rule should be enforced exactly?",
+        "equations": [], "parameters": [], "pcnn_constraints": [], "assumptions": [],
+    })
+
+    result = maker.propose_physics_model(
+        chat, "2 DOF helicopter", client=client,
+        output_dir=storage / "pcnn-clarification-preview",
+    )
+
+    assert result["status"] == "clarification"
+    assert result["generated_artifact"] is None
+    assert not list((storage / "pcnn-clarification-preview").glob("*.py"))
+
+
 def test_python_pinn_translator_rejects_unsafe_statements_and_bad_indices():
     unsafe = "pitch = states[:, 0]\nphysics_xdot[:, 0] = __import__('os').system('whoami')"
     with pytest.raises(ValueError, match="safe PINN math|function outside"):

@@ -34,6 +34,7 @@ def profile_frame(frame: pd.DataFrame, states: list[str], actions: list[str], de
     signals = []
     detected_wrap = []
     possible_boundary_rows = set()
+    possible_boundary_states = {}
     for name in states:
         values = pd.to_numeric(frame[name], errors="coerce").to_numpy(dtype=float)
         finite = values[np.isfinite(values)]
@@ -47,7 +48,9 @@ def profile_frame(frame: pd.DataFrame, states: list[str], actions: list[str], de
             detected_wrap.append(name)
         if len(valid_steps) and not wraps:
             threshold = max(8 * float(np.median(valid_steps)), 0.5 * float(np.ptp(finite)), 1e-10)
-            possible_boundary_rows.update((np.flatnonzero(steps > threshold) + 1).astype(int).tolist())
+            for row in (np.flatnonzero(steps > threshold) + 1).astype(int).tolist():
+                possible_boundary_rows.add(row)
+                possible_boundary_states.setdefault(row, []).append(name)
         baseline = None
         if count - start >= 2 and len(dts) == count - 1:
             working = np.unwrap(values) if wraps else values
@@ -86,11 +89,15 @@ def profile_frame(frame: pd.DataFrame, states: list[str], actions: list[str], de
                            "std": float(np.std(finite)), "constant": float(np.ptp(finite)) < 1e-10})
     duration = float(np.sum(positive)) if len(positive) else None
     derivative_checks = []
+    wrapped_states = set(detected_wrap)
     for state in states:
         derivative = "xdot_" + state.removeprefix("s_")
         if derivative not in derivatives or len(times) < 3:
             continue
         values = pd.to_numeric(frame[state], errors="coerce").to_numpy(dtype=float)
+        unwrapped = state in wrapped_states
+        if unwrapped:
+            values = np.unwrap(values)
         observed = pd.to_numeric(frame[derivative], errors="coerce").to_numpy(dtype=float)[1:]
         valid = (np.isfinite(observed) & np.isfinite(values[1:]) & np.isfinite(values[:-1]) &
                  np.isfinite(dts) & (dts > 0))
@@ -99,11 +106,16 @@ def profile_frame(frame: pd.DataFrame, states: list[str], actions: list[str], de
         finite_difference = np.diff(values)[valid] / dts[valid]
         reference = observed[valid]
         scale = float(np.std(reference))
+        reference_center = float(np.mean(reference))
+        variable_scale = scale > max(1e-12, abs(reference_center) * 1e-6)
         rmse = float(np.sqrt(np.mean((finite_difference - reference) ** 2)))
         derivative_checks.append({"state": state, "derivative": derivative, "valid_pairs": int(np.sum(valid)),
                                   "finite_difference_vs_supplied_rmse": rmse,
-                                  "rmse_over_supplied_std": rmse / scale if scale > 0 else None,
-                                  "note": "Descriptive consistency check; finite differences amplify measurement noise."})
+                                  "rmse_over_supplied_std": rmse / scale if variable_scale else None,
+                                  "angle_unwrapped_for_check": unwrapped,
+                                  "note": ("Angular samples were unwrapped before differencing. " if unwrapped else "") +
+                                          "Descriptive consistency check; finite differences amplify measurement noise. " +
+                                          ("Normalized error is omitted because supplied derivatives are effectively constant." if not variable_scale else "")})
     correlated_state_pairs = []
     # Bound this optional advisory check for uploads near the workspace limits.
     correlation_states = list(dict.fromkeys(states))[:64]
@@ -121,11 +133,26 @@ def profile_frame(frame: pd.DataFrame, states: list[str], actions: list[str], de
                         break
             if len(correlated_state_pairs) >= 12:
                 break
+    reset_row_indices = set(reset_rows.tolist())
+    candidate_boundary_indices = sorted(reset_row_indices | possible_boundary_rows)
+    boundary_events = []
+    for row in candidate_boundary_indices[:20]:
+        before = float(times[row - 1]) if row > 0 and row - 1 < len(times) and np.isfinite(times[row - 1]) else None
+        after = float(times[row]) if row < len(times) and np.isfinite(times[row]) else None
+        boundary_events.append({
+            "data_row": int(row + 1),
+            "time_before": before,
+            "time_after": after,
+            "time_reset": row in reset_row_indices,
+            "state_jumps": sorted(possible_boundary_states.get(row, [])),
+        })
     return {"rows": count, "time_start": float(times[0]) if len(times) and np.isfinite(times[0]) else None,
             "time_end": float(times[-1]) if len(times) and np.isfinite(times[-1]) else None,
             "observed_duration": duration, "median_dt": median_dt,
             "irregular_intervals": irregular, "positive_intervals": int(len(positive)),
             "time_reset_rows": reset_rows[:20].tolist(), "time_reset_count": int(len(reset_rows)),
+            "boundary_events": boundary_events,
+            "boundary_event_count": len(candidate_boundary_indices),
             "duplicate_time_rows": duplicate_rows[:20].tolist(), "duplicate_time_count": int(len(duplicate_rows)),
             "states": signals, "inputs": inputs, "derivative_count": len(derivatives),
             "derivative_consistency": derivative_checks,
@@ -139,7 +166,8 @@ def profile_frame(frame: pd.DataFrame, states: list[str], actions: list[str], de
 def ensure_profile(dataset: dict) -> dict:
     """Backfill analysis for chats saved before profiles were introduced."""
     if (isinstance(dataset.get("analysis"), dict) and
-            "correlated_state_pairs" in dataset["analysis"]):
+            "correlated_state_pairs" in dataset["analysis"] and
+            "boundary_events" in dataset["analysis"]):
         return dataset["analysis"]
     path = Path(dataset["path"])
     data = path.read_bytes()
@@ -160,6 +188,21 @@ def state_comparison_question(question: str) -> bool:
 def compare_run_states(run_dir: str) -> dict:
     path = Path(run_dir) / "verification_summary.json"
     verification = read_json(path, {}) or {}
+    trajectory_states = {}
+    for trajectory in verification.get("per_trajectory", []):
+        if not isinstance(trajectory, dict):
+            continue
+        trajectory_number = trajectory.get("trajectory_index")
+        for item in trajectory.get("states", []):
+            if isinstance(item, dict) and item.get("state"):
+                trajectory_states.setdefault(str(item["state"]), []).append({
+                    "trajectory_index": trajectory_number,
+                    "rmse": item.get("rmse"),
+                    "mae": item.get("mae"),
+                    "normalized_rmse": item.get("rmse_over_test_std"),
+                    "error_type": item.get("error_type", "linear"),
+                    "valid_samples": item.get("valid_samples"),
+                })
     rows = []
     for item in verification.get("states", []):
         try:
@@ -167,8 +210,11 @@ def compare_run_states(run_dir: str) -> dict:
             ratio = float(ratio) if ratio is not None else None
             if not math.isfinite(rmse) or (ratio is not None and not math.isfinite(ratio)):
                 continue
-            rows.append({"state": str(item["state"]), "rmse": rmse, "mae": float(item["mae"]),
-                         "normalized_rmse": ratio, "valid_samples": int(item["valid_samples"])})
+            name = str(item["state"])
+            rows.append({"state": name, "rmse": rmse, "mae": float(item["mae"]),
+                         "normalized_rmse": ratio, "valid_samples": int(item["valid_samples"]),
+                         "error_type": item.get("error_type", "linear"),
+                         "per_trajectory": trajectory_states.get(name, [])})
         except (KeyError, TypeError, ValueError):
             continue
     if not rows:

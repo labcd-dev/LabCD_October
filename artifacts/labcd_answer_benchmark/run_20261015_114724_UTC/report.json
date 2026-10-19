@@ -1,0 +1,83 @@
+{
+  "benchmark": "LabCD answer routing and quality benchmark",
+  "benchmark_version": 1,
+  "mode": "live",
+  "created_at_utc": "2026-10-15T11:47:24+00:00",
+  "synthetic_data_only": true,
+  "total_cases": 1,
+  "passed": 1,
+  "failed": 0,
+  "blocked": 0,
+  "scored_cases": 1,
+  "pass_rate": 1.0,
+  "provider_blocked_cases": 0,
+  "warning_count": 0,
+  "by_category": {
+    "setup_context_followups": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    }
+  },
+  "components": {
+    "routing": {
+      "passed": 1,
+      "total": 1,
+      "pass_rate": 1.0
+    },
+    "evidence_retrieval": {
+      "passed": 1,
+      "total": 1,
+      "pass_rate": 1.0
+    },
+    "settings_edits": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "local_answers": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "completed_live_responses": {
+      "passed": 1,
+      "total": 1,
+      "pass_rate": 1.0
+    },
+    "model_generated_answers": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    }
+  },
+  "live_api_answer_cases": 1,
+  "planner_cases": 0,
+  "records": [
+    {
+      "status": "clarification",
+      "answer": "You answered yes, but I offered two model choices. Which do you mean: **LSTM** for sequence memory, or **MLP** for direct mapping?",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "setup",
+      "model": "LabCD clarification",
+      "uncertainty": "",
+      "id": "setup_context_followups-01",
+      "category": "setup_context_followups",
+      "question": "yes",
+      "mode": "live",
+      "elapsed_seconds": 0.0,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": null
+    }
+  ]
+}

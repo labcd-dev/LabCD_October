@@ -90,3 +90,74 @@ def test_sidebar_select_rename_pin_archive_and_restore(tmp_path, monkeypatch):
     assert not app.exception
     assert not core.read_chat(chat["id"])["archived"]
     assert run.is_dir()
+
+
+def test_sidebar_rows_expose_pin_and_archive_actions(tmp_path, monkeypatch):
+    from frontend_streamlit import conversation_core as core
+
+    monkeypatch.setattr(core, "CHAT_DIR", tmp_path / "chats")
+    monkeypatch.setattr(core, "OUTPUT_DIR", tmp_path)
+    saved = core.new_chat()
+    saved["title"] = "Saved oscillator"
+    core.save_chat(saved)
+
+    app = AppTest.from_file(str(Path(__file__).parents[1] / "agent_sysid_app.py"), default_timeout=30).run()
+    identity = saved["id"]
+    assert app.button(key=f"history_pin_{identity}")
+    assert app.button(key=f"history_archive_{identity}")
+
+    app.button(key=f"history_pin_{identity}").click().run()
+    assert core.read_chat(identity)["pinned"] is True
+    app.button(key=f"conversation_open_{identity}").click().run()
+    app.button(key=f"history_archive_{identity}").click().run()
+    archived = core.read_chat(identity)
+    assert archived["archived"] is True
+    assert archived["pinned"] is True
+    assert app.session_state["conversation"]["id"] != identity
+
+
+def test_sidebar_projects_create_new_chats_and_move_existing_chats(tmp_path, monkeypatch):
+    from frontend_streamlit import conversation_core as core
+
+    monkeypatch.setattr(core, "CHAT_DIR", tmp_path / "chats")
+    monkeypatch.setattr(core, "OUTPUT_DIR", tmp_path)
+    saved = core.new_chat()
+    saved["title"] = "Unsorted experiment"
+    core.save_chat(saved)
+
+    app = AppTest.from_file(str(Path(__file__).parents[1] / "agent_sysid_app.py"), default_timeout=30).run()
+    app.text_input(key="project_new_title").set_value("Pendulum study")
+    app.button(key="project_create").click().run()
+    assert not app.exception
+    project = core.list_projects()[0]
+    assert project["title"] == "Pendulum study"
+    assert app.session_state["conversation"]["project_id"] == project["id"]
+
+    app.selectbox(key=f"history_project_choice_{saved['id']}").set_value(project["id"]).run()
+    app.button(key=f"history_move_project_{saved['id']}").click().run()
+    assert not app.exception
+    assert core.read_chat(saved["id"])["project_id"] == project["id"]
+    assert app.button(key=f"project_new_chat_{project['id']}")
+
+
+def test_permanent_remove_requires_confirmation_and_keeps_run_folder(tmp_path, monkeypatch):
+    from frontend_streamlit import conversation_core as core
+
+    monkeypatch.setattr(core, "CHAT_DIR", tmp_path / "chats")
+    monkeypatch.setattr(core, "OUTPUT_DIR", tmp_path)
+    run = tmp_path / "completed-run"
+    run.mkdir()
+    (run / "report.pdf").write_bytes(b"saved report")
+    saved = core.new_chat()
+    saved["title"] = "Completed experiment"
+    saved["run_dir"] = str(run)
+    core.save_chat(saved)
+
+    app = AppTest.from_file(str(Path(__file__).parents[1] / "agent_sysid_app.py"), default_timeout=30).run()
+    app.button(key=f"history_remove_{saved['id']}").click().run()
+    assert not app.exception
+    assert core.read_chat(saved["id"]) is not None
+    app.button(key=f"history_remove_confirm_{saved['id']}").click().run()
+    assert not app.exception
+    assert core.read_chat(saved["id"]) is None
+    assert (run / "report.pdf").read_bytes() == b"saved report"

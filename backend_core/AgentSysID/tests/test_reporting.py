@@ -152,6 +152,119 @@ def test_verification_rollout_returns_aligned_trajectories(tmp_path: Path):
     assert (tmp_path / "figures").exists()
 
 
+def test_deployment_controller_preserves_periodic_angle_encoding(tmp_path: Path):
+    import torch
+
+    model = DynamicsModel(
+        1, 0, [8], activation="tanh", architecture="MLP", angle_indices=[0]
+    )
+    model.set_scalers([0.0, 0.0], [1.0, 1.0], [], [], [0.0], [1.0])
+    path = export_standalone_inference_script(
+        model, [8], "tanh", 1, 0, "angle_weights.pth", "angle_plant",
+        tmp_path, architecture="MLP",
+    )
+    namespace = {}
+    exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), namespace)
+    deployed = namespace["DeployableDynamicsModel"]()
+    controller = object.__new__(namespace["NeuralController"])
+    controller.model = deployed
+
+    output = deployed(
+        torch.tensor([[np.pi - 1e-4]]), torch.zeros((1, 0)), torch.tensor([[0.01]])
+    )
+
+    assert output.shape == (1, 1)
+    assert deployed.angle_indices == [0]
+    assert controller.wrap_state(np.array([np.pi + 0.1]))[0] == pytest.approx(-np.pi + 0.1)
+    helper = write_nn_inference_helper("angle_plant", tmp_path)
+    helper_text = helper.read_text(encoding="utf-8")
+    assert "plant_model.model.state_dim" in helper_text
+    assert "plant_model.wrap_state(next_state_prediction)" in helper_text
+
+
+@pytest.mark.parametrize("arch", ["MLP", "LSTM"])
+def test_exported_pcnn_controller_embeds_equation_and_keeps_exact_state(tmp_path: Path, arch: str):
+    import torch
+
+    equation = tmp_path / "physics_equation.py"
+    equation.write_text(
+        "def compute_analytical_xdot(states, actions):\n"
+        "    return torch.stack((states[:, 0] + actions[:, 0], 2 * states[:, 1]), dim=1)\n",
+        encoding="utf-8",
+    )
+    model = DynamicsModel(2, 1, [8], activation="tanh", architecture=arch, angle_indices=[0])
+    model.set_scalers([0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0], [1.0], [0.0, 0.0], [1.0, 3.0])
+    model.configure_physics(
+        "pcnn", lambda states, actions: torch.stack((states[:, 0] + actions[:, 0], 2 * states[:, 1]), dim=1),
+        hard_constraint_indices=[0],
+    )
+    head = model.fc_out if arch == "LSTM" else model.network[-1]
+    with torch.no_grad():
+        head.bias.copy_(torch.tensor([0.5, 1.0]))
+    weights = tmp_path / "pcnn_model.pth"
+    torch.save(model.state_dict(), weights)
+    script = export_standalone_inference_script(
+        model=model, hidden_layers=[8], activation="tanh", state_dim=2, action_dim=1,
+        pth_stem=weights.name, env_name="pcnn_plant", output_dir=tmp_path,
+        architecture=arch, lstm_seq_length=3, physics_mode="pcnn",
+        hard_constraint_indices=[0], physics_equation_file=equation,
+    )
+    namespace = {}
+    exec(compile(script.read_text(encoding="utf-8"), str(script), "exec"), namespace)
+    controller = namespace["NeuralController"](weights_path=str(weights))
+    output = controller.predict_xdot(
+        np.array([0.2, 0.3], dtype=np.float32), np.array([0.4], dtype=np.float32), 0.01,
+    )
+
+    # State 0 is exactly equation-defined; state 1 includes its learned correction.
+    np.testing.assert_allclose(output, [0.6, 3.6], atol=1e-6)
+
+
+def test_pcnn_pdf_reports_equation_mode_and_exact_states(tmp_path: Path, monkeypatch):
+    from backend_core.AgentSysID.reporting import report as report_module
+
+    rows = []
+    original_add_table_row = report_module.SystemIDReport.add_table_row
+
+    def capture_row(self, label, value):
+        rows.append((str(label), str(value)))
+        return original_add_table_row(self, label, value)
+
+    monkeypatch.setattr(report_module.SystemIDReport, "add_table_row", capture_row)
+
+    pdf_path = generate_final_pdf(
+        env_name="plant", state_dim=2, action_dim=1,
+        best_config={"hidden_layers": [8]}, best_mse=0.01, best_rmse=0.1,
+        latency=0.2, use_pinn=True, physics_mode="pcnn",
+        pcnn_hard_constraint_states=["s_pitch"], timestamp="pcnn-report",
+        abstract_text="A physics-constrained model fit measured derivatives.",
+        conclusion_text="The held-out score does not prove closed-loop stability.",
+        success_score=None, model_status="ROLLOUT UNVERIFIED",
+        complexity_label="Level 2", output_dir=tmp_path,
+    )
+    assert Path(pdf_path).is_file()
+    assert ("Architecture Mode", "PCNN (equation-constrained) + MLP (Memoryless State)") in rows
+    assert ("Exact PCNN State Equations", "s_pitch") in rows
+
+
+def test_verification_rolls_out_each_held_out_trajectory_independently(tmp_path: Path):
+    model = DynamicsModel(2, 1, [8], activation="relu", architecture="MLP")
+    first, second = _traj(14), _traj(19)
+    second["states"] = second["states"] + np.array([3.0, -2.0], dtype=np.float32)
+    truth, predicted, ranges = plot_test_dataset_verification(
+        model, [first, second], state_dim=2, action_dim=1,
+        output_dir=tmp_path, timestamp="multi", env_name="plant", architecture="MLP",
+        save_plot=False, return_trajectory_ranges=True,
+    )
+    assert truth.shape == predicted.shape == (33, 2)
+    assert ranges == [
+        {"trajectory_index": 1, "start": 0, "stop": 14},
+        {"trajectory_index": 2, "start": 14, "stop": 33},
+    ]
+    np.testing.assert_allclose(truth[0], first["states"][0])
+    np.testing.assert_allclose(truth[14], second["states"][0])
+
+
 def test_verification_handles_an_empty_test_set(tmp_path: Path):
     model = DynamicsModel(2, 1, [8], architecture="MLP")
     true_traj, nn_traj = plot_test_dataset_verification(
@@ -231,10 +344,10 @@ def test_pdf_contains_all_nine_sections(tmp_path: Path):
         "Abstract", "1. System Structure", "2. Optimal Neural",
         "3. System Identification Convergence", "4. Absolute Error",
         "5. Architecture Topology", "6. Hyperparameter",
-        "7. Real-Time Deployment", "8. Data-Driven Held-Out", "9. Concluding",
+        "7. Inference Timing", "8. Data-Driven Held-Out", "9. Conclusion & Validation Limits",
     ]:
         assert section in text, f"PDF is missing section: {section}"
-    assert "Composite Success Score" in text
+    assert "Fit + Held-out Rollout Score" in text
     assert "88.5" in text
     # Every referenced figure must have been found on disk.
     assert "[Error:" not in text
@@ -256,6 +369,23 @@ def test_pdf_sanitizes_unicode_that_latin1_cannot_encode(tmp_path: Path):
     assert Path(pdf_path).exists()
 
 
+def test_pdf_shows_missing_rollout_score_as_unavailable(tmp_path: Path):
+    pytest.importorskip("pypdf")
+    from pypdf import PdfReader
+    pdf_path = generate_final_pdf(
+        env_name="plant", state_dim=1, action_dim=1,
+        best_config={"hidden_layers": [8]}, best_mse=0.01, best_rmse=0.1,
+        latency=0.2, use_pinn=False, timestamp="missing-rollout",
+        abstract_text="Validation summary.",
+        conclusion_text="A composite score is unavailable because no rollout was saved.",
+        success_score=None, model_status="ROLLOUT UNVERIFIED",
+        complexity_label="Level 2", output_dir=tmp_path,
+    )
+    text = "".join(page.extract_text() for page in PdfReader(pdf_path).pages)
+    assert "Fit + Held-out Rollout Score" in text
+    assert "Unavailable" in text
+
+
 def test_zip_has_the_expected_delivery_layout(tmp_path: Path):
     run_dir = tmp_path / "run"
     (run_dir / "figures").mkdir(parents=True)
@@ -265,6 +395,8 @@ def test_zip_has_the_expected_delivery_layout(tmp_path: Path):
 
     (run_dir / "figures" / "a.png").write_bytes(b"\x89PNG\r\n")
     (run_dir / "deployment" / "deployed_controller_plant.py").write_text("# controller")
+    (run_dir / "deployment" / "NN.py").write_text("# inference script")
+    (run_dir / "deployment" / "best_model_plant.pth").write_bytes(b"model weights")
     (run_dir / "report" / "System_Report_plant.pdf").write_bytes(b"%PDF-1.4")
     (run_dir / "Agents_log" / "agent_prompt_history.log").write_text("log")
 
@@ -273,7 +405,9 @@ def test_zip_has_the_expected_delivery_layout(tmp_path: Path):
         names = z.namelist()
 
     assert "README.md" in names
-    assert any(n.startswith("figures/") for n in names)
-    assert any(n.startswith("deployment/") for n in names)
-    assert any(n.startswith("report/") for n in names)
-    assert any(n.startswith("Agents_log/") for n in names)
+    assert "deployment/deployed_controller_plant.py" in names
+    assert "deployment/NN.py" in names
+    assert "deployment/best_model_plant.pth" in names
+    assert "report/System_Report_plant.pdf" in names
+    assert "figures/a.png" not in names
+    assert "Agents_log/agent_prompt_history.log" not in names

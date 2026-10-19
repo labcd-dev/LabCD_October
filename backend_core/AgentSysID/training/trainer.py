@@ -9,12 +9,13 @@ Features preserved from ``_legacy/framework.train_dynamics_model``:
   * optional localized state-space filtering of training windows
   * dual loss bookkeeping: normalised loss for gradients, physical MSE/RMSE
     for reporting
-  * optional PINN physics residual (``PINN_LOSS_WEIGHT``)
+  * optional PINN soft equation loss; PCNN replaces selected derivatives with
+    exact constraint outputs and learns remaining derivatives from data
   * AdamW + ReduceLROnPlateau, gradient clipping
   * early stopping on the normalised validation loss with best-weight restore
   * adaptive epoch extension while the model is still improving
   * live overfit abort (``OVERFIT_RATIO_LIMIT``)
-  * cooperative graceful stop (``utils.stop_control``)
+  * graceful stop at an epoch boundary, so the active candidate can be scored
   * CPU-resident datasets with per-batch transfer, to keep VRAM low
 """
 
@@ -31,6 +32,7 @@ from sklearn.preprocessing import StandardScaler
 
 from backend_core.AgentSysID import config as cfg
 from backend_core.AgentSysID.model.dynamics_model import DynamicsModel
+from backend_core.AgentSysID.model.angles import encode_periodic_states, valid_angle_indices
 from backend_core.AgentSysID.model.pinn import load_analytical_xdot
 from backend_core.AgentSysID.utils.device import DEVICE
 from backend_core.AgentSysID.utils.stop_control import stop_requested
@@ -111,6 +113,7 @@ def _rollout_losses(
     horizon: int,
     criterion: nn.Module,
     physics_fn: Optional[Any] = None,
+    physics_mode: str = "pinn",
 ) -> Tuple[torch.Tensor, float, Any]:
     """
     Run one autoregressive rollout over ``horizon`` steps.
@@ -137,7 +140,9 @@ def _rollout_losses(
             curr_action = b_actions[:, target_idx, :]
             curr_dt = b_dts[:, target_idx, :]
 
-        out_phys, out_norm = dyn_model(current_inputs, curr_action, curr_dt)
+        out_phys, out_norm, residual_norm = dyn_model(
+            current_inputs, curr_action, curr_dt, return_components=True
+        )
 
         true_xdot = b_xdot[:, target_idx, :]
         true_target_norm = b_target_norm[:, target_idx, :]
@@ -164,7 +169,8 @@ def _rollout_losses(
             norm_physics_target = (
                 physics_xdot_pred - dyn_model.output_mean
             ) / dyn_model.output_scale
-            physics_loss_accum = physics_loss_accum + criterion(out_norm, norm_physics_target)
+            if physics_mode == "pinn":
+                physics_loss_accum = physics_loss_accum + criterion(out_norm, norm_physics_target)
 
         # --- Advance the rollout ------------------------------------------
         if arch == "LSTM":
@@ -202,6 +208,7 @@ def train_dynamics_model(
     architecture: Optional[str] = None,
     verbose: bool = True,
     include_state_metrics: bool = False,
+    angle_indices: Optional[Sequence[int]] = None,
 ) -> Tuple[DynamicsModel, float, float, float, np.ndarray, np.ndarray]:
     """
     Train one candidate architecture.
@@ -234,10 +241,19 @@ def train_dynamics_model(
         )
 
     flat_states = train_states.reshape(-1, state_dim)
-    flat_actions = train_actions.reshape(-1, action_encoding_dim)
+    periodic_indices = valid_angle_indices(
+        getattr(cfg, "ANGLE_INDICES", []) if angle_indices is None else angle_indices,
+        state_dim,
+    )
+    flat_state_features = encode_periodic_states(flat_states, periodic_indices)
+    flat_actions = (
+        train_actions.reshape(-1, action_encoding_dim)
+        if action_encoding_dim > 0
+        else np.zeros((flat_states.shape[0], 0), dtype=np.float32)
+    )
     flat_xdots = train_xdots.reshape(-1, state_dim)
 
-    state_scaler = StandardScaler().fit(flat_states)
+    state_scaler = StandardScaler().fit(flat_state_features)
     output_scaler = StandardScaler().fit(flat_xdots)
     if action_encoding_dim > 0:
         action_scaler = StandardScaler().fit(flat_actions)
@@ -316,6 +332,7 @@ def train_dynamics_model(
         activation,
         dropout_rate=dropout_rate,
         architecture=arch,
+        angle_indices=list(periodic_indices),
     ).to(DEVICE)
     dyn_model.set_scalers(
         state_mean=state_scaler.mean_,
@@ -326,7 +343,63 @@ def train_dynamics_model(
         output_scale=output_scaler.scale_,
     )
 
-    optimizer = optim.AdamW(dyn_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    # --- PINN hook --------------------------------------------------------
+    physics_fn = None
+    physics_mode = str(getattr(cfg, "PHYSICS_MODE", "pinn")).strip().lower()
+    if physics_mode not in {"pinn", "pcnn"}:
+        raise ValueError("Physics mode must be either PINN or PCNN.")
+    hard_constraint_indices = [int(index) for index in
+                               (getattr(cfg, "PCNN_HARD_CONSTRAINT_INDICES", []) or [])]
+    if any(index < 0 or index >= state_dim for index in hard_constraint_indices):
+        raise ValueError("PCNN has a hard-constraint state index outside the model output range.")
+    if getattr(cfg, "USE_PINN", False) and physics_mode == "pcnn":
+        if not hard_constraint_indices:
+            raise ValueError("PCNN needs at least one selected state to enforce as a hard constraint.")
+        if len(set(hard_constraint_indices)) != len(hard_constraint_indices):
+            raise ValueError("A PCNN hard-constrained state may be selected only once.")
+        if len(hard_constraint_indices) >= state_dim:
+            raise ValueError("PCNN needs at least one state derivative left for the neural network to learn.")
+    if getattr(cfg, "USE_PINN", False):
+        physics_fn = load_analytical_xdot(getattr(cfg, "PINN_EQUATION_FILE", "physics_env.py"))
+        if physics_fn is None:
+            raise ValueError(f"{physics_mode.upper()} is enabled, but compute_analytical_xdot could not be loaded. Check the validated equation file before training.")
+        probe_states = X_train_states_t[:min(16, len(X_train_states_t)), -1, :].to(DEVICE)
+        probe_actions = X_train_acts_t[:min(16, len(X_train_acts_t)), -1, :].to(DEVICE)
+        try:
+            with torch.no_grad():
+                probe = physics_fn(probe_states, probe_actions)
+        except Exception as exc:
+            raise ValueError(f"The {physics_mode.upper()} equation failed its training-data preflight check.") from exc
+        expected_probe_shape = (len(probe_states), state_dim)
+        if not torch.is_tensor(probe) or tuple(probe.shape) != expected_probe_shape:
+            raise ValueError(f"Physics equation must return a tensor with shape {expected_probe_shape}.")
+        if not torch.isfinite(probe).all():
+            raise ValueError("Physics equation returned a non-finite derivative during preflight.")
+        if physics_mode == "pcnn":
+            defined_indices = getattr(physics_fn, "defined_state_indices", None)
+            if defined_indices is not None:
+                missing_constraints = sorted(set(hard_constraint_indices) - set(defined_indices))
+                if missing_constraints:
+                    raise ValueError(
+                        "PCNN selected a state without a supplied hard-constraint rule: "
+                        + ", ".join(str(index) for index in missing_constraints)
+                    )
+        if isinstance(physics_fn, nn.Module):
+            physics_fn = physics_fn.to(DEVICE)
+        dyn_model.configure_physics(physics_mode, physics_fn, hard_constraint_indices)
+    pinn_weight = float(getattr(cfg, "PINN_LOSS_WEIGHT", 0.5))
+
+    # Include bounded equation coefficients in the same optimizer as the
+    # network weights so inverse PINN proposals can estimate them from data.
+    physics_parameters = (list(physics_fn.parameters())
+                         if isinstance(physics_fn, nn.Module) else [])
+    physics_parameter_ids = {id(parameter) for parameter in physics_parameters}
+    network_parameters = [parameter for parameter in dyn_model.parameters()
+                          if id(parameter) not in physics_parameter_ids]
+    parameter_groups = [{"params": network_parameters, "weight_decay": weight_decay}]
+    if physics_parameters:
+        parameter_groups.append({"params": physics_parameters, "weight_decay": 0.0})
+    optimizer = optim.AdamW(parameter_groups, lr=learning_rate)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode="min",
@@ -337,26 +410,6 @@ def train_dynamics_model(
         min_lr=lr_min,
     )
     criterion = nn.MSELoss()
-
-    # --- PINN hook --------------------------------------------------------
-    physics_fn = None
-    if getattr(cfg, "USE_PINN", False):
-        physics_fn = load_analytical_xdot(getattr(cfg, "PINN_EQUATION_FILE", "physics_env.py"))
-        if physics_fn is None:
-            raise ValueError("PINN is enabled, but compute_analytical_xdot could not be loaded. Check the validated equation file before training.")
-        probe_states = X_train_states_t[:min(16, len(X_train_states_t)), -1, :].to(DEVICE)
-        probe_actions = X_train_acts_t[:min(16, len(X_train_acts_t)), -1, :].to(DEVICE)
-        try:
-            with torch.no_grad():
-                probe = physics_fn(probe_states, probe_actions)
-        except Exception as exc:
-            raise ValueError("The PINN equation failed its training-data preflight check.") from exc
-        expected_probe_shape = (len(probe_states), state_dim)
-        if not torch.is_tensor(probe) or tuple(probe.shape) != expected_probe_shape:
-            raise ValueError(f"PINN equation must return a tensor with shape {expected_probe_shape}.")
-        if not torch.isfinite(probe).all():
-            raise ValueError("PINN equation returned a non-finite derivative during preflight.")
-    pinn_weight = float(getattr(cfg, "PINN_LOSS_WEIGHT", 0.5))
 
     train_losses: List[float] = []
     val_losses: List[float] = []
@@ -381,7 +434,10 @@ def train_dynamics_model(
 
     epoch = 0
     while epoch < max_allowed_epochs:
-        if stop_requested():
+        # Always complete at least one epoch so an early stop still leaves a
+        # valid candidate to score and package. Later stops are honored between
+        # epochs, never halfway through a batch.
+        if epoch > 0 and stop_requested():
             break
 
         current_epoch_lr = optimizer.param_groups[0]["lr"]
@@ -393,12 +449,8 @@ def train_dynamics_model(
         epoch_norm_loss = 0.0
         epoch_phys_loss = 0.0
         num_batches = 0
-        stopped_mid_epoch = False
 
         for i in range(0, X_train_states_t.size(0), batch_size):
-            if stop_requested():
-                stopped_mid_epoch = True
-                break
             idx = perm[i : i + batch_size]
 
             # Move only the current mini-batch to the device
@@ -422,9 +474,10 @@ def train_dynamics_model(
                 horizon,
                 criterion,
                 physics_fn,
+                physics_mode,
             )
 
-            if physics_fn is not None and torch.is_tensor(physics_loss_accum):
+            if physics_fn is not None and physics_mode == "pinn" and torch.is_tensor(physics_loss_accum):
                 physics_loss_accum = physics_loss_accum / horizon
                 total_norm_loss = total_norm_loss + (pinn_weight * physics_loss_accum)
 
@@ -437,9 +490,6 @@ def train_dynamics_model(
             epoch_norm_loss += total_norm_loss.item()
             epoch_phys_loss += batch_phys_loss
             num_batches += 1
-
-        if stopped_mid_epoch:
-            break
 
         current_train_norm_loss = epoch_norm_loss / max(1, num_batches)
         current_train_phys_loss = epoch_phys_loss / max(1, num_batches)
@@ -549,6 +599,10 @@ def train_dynamics_model(
 
     if best_model_state is not None:
         dyn_model.load_state_dict(best_model_state)
+    parameter_reader = getattr(physics_fn, "parameter_estimates", None)
+    dyn_model.physics_parameter_estimates = parameter_reader() if callable(parameter_reader) else {}
+    metadata_reader = getattr(physics_fn, "parameter_metadata", None)
+    dyn_model.physics_parameter_metadata = metadata_reader() if callable(metadata_reader) else []
 
     if include_state_metrics:
         # Keep a first-step error for each state so the client can see which
@@ -603,7 +657,7 @@ def measure_inference_latency(
     action_dim: int,
     n_runs: int = 100,
 ) -> float:
-    """Simulate real-time control deployment to measure average latency (ms)."""
+    """Measure this runtime's model forward-pass latency in milliseconds."""
     model.eval()
 
     device = next(model.parameters()).device

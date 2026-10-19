@@ -1,0 +1,626 @@
+{
+  "benchmark": "LabCD answer routing and quality benchmark",
+  "benchmark_version": 1,
+  "mode": "live",
+  "created_at_utc": "2026-10-14T15:10:19+00:00",
+  "synthetic_data_only": true,
+  "total_cases": 20,
+  "passed": 4,
+  "failed": 0,
+  "blocked": 16,
+  "scored_cases": 4,
+  "pass_rate": 1.0,
+  "provider_blocked_cases": 16,
+  "warning_count": 0,
+  "by_category": {
+    "active_run_chat": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "dataset_specific_interpretation": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "general_conversation_and_navigation": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "general_data_guidance": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "general_model_concepts": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "general_system_identification": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "missing_run_safety": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "run_agent_records_and_prompts": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "run_context_followups": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "run_cycle_specific": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "run_settings_and_prompt_snapshot": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "run_state_ranking": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "run_summary_and_metrics": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "settings_chat_edits": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "setup_and_initializer_prompts": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "setup_architecture_and_pinn": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "setup_context_followups": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "setup_dataset_and_assumptions": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "setup_status_and_recommendation": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    },
+    "setup_value_questions": {
+      "passed": 0,
+      "failed": 0,
+      "blocked": 1,
+      "total": 1,
+      "failures": []
+    }
+  },
+  "components": {
+    "routing": {
+      "passed": 19,
+      "total": 19,
+      "pass_rate": 1.0
+    },
+    "evidence_retrieval": {
+      "passed": 19,
+      "total": 19,
+      "pass_rate": 1.0
+    },
+    "settings_edits": {
+      "passed": 1,
+      "total": 1,
+      "pass_rate": 1.0
+    },
+    "local_answers": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "live_answers": {
+      "passed": 3,
+      "total": 3,
+      "pass_rate": 1.0
+    }
+  },
+  "live_api_answer_cases": 19,
+  "planner_cases": 1,
+  "records": [
+    {
+      "status": "error",
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'code': 'unsupported_country_region_territory', 'message': 'Country, region, or territory not supported', 'param': None, 'type': 'request_forbidden'}}",
+      "answer": "",
+      "sources": [],
+      "id": "general_system_identification-01",
+      "category": "general_system_identification",
+      "question": "What is system identification in plain language?",
+      "mode": "live",
+      "elapsed_seconds": 2.28,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Configured AI provider rejected or could not serve the request.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "error",
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'code': 'unsupported_country_region_territory', 'message': 'Country, region, or territory not supported', 'param': None, 'type': 'request_forbidden'}}",
+      "answer": "",
+      "sources": [],
+      "id": "general_model_concepts-01",
+      "category": "general_model_concepts",
+      "question": "What is an MLP and when is it useful?",
+      "mode": "live",
+      "elapsed_seconds": 0.34,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Configured AI provider rejected or could not serve the request.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "error",
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'code': 'unsupported_country_region_territory', 'message': 'Country, region, or territory not supported', 'param': None, 'type': 'request_forbidden'}}",
+      "answer": "",
+      "sources": [],
+      "id": "general_data_guidance-01",
+      "category": "general_data_guidance",
+      "question": "What columns should a dataset for this kind of model contain?",
+      "mode": "live",
+      "elapsed_seconds": 0.33,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Configured AI provider rejected or could not serve the request.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "answer",
+      "answer": "Hi! I’m LabCD. You can ask about system identification, describe your system, or share measurements whenever you’re ready.",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "general",
+      "uncertainty": "",
+      "id": "general_conversation_and_navigation-01",
+      "category": "general_conversation_and_navigation",
+      "question": "hello",
+      "mode": "live",
+      "elapsed_seconds": 0.0,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed"
+    },
+    {
+      "status": "error",
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'code': 'unsupported_country_region_territory', 'message': 'Country, region, or territory not supported', 'param': None, 'type': 'request_forbidden'}}",
+      "answer": "",
+      "sources": [],
+      "id": "dataset_specific_interpretation-01",
+      "category": "dataset_specific_interpretation",
+      "question": "What state and input columns are in my dataset?",
+      "mode": "live",
+      "elapsed_seconds": 0.34,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Configured AI provider rejected or could not serve the request.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "error",
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'code': 'unsupported_country_region_territory', 'message': 'Country, region, or territory not supported', 'param': None, 'type': 'request_forbidden'}}",
+      "answer": "",
+      "sources": [],
+      "id": "setup_status_and_recommendation-01",
+      "category": "setup_status_and_recommendation",
+      "question": "What is the current starting setup?",
+      "mode": "live",
+      "elapsed_seconds": 0.31,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Configured AI provider rejected or could not serve the request.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "error",
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'code': 'unsupported_country_region_territory', 'message': 'Country, region, or territory not supported', 'param': None, 'type': 'request_forbidden'}}",
+      "answer": "",
+      "sources": [],
+      "id": "setup_and_initializer_prompts-01",
+      "category": "setup_and_initializer_prompts",
+      "question": "What prompt does the initializer use?",
+      "mode": "live",
+      "elapsed_seconds": 0.36,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Configured AI provider rejected or could not serve the request.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "error",
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'code': 'unsupported_country_region_territory', 'message': 'Country, region, or territory not supported', 'param': None, 'type': 'request_forbidden'}}",
+      "answer": "",
+      "sources": [],
+      "id": "setup_architecture_and_pinn-01",
+      "category": "setup_architecture_and_pinn",
+      "question": "Should I start with an LSTM or an MLP for these measurements?",
+      "mode": "live",
+      "elapsed_seconds": 0.34,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Configured AI provider rejected or could not serve the request.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "error",
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'code': 'unsupported_country_region_territory', 'message': 'Country, region, or territory not supported', 'param': None, 'type': 'request_forbidden'}}",
+      "answer": "",
+      "sources": [],
+      "id": "setup_dataset_and_assumptions-01",
+      "category": "setup_dataset_and_assumptions",
+      "question": "Which state names from the uploaded dataset are listed in my starting setup?",
+      "mode": "live",
+      "elapsed_seconds": 0.34,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Configured AI provider rejected or could not serve the request.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "error",
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'code': 'unsupported_country_region_territory', 'message': 'Country, region, or territory not supported', 'param': None, 'type': 'request_forbidden'}}",
+      "answer": "",
+      "sources": [],
+      "id": "setup_value_questions-01",
+      "category": "setup_value_questions",
+      "question": "What is my current learning rate?",
+      "mode": "live",
+      "elapsed_seconds": 0.34,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Configured AI provider rejected or could not serve the request.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "error",
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'code': 'unsupported_country_region_territory', 'message': 'Country, region, or territory not supported', 'param': None, 'type': 'request_forbidden'}}",
+      "answer": "",
+      "sources": [],
+      "id": "run_summary_and_metrics-01",
+      "category": "run_summary_and_metrics",
+      "question": "How did this run go?",
+      "mode": "live",
+      "elapsed_seconds": 0.33,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Configured AI provider rejected or could not serve the request.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "answer",
+      "answer": "**s_speed** was predicted best by normalized held-out RMSE (12.00% of that state's held-out variation; lower is better) across 100 aligned held-out samples [V2]. This ranks prediction error; it does not explain why that state was easier to predict.",
+      "sources": [
+        "V2"
+      ],
+      "evidence": [
+        {
+          "id": "V2",
+          "title": "Computed comparison of held-out state rollout errors",
+          "kind": "calculation"
+        }
+      ],
+      "answer_scope": "run",
+      "uncertainty": "The ranking uses normalized RMSE from the saved held-out comparison.",
+      "id": "run_state_ranking-01",
+      "category": "run_state_ranking",
+      "question": "Which state was predicted best?",
+      "mode": "live",
+      "elapsed_seconds": 0.0,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed"
+    },
+    {
+      "status": "answer",
+      "answer": "AI diagnosis is unavailable. These are local evidence checks, not a full answer to your question.",
+      "sources": [
+        "M1"
+      ],
+      "evidence": [
+        {
+          "id": "M1",
+          "title": "run_manifest.json",
+          "kind": "results"
+        }
+      ],
+      "answer_scope": "run",
+      "uncertainty": "Plot files and model weights are not interpreted by this text analysis. Use recorded verification metrics; visual conclusions require inspecting the plots.",
+      "id": "run_cycle_specific-01",
+      "category": "run_cycle_specific",
+      "question": "What happened in cycle 1?",
+      "mode": "live",
+      "elapsed_seconds": 0.34,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Provider unavailable; LabCD returned its local evidence fallback.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "answer",
+      "answer": "AI diagnosis is unavailable. These are local evidence checks, not a full answer to your question.",
+      "sources": [
+        "M1"
+      ],
+      "evidence": [
+        {
+          "id": "M1",
+          "title": "run_manifest.json",
+          "kind": "results"
+        }
+      ],
+      "answer_scope": "run",
+      "uncertainty": "Plot files and model weights are not interpreted by this text analysis. Use recorded verification metrics; visual conclusions require inspecting the plots.",
+      "id": "run_agent_records_and_prompts-01",
+      "category": "run_agent_records_and_prompts",
+      "question": "What did the initializer actually propose in this run?",
+      "mode": "live",
+      "elapsed_seconds": 0.36,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Provider unavailable; LabCD returned its local evidence fallback.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "error",
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'code': 'unsupported_country_region_territory', 'message': 'Country, region, or territory not supported', 'param': None, 'type': 'request_forbidden'}}",
+      "answer": "",
+      "sources": [],
+      "id": "run_settings_and_prompt_snapshot-01",
+      "category": "run_settings_and_prompt_snapshot",
+      "question": "Which settings were captured when this run started?",
+      "mode": "live",
+      "elapsed_seconds": 0.33,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Configured AI provider rejected or could not serve the request.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "answer",
+      "answer": "AI diagnosis is unavailable. These are local evidence checks, not a full answer to your question.",
+      "sources": [
+        "M1"
+      ],
+      "evidence": [
+        {
+          "id": "M1",
+          "title": "run_manifest.json",
+          "kind": "results"
+        }
+      ],
+      "answer_scope": "run",
+      "uncertainty": "Plot files and model weights are not interpreted by this text analysis. Use recorded verification metrics; visual conclusions require inspecting the plots.",
+      "id": "active_run_chat-01",
+      "category": "active_run_chat",
+      "question": "How is the current cycle progressing?",
+      "mode": "live",
+      "elapsed_seconds": 0.31,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Provider unavailable; LabCD returned its local evidence fallback.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "clarification",
+      "answer": "I don't see a run selected in this conversation, so I can't check its results or agent records yet. Open **Ask about this run** and select the run you mean, or return to that run's conversation.",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "run",
+      "uncertainty": "",
+      "id": "missing_run_safety-01",
+      "category": "missing_run_safety",
+      "question": "What was the validation MSE in my last run?",
+      "mode": "live",
+      "elapsed_seconds": 0.0,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed"
+    },
+    {
+      "status": "error",
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'code': 'unsupported_country_region_territory', 'message': 'Country, region, or territory not supported', 'param': None, 'type': 'request_forbidden'}}",
+      "answer": "",
+      "sources": [],
+      "id": "run_context_followups-01",
+      "category": "run_context_followups",
+      "question": "for cycle 3",
+      "mode": "live",
+      "elapsed_seconds": 0.39,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Configured AI provider rejected or could not serve the request.",
+      "outcome": "blocked"
+    },
+    {
+      "status": "error",
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'code': 'unsupported_country_region_territory', 'message': 'Country, region, or territory not supported', 'param': None, 'type': 'request_forbidden'}}",
+      "answer": "",
+      "sources": [],
+      "id": "setup_context_followups-01",
+      "category": "setup_context_followups",
+      "question": "yes",
+      "mode": "live",
+      "elapsed_seconds": 0.31,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "answer_passed": null,
+      "provider_blocked": true,
+      "provider_block_reason": "Configured AI provider rejected or could not serve the request.",
+      "outcome": "blocked"
+    },
+    {
+      "id": "settings_chat_edits-01",
+      "category": "settings_chat_edits",
+      "question": "change epoch to 2",
+      "mode": "live",
+      "handler": "planner",
+      "parsed_changes": {
+        "epochs": 2
+      },
+      "failures": [],
+      "setting_passed": true,
+      "live_answer_skipped": "setting edits are scored in the deterministic planner path",
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": null
+    }
+  ],
+  "reanalysis_of": "D:\\Project\\Multi agent\\LabCD_October\\artifacts\\labcd_answer_benchmark\\run_20261014_150625_UTC\\report.json"
+}

@@ -1,0 +1,88 @@
+{
+  "benchmark": "LabCD answer routing and quality benchmark",
+  "benchmark_version": 1,
+  "mode": "live",
+  "created_at_utc": "2026-10-15T11:30:54+00:00",
+  "synthetic_data_only": true,
+  "total_cases": 1,
+  "passed": 0,
+  "failed": 1,
+  "blocked": 0,
+  "scored_cases": 1,
+  "pass_rate": 0.0,
+  "provider_blocked_cases": 0,
+  "warning_count": 0,
+  "by_category": {
+    "setup_dataset_and_assumptions": {
+      "passed": 0,
+      "failed": 1,
+      "blocked": 0,
+      "total": 1,
+      "failures": [
+        "setup_dataset_and_assumptions-01"
+      ]
+    }
+  },
+  "components": {
+    "routing": {
+      "passed": 1,
+      "total": 1,
+      "pass_rate": 1.0
+    },
+    "evidence_retrieval": {
+      "passed": 1,
+      "total": 1,
+      "pass_rate": 1.0
+    },
+    "settings_edits": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "local_answers": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "completed_live_responses": {
+      "passed": 0,
+      "total": 1,
+      "pass_rate": 0.0
+    },
+    "model_generated_answers": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    }
+  },
+  "live_api_answer_cases": 1,
+  "planner_cases": 0,
+  "records": [
+    {
+      "status": "clarification",
+      "answer": "Should I answer this from the starting setup, a particular training run, or general system-identification knowledge?",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "setup",
+      "model": "LabCD question planner",
+      "uncertainty": "",
+      "id": "setup_dataset_and_assumptions-01",
+      "category": "setup_dataset_and_assumptions",
+      "question": "Which state names from the uploaded dataset are listed in my starting setup?",
+      "mode": "live",
+      "elapsed_seconds": 4.0,
+      "failures": [
+        "answer status: expected answer, got clarification",
+        "evidence-scoped answer returned no source IDs"
+      ],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "failed",
+      "answer_passed": false,
+      "model_answer_passed": null
+    }
+  ]
+}

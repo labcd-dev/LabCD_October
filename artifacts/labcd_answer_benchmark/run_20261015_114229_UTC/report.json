@@ -1,0 +1,775 @@
+{
+  "benchmark": "LabCD answer routing and quality benchmark",
+  "benchmark_version": 1,
+  "mode": "live",
+  "created_at_utc": "2026-10-15T11:42:29+00:00",
+  "synthetic_data_only": true,
+  "total_cases": 20,
+  "passed": 15,
+  "failed": 5,
+  "blocked": 0,
+  "scored_cases": 20,
+  "pass_rate": 0.75,
+  "provider_blocked_cases": 0,
+  "warning_count": 0,
+  "by_category": {
+    "active_run_chat": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "dataset_specific_interpretation": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "general_conversation_and_navigation": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "general_data_guidance": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "general_model_concepts": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "general_system_identification": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "missing_run_safety": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "run_agent_records_and_prompts": {
+      "passed": 0,
+      "failed": 1,
+      "blocked": 0,
+      "total": 1,
+      "failures": [
+        "run_agent_records_and_prompts-01"
+      ]
+    },
+    "run_context_followups": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "run_cycle_specific": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "run_settings_and_prompt_snapshot": {
+      "passed": 0,
+      "failed": 1,
+      "blocked": 0,
+      "total": 1,
+      "failures": [
+        "run_settings_and_prompt_snapshot-01"
+      ]
+    },
+    "run_state_ranking": {
+      "passed": 0,
+      "failed": 1,
+      "blocked": 0,
+      "total": 1,
+      "failures": [
+        "run_state_ranking-01"
+      ]
+    },
+    "run_summary_and_metrics": {
+      "passed": 0,
+      "failed": 1,
+      "blocked": 0,
+      "total": 1,
+      "failures": [
+        "run_summary_and_metrics-01"
+      ]
+    },
+    "settings_chat_edits": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "setup_and_initializer_prompts": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "setup_architecture_and_pinn": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "setup_context_followups": {
+      "passed": 0,
+      "failed": 1,
+      "blocked": 0,
+      "total": 1,
+      "failures": [
+        "setup_context_followups-01"
+      ]
+    },
+    "setup_dataset_and_assumptions": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "setup_status_and_recommendation": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    },
+    "setup_value_questions": {
+      "passed": 1,
+      "failed": 0,
+      "blocked": 0,
+      "total": 1,
+      "failures": []
+    }
+  },
+  "components": {
+    "routing": {
+      "passed": 19,
+      "total": 19,
+      "pass_rate": 1.0
+    },
+    "evidence_retrieval": {
+      "passed": 15,
+      "total": 19,
+      "pass_rate": 0.7895
+    },
+    "settings_edits": {
+      "passed": 1,
+      "total": 1,
+      "pass_rate": 1.0
+    },
+    "local_answers": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "completed_live_responses": {
+      "passed": 14,
+      "total": 19,
+      "pass_rate": 0.7368
+    },
+    "model_generated_answers": {
+      "passed": 9,
+      "total": 11,
+      "pass_rate": 0.8182
+    }
+  },
+  "live_api_answer_cases": 19,
+  "planner_cases": 1,
+  "records": [
+    {
+      "status": "answer",
+      "answer": "System identification is the process of developing mathematical models of dynamic systems based on measured data. In simple terms, it involves using data from a system's behavior—like how it responds to inputs over time—to create a model that can predict future behavior. This helps engineers understand and control systems better, whether they're mechanical, electrical, or biological.",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "general",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "general_system_identification-01",
+      "category": "general_system_identification",
+      "question": "What is system identification in plain language?",
+      "mode": "live",
+      "elapsed_seconds": 7.2,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "A Multi-Layer Perceptron (MLP) is a type of artificial neural network that consists of multiple layers of nodes (neurons), with each layer fully connected to the next. MLPs are particularly useful for tasks involving supervised learning, such as classification and regression problems, where the goal is to learn a mapping from input features to output labels. They excel in scenarios with structured data and can approximate complex functions, making them suitable for various applications, including image recognition, speech processing, and financial forecasting.",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "general",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "general_model_concepts-01",
+      "category": "general_model_concepts",
+      "question": "What is an MLP and when is it useful?",
+      "mode": "live",
+      "elapsed_seconds": 6.3,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "A dataset for a system-identification model should typically contain the following columns:\n\n1. **Time Column**: This records the time at which each measurement is taken, ensuring synchronization of data.\n2. **State Variables**: These are the measured outputs of the system you want to predict, such as position, speed, temperature, etc.\n3. **Input Variables**: These represent the control inputs or commands applied to the system, like voltage, force, or any other relevant control signal.\n\nIncluding these columns allows the model to learn the relationship between the current state and inputs to predict future states effectively.",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "general",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "general_data_guidance-01",
+      "category": "general_data_guidance",
+      "question": "What columns should a dataset for this kind of model contain?",
+      "mode": "live",
+      "elapsed_seconds": 6.83,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "Hi! I’m LabCD. You can ask about system identification, describe your system, or share measurements whenever you’re ready.",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "general",
+      "model": "LabCD",
+      "uncertainty": "",
+      "id": "general_conversation_and_navigation-01",
+      "category": "general_conversation_and_navigation",
+      "question": "hello",
+      "mode": "live",
+      "elapsed_seconds": 0.0,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": null
+    },
+    {
+      "status": "answer",
+      "answer": "Your dataset contains the following state and input columns:\n- **States:**\n  - `s_speed`\n  - `s_heading`\n  - `s_temp`\n- **Inputs:**\n  - `a_drive`\n  - `a_fan` \nThese columns represent the measured states and applied inputs in your dataset [D1].",
+      "sources": [
+        "D1"
+      ],
+      "evidence": [
+        {
+          "id": "D1",
+          "title": "Measured uploaded dataset profile",
+          "kind": "measurement"
+        }
+      ],
+      "answer_scope": "general",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "dataset_specific_interpretation-01",
+      "category": "dataset_specific_interpretation",
+      "question": "What state and input columns are in my dataset?",
+      "mode": "live",
+      "elapsed_seconds": 6.69,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "general",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "The current starting setup includes the following settings:\n- **Architecture**: LSTM\n- **Optimization Goal**: Balanced\n- **Run Mode**: Fast\n- **Max Cycles**: 7\n- **Epochs**: 50\n- **Batch Size**: 32\n- **LSTM Sequence Length**: 10\n- **Rollout Horizon**: 1\n- **Integrator Type**: RK4\n- **MSE Target**: 0.001\n- **Max Latency (ms)**: 2.0\n- **Derivative Method**: Finite Difference\n- **Adaptive Regularization**: True\n- **Learning Rate**: Min 1e-05, Max 0.01\n- **Hidden Layers**: [64, 64] (2 layers)\n\nThis setup is based on a recommendation for a small initial search due to the sequential nature of the measurements [U1].",
+      "sources": [
+        "U1"
+      ],
+      "evidence": [
+        {
+          "id": "U1",
+          "title": "Saved starting setup and recommendation",
+          "kind": "setup"
+        }
+      ],
+      "answer_scope": "setup",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "setup_status_and_recommendation-01",
+      "category": "setup_status_and_recommendation",
+      "question": "What is the current starting setup?",
+      "mode": "live",
+      "elapsed_seconds": 8.41,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "The initializer uses a prompt template that instructs it to recommend initial hyperparameters, regularization, physical data filters, and search bounds based on the dataset provided. It emphasizes the importance of reasoning specific to the dataset's statistics and physical properties, while also considering the client's optimization goals. The template includes specific instructions for output format and critical architecture recommendations based on dataset complexity tiers.\n\nThis prompt is not a record of an execution but a structured guideline for the initializer's operation [P_initializer].",
+      "sources": [
+        "P_initializer"
+      ],
+      "evidence": [
+        {
+          "id": "P_initializer",
+          "title": "Training initializer prompt template",
+          "kind": "template"
+        }
+      ],
+      "answer_scope": "setup",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "setup_and_initializer_prompts-01",
+      "category": "setup_and_initializer_prompts",
+      "question": "What prompt does the initializer use?",
+      "mode": "live",
+      "elapsed_seconds": 7.48,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "answer",
+      "answer": "The saved starting recommendation is **LSTM** [U1]. The recorded reason is: The synthetic example has sequential measurements. [U1]. Treat it as a starting choice; the measured validation results will show how it compares.",
+      "sources": [
+        "U1"
+      ],
+      "evidence": [
+        {
+          "id": "U1",
+          "title": "Saved starting setup and recommendation",
+          "kind": "setup"
+        }
+      ],
+      "answer_scope": "setup",
+      "model": "LabCD setup record",
+      "uncertainty": "This reports the saved starting recommendation; model performance is determined by validation.",
+      "id": "setup_architecture_and_pinn-01",
+      "category": "setup_architecture_and_pinn",
+      "question": "Should I start with an LSTM or an MLP for these measurements?",
+      "mode": "live",
+      "elapsed_seconds": 0.0,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": null
+    },
+    {
+      "status": "answer",
+      "answer": "The uploaded dataset profile lists these measured state columns for this setup: `s_speed`, `s_heading`, `s_temp` [D1].",
+      "sources": [
+        "D1"
+      ],
+      "evidence": [
+        {
+          "id": "D1",
+          "title": "Measured uploaded dataset profile",
+          "kind": "measurement"
+        }
+      ],
+      "answer_scope": "setup",
+      "model": "LabCD dataset facts",
+      "uncertainty": "These names come from the uploaded dataset profile.",
+      "id": "setup_dataset_and_assumptions-01",
+      "category": "setup_dataset_and_assumptions",
+      "question": "Which state names from the uploaded dataset are listed in my starting setup?",
+      "mode": "live",
+      "elapsed_seconds": 0.0,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": null
+    },
+    {
+      "status": "answer",
+      "answer": "Your current learning rate is set to 0.001, as indicated in the manual starting settings of your configuration [U1].",
+      "sources": [
+        "U1"
+      ],
+      "evidence": [
+        {
+          "id": "U1",
+          "title": "Saved starting setup and recommendation",
+          "kind": "setup"
+        }
+      ],
+      "answer_scope": "setup",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "setup_value_questions-01",
+      "category": "setup_value_questions",
+      "question": "What is my current learning rate?",
+      "mode": "live",
+      "elapsed_seconds": 5.5,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "error",
+      "error": "ValueError: Inline citations and the answer's evidence list do not match.",
+      "answer": "",
+      "sources": [],
+      "id": "run_summary_and_metrics-01",
+      "category": "run_summary_and_metrics",
+      "question": "How did this run go?",
+      "mode": "live",
+      "elapsed_seconds": 9.81,
+      "failures": [
+        "answer status: expected answer, got error",
+        "live model or diagnostic call failed",
+        "answer text is empty",
+        "evidence-scoped answer returned no source IDs",
+        "retrieval missed expected source kinds: verification"
+      ],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": false,
+      "provider_blocked": false,
+      "outcome": "failed",
+      "answer_passed": false,
+      "model_answer_passed": null
+    },
+    {
+      "status": "answer",
+      "answer": "**s_speed** was predicted best by normalized held-out RMSE (12.00% of that state's held-out variation; lower is better) across 100 aligned held-out samples [V2]. This ranks prediction error; it does not explain why that state was easier to predict.",
+      "sources": [
+        "V2"
+      ],
+      "evidence": [
+        {
+          "id": "V2",
+          "title": "Computed comparison of held-out state rollout errors",
+          "kind": "calculation"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "Computed from saved run evidence",
+      "uncertainty": "The ranking uses normalized RMSE from the saved held-out comparison.",
+      "id": "run_state_ranking-01",
+      "category": "run_state_ranking",
+      "question": "Which state was predicted best?",
+      "mode": "live",
+      "elapsed_seconds": 2.0,
+      "failures": [
+        "retrieval missed expected source kinds: results"
+      ],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": false,
+      "provider_blocked": false,
+      "outcome": "failed",
+      "answer_passed": false,
+      "model_answer_passed": null
+    },
+    {
+      "status": "answer",
+      "answer": "Cycle 1 used LSTM, with layer widths 32 → 32, ran for 40 epochs, recorded validation error 0.0041, training time 21.2 seconds [C1]. That is what the saved record confirms; it does not establish why the model performed that way.",
+      "sources": [
+        "C1"
+      ],
+      "evidence": [
+        {
+          "id": "C1",
+          "title": "Training cycle 1",
+          "kind": "cycle"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "LabCD saved cycle record",
+      "uncertainty": "This is a direct summary of the saved cycle record; it does not establish why the metrics changed.",
+      "id": "run_cycle_specific-01",
+      "category": "run_cycle_specific",
+      "question": "What happened in cycle 1?",
+      "mode": "live",
+      "elapsed_seconds": 0.0,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": null
+    },
+    {
+      "status": "answer",
+      "answer": "The initializer proposed a setup during cycle 1 of the run. However, there are no recorded prompts or replies available to provide further details about the specific proposal made by the initializer [E1][RC1].",
+      "sources": [
+        "E1",
+        "RC1"
+      ],
+      "evidence": [
+        {
+          "id": "RC1",
+          "title": "Requested evidence availability",
+          "kind": "coverage"
+        },
+        {
+          "id": "E1",
+          "title": "agent_activity.json",
+          "kind": "activity"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "Details of the initializer's proposal are not available due to missing recorded prompts and replies.",
+      "id": "run_agent_records_and_prompts-01",
+      "category": "run_agent_records_and_prompts",
+      "question": "What did the initializer actually propose in this run?",
+      "mode": "live",
+      "elapsed_seconds": 5.34,
+      "failures": [
+        "retrieval missed expected source kinds: results, agent_turn"
+      ],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": false,
+      "provider_blocked": false,
+      "outcome": "failed",
+      "answer_passed": false,
+      "model_answer_passed": false
+    },
+    {
+      "status": "answer",
+      "answer": "The settings captured when this run started are as follows:\n- **Architecture**: LSTM\n- **Epochs**: 50\n- **Batch Size**: 32\n\nThe data summary includes:\n- **States**: s_speed, s_heading, s_temp\n- **Inputs**: a_drive, a_fan\n\nThese settings were recorded as part of the run's initial configuration and are consistent throughout the run [R1].",
+      "sources": [
+        "R1"
+      ],
+      "evidence": [
+        {
+          "id": "R1",
+          "title": "Recorded run settings and data split",
+          "kind": "settings"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "run_settings_and_prompt_snapshot-01",
+      "category": "run_settings_and_prompt_snapshot",
+      "question": "Which settings were captured when this run started?",
+      "mode": "live",
+      "elapsed_seconds": 6.8,
+      "failures": [
+        "retrieval missed expected source kinds: results"
+      ],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": false,
+      "provider_blocked": false,
+      "outcome": "failed",
+      "answer_passed": false,
+      "model_answer_passed": false
+    },
+    {
+      "status": "answer",
+      "answer": "The current cycle is progressing with the following details:\n- **Status**: Running\n- **Cycle**: 2\n- **Epoch**: 18 out of a limit of 50\n- **Validation MSE**: 0.0023\n- **Current Loss**: 0.0031\n- **Completed Cycles**: 1\n- **Architecture**: LSTM\n\nThis indicates that the model is actively training in the second cycle, and the loss values suggest ongoing improvement in performance [LIVE1].",
+      "sources": [
+        "LIVE1"
+      ],
+      "evidence": [
+        {
+          "id": "LIVE1",
+          "title": "Current live run and cycle checkpoint",
+          "kind": "live_run"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "active_run_chat-01",
+      "category": "active_run_chat",
+      "question": "How is the current cycle progressing?",
+      "mode": "live",
+      "elapsed_seconds": 6.49,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "clarification",
+      "answer": "Could you specify which run you are referring to, as there is no selected run?",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "run",
+      "model": "LabCD question planner",
+      "uncertainty": "",
+      "id": "missing_run_safety-01",
+      "category": "missing_run_safety",
+      "question": "What was the validation MSE in my last run?",
+      "mode": "live",
+      "elapsed_seconds": 2.02,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": null
+    },
+    {
+      "status": "answer",
+      "answer": "In cycle 3, the LSTM architecture was used, and it completed 32 epochs with a training time of 27 seconds. The validation mean squared error (MSE) for this cycle was 0.0022 [C3]. The overall run also recorded a best MSE of 0.0018 during the evaluation phase [M1].",
+      "sources": [
+        "C3",
+        "M1"
+      ],
+      "evidence": [
+        {
+          "id": "M1",
+          "title": "run_manifest.json",
+          "kind": "results"
+        },
+        {
+          "id": "C3",
+          "title": "Training cycle 3",
+          "kind": "cycle"
+        }
+      ],
+      "answer_scope": "run",
+      "model": "gpt-4o-mini",
+      "uncertainty": "",
+      "id": "run_context_followups-01",
+      "category": "run_context_followups",
+      "question": "for cycle 3",
+      "mode": "live",
+      "elapsed_seconds": 5.78,
+      "failures": [],
+      "warnings": [],
+      "expected_scope": "run",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "passed",
+      "answer_passed": true,
+      "model_answer_passed": true
+    },
+    {
+      "status": "clarification",
+      "answer": "Are you looking for a recommendation based on sequence memory or a simpler model?",
+      "sources": [],
+      "evidence": [],
+      "answer_scope": "setup",
+      "model": "LabCD question planner",
+      "uncertainty": "",
+      "id": "setup_context_followups-01",
+      "category": "setup_context_followups",
+      "question": "yes",
+      "mode": "live",
+      "elapsed_seconds": 3.31,
+      "failures": [
+        "answer status: expected answer, got clarification",
+        "evidence-scoped answer returned no source IDs"
+      ],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": true,
+      "retrieval_passed": true,
+      "provider_blocked": false,
+      "outcome": "failed",
+      "answer_passed": false,
+      "model_answer_passed": null
+    },
+    {
+      "id": "settings_chat_edits-01",
+      "category": "settings_chat_edits",
+      "question": "change epoch to 2",
+      "mode": "live",
+      "handler": "planner",
+      "parsed_changes": {
+        "epochs": 2
+      },
+      "failures": [],
+      "setting_passed": true,
+      "outcome": "passed",
+      "live_answer_skipped": "setting edits are scored in the deterministic planner path",
+      "answer_passed": null
+    }
+  ]
+}

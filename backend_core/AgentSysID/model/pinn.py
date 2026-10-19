@@ -1,9 +1,9 @@
 """
-Physics-Informed Neural Network (PINN) support.
+Validated physics equation support shared by PINN and PCNN.
 
-When ``config.USE_PINN`` is enabled the trainer adds a physics residual to the
-loss. The analytical derivatives come from a user-authored module (by default
-``physics_env.py`` in the working directory) exposing::
+When ``config.USE_PINN`` is enabled the trainer either adds a PINN residual to
+the loss or uses the equation as a PCNN output baseline. Analytical derivatives
+come from a validated module exposing::
 
     def compute_analytical_xdot(states, actions) -> torch.Tensor
 
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import hashlib
 import sys
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -92,7 +93,9 @@ def ensure_pinn_template(pinn_file: str | Path) -> bool:
 
 def load_analytical_xdot(pinn_file: str | Path) -> Optional[Callable[..., Any]]:
     """
-    Import ``compute_analytical_xdot`` from the physics module.
+    Import ``compute_analytical_xdot`` from the physics module. LabCD-generated
+    equations may expose ``build_physics_model`` to provide bounded trainable
+    coefficients; legacy equations remain plain callables.
 
     Accepts either a module name on ``sys.path`` (``physics_env``) or a path to
     a ``.py`` file. Returns None when the symbol cannot be resolved so the
@@ -100,28 +103,46 @@ def load_analytical_xdot(pinn_file: str | Path) -> Optional[Callable[..., Any]]:
     """
     path = Path(pinn_file)
 
-    # 1. Plain module import (matches the legacy `from physics_env import ...`)
-    module_name = path.stem or str(pinn_file)
-    try:
-        module = importlib.import_module(module_name)
-        fn = getattr(module, "compute_analytical_xdot", None)
-        if callable(fn):
-            return fn
-    except Exception:
-        pass
-
-    # 2. Direct file load
+    # Resolve explicit files first. Several conversations may each have a
+    # different equation file with the same basename; importing by stem could
+    # silently reuse a stale module from another run.
     if path.is_file():
         try:
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+            module_name = f"_labcd_physics_{digest}"
+            cached = sys.modules.get(module_name)
+            if cached is not None:
+                builder = getattr(cached, "build_physics_model", None)
+                if callable(builder):
+                    return builder()
+                fn = getattr(cached, "compute_analytical_xdot", None)
+                if callable(fn):
+                    return fn
             spec = importlib.util.spec_from_file_location(module_name, path)
             if spec and spec.loader:
                 module = importlib.util.module_from_spec(spec)
                 sys.modules[module_name] = module
                 spec.loader.exec_module(module)
+                builder = getattr(module, "build_physics_model", None)
+                if callable(builder):
+                    return builder()
                 fn = getattr(module, "compute_analytical_xdot", None)
                 if callable(fn):
                     return fn
         except Exception as exc:
             print(f"    ⚠️ Could not load PINN equations from '{path}': {exc}")
+
+    # A module name remains supported for legacy CLI installations.
+    module_name = path.stem or str(pinn_file)
+    try:
+        module = importlib.import_module(module_name)
+        builder = getattr(module, "build_physics_model", None)
+        if callable(builder):
+            return builder()
+        fn = getattr(module, "compute_analytical_xdot", None)
+        if callable(fn):
+            return fn
+    except Exception:
+        pass
 
     return None

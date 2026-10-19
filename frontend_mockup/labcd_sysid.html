@@ -763,7 +763,7 @@
     if(!state.activated){
       activateModule();
       setTimeout(()=>{
-        addAgentText("AgentSysID here. I'll help you identify a model for your system from data.");
+        addAgentText("Hi! I'm LabCD. I'll help you identify a model for your system from data.");
         setTimeout(()=>{
           addAgentText("First — what are you trying to model? A short description is enough (e.g. \u201Ca two-tank fluid system with one control input\u201D).");
           state.stage = "awaiting_target";
@@ -801,9 +801,9 @@
   // ---------------------------------------------------------------
   function proposeInitialSheet(targetDescription){
     const nStates = 2, nInputs = 1;
-    addAgentText(`Got it — “${targetDescription}”. Based on that I'd expect roughly ${nStates} states and ${nInputs} input. Here's a starting sheet — edit headers, add or remove columns, paste your own data, describe it as text, or upload a pre-structured file.`);
+    addAgentText(`Got it — “${targetDescription}”. Based on that I'd expect roughly ${nStates} states and ${nInputs} input. Here's a starting sheet with one matching xdot_* time-rate column for every state — edit the headers, paste your own data, describe it as text, or upload a pre-structured file.`);
     state.stage = "data";
-    state.columns = ["time","s_1","s_2","a_1"];
+    state.columns = ["time","s_1","s_2","a_1","xdot_1","xdot_2"];
     renderSheetCard();
   }
 
@@ -922,12 +922,12 @@
       }
       if(act === "applyraw"){
         rawZone.classList.remove("open");
-        state.columns = ["time","s_1","s_2","a_1"];
+        state.columns = ["time","s_1","s_2","a_1","xdot_1","xdot_2"];
         renderTable();
         toast("Interpreted your description into a starting schema — feel free to rename the columns.");
       }
       if(act === "reset"){
-        state.columns = ["time","s_1","s_2","a_1"];
+        state.columns = ["time","s_1","s_2","a_1","xdot_1","xdot_2"];
         renderTable();
         pasteZone.classList.remove("open");
         rawZone.classList.remove("open");
@@ -943,7 +943,7 @@
       if(e.target.dataset.act === "upload"){
         const f = e.target.files[0];
         if(!f) return;
-        state.columns = ["time","x_1","x_2","u_1"];
+        state.columns = ["time","s_1","s_2","a_1","xdot_1","xdot_2"];
         renderTable();
         toast(`Loaded “${f.name}” — detected a pre-structured sheet and mapped it to the schema above.`);
       }

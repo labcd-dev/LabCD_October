@@ -35,12 +35,18 @@ SERIES_B = "#ce9178"   # validation
 SANS = "'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
 MONO = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
 
-#: Status -> colour, for the deployment verdict pill.
+#: Heuristic fit/rollout evidence rating -> colour. This is not a safety verdict.
 STATUS_COLORS = {
     "STABLE & HIGH-FIDELITY": GOOD,
     "STABLE & ACCEPTABLE": GOOD,
     "UNSTABLE ROLLOUT": WARN,
     "UNSTABLE / FAILED": CRIT,
+    "HIGH FIT/ROLLOUT SCORE": GOOD,
+    "ACCEPTABLE FIT/ROLLOUT SCORE": GOOD,
+    "WEAK FIT/ROLLOUT SCORE": WARN,
+    "LOW FIT/ROLLOUT SCORE": CRIT,
+    "ROLLOUT UNVERIFIED": WARN,
+    "VALIDATION UNVERIFIED": WARN,
 }
 
 

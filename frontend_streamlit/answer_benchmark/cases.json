@@ -1,0 +1,412 @@
+{
+  "version": 1,
+  "description": "Synthetic, internally authored questions covering LabCD chat, setup, data, runs, agents, and setting edits.",
+  "groups": [
+    {
+      "category": "general_system_identification",
+      "scenario": "empty",
+      "expected_scope": "general",
+      "forbidden_source_kinds": ["results", "cycle", "verification", "setup", "agent_turn"],
+      "questions": [
+        "What is system identification in plain language?",
+        "How does a model learn the behavior of a system from measurements?",
+        "What is the difference between a physical model and a data-driven model?",
+        "Why do we split measurements into training and validation data?",
+        "What does it mean for a model to predict the next state?",
+        "Can you explain system identification without assuming a particular industry?",
+        "What can a learned dynamics model tell me about an unknown process?",
+        "Does a low training error by itself prove that a model is reliable?",
+        "What is the difference between prediction accuracy and physical correctness?",
+        "Explain the basic workflow for identifying a system from data."
+      ]
+    },
+    {
+      "category": "general_model_concepts",
+      "scenario": "empty",
+      "expected_scope": "general",
+      "forbidden_source_kinds": ["results", "cycle", "verification", "setup", "agent_turn"],
+      "questions": [
+        "What is an MLP and when is it useful?",
+        "How is an LSTM different from an MLP?",
+        "What does a neural network input node represent?",
+        "What does the output of a dynamics model usually represent?",
+        "Why can the order of samples matter for an LSTM?",
+        "What is overfitting in a system identification model?",
+        "What does a PINN add to ordinary data-driven training?",
+        "Does using a PINN guarantee a more accurate result?",
+        "What is a state derivative, explained simply?",
+        "Can you explain hidden layers without going into the math?"
+      ]
+    },
+    {
+      "category": "general_data_guidance",
+      "scenario": "empty",
+      "expected_scope": "general",
+      "forbidden_source_kinds": ["results", "cycle", "verification", "setup", "agent_turn"],
+      "questions": [
+        "What columns should a dataset for this kind of model contain?",
+        "Do I need to provide state derivatives in my data?",
+        "What is the difference between a state and an input signal?",
+        "Can a system have several input channels and several output states?",
+        "What should the time column represent?",
+        "How can I record measurements if the system is not a vehicle?",
+        "Can I use data from a chemical process or a building?",
+        "What should I do if I do not know what some column means?",
+        "Does the file need a physical-system description before I can begin?",
+        "What makes a dataset useful for learning system dynamics?"
+      ]
+    },
+    {
+      "category": "general_conversation_and_navigation",
+      "scenario": "empty",
+      "expected_scope": "general",
+      "forbidden_source_kinds": ["results", "cycle", "verification", "setup", "agent_turn"],
+      "offline_answer": true,
+      "questions": [
+        "hello",
+        "Hi LabCD",
+        "What can I ask you?",
+        "What can I do here?",
+        "How do I use this section?",
+        "What is this chat for?",
+        {"text": "Can you remember what I told you in this chat?", "offline_answer": false},
+        {"text": "What is your role?", "offline_answer": false},
+        {"text": "How can I send you a data file?", "offline_answer": false},
+        {"text": "Can I ask a question before I upload anything?", "offline_answer": false}
+      ]
+    },
+    {
+      "category": "dataset_specific_interpretation",
+      "scenario": "dataset",
+      "expected_scope": "general",
+      "required_source_kinds": ["measurement"],
+      "forbidden_source_kinds": ["results", "cycle", "verification", "agent_turn"],
+      "questions": [
+        {"text": "What state and input columns are in my dataset?", "must_mention_all": ["s_speed", "s_heading", "s_temp", "a_drive", "a_fan"]},
+        {"text": "What is the sampling interval in my measurements?", "must_mention_any": [["0\\.01", "10\\s*ms"]]},
+        {"text": "Does my dataset have irregular time intervals?", "must_mention_any": [["no irregular", "regular intervals", "consistent time"]]},
+        "Can you explain the data check for my uploaded file?",
+        "Which columns are inputs in my dataset?",
+        "What does the angle-wrap check say about these measurements?",
+        "Did the data check find possible trajectory boundaries?",
+        "Are there missing values or data-quality issues in my file?",
+        "What does the measured profile say about my signals?",
+        "Can you summarize the time, state, and input columns I uploaded?"
+      ]
+    },
+    {
+      "category": "setup_status_and_recommendation",
+      "scenario": "setup",
+      "expected_scope": "setup",
+      "required_source_kinds": ["setup"],
+      "forbidden_source_kinds": ["results", "cycle", "verification", "agent_turn"],
+      "questions": [
+        "What is the current starting setup?",
+        "Which model did LabCD recommend for this starting setup?",
+        "Why was this model recommended?",
+        "What search effort is selected in my setup?",
+        "How many candidate cycles are configured?",
+        "What is the starting epoch limit?",
+        "What settings will the first candidate use in my starting setup?",
+        "Has training started, or am I still reviewing the starting setup?",
+        "What does the starting setup recommendation say about my data?",
+        "Which architecture and history length are selected in my starting setup?"
+      ]
+    },
+    {
+      "category": "setup_and_initializer_prompts",
+      "scenario": "setup",
+      "expected_scope": "setup",
+      "required_source_kinds": ["setup", "template"],
+      "required_source_ids": ["P_initializer"],
+      "forbidden_source_kinds": ["results", "cycle", "verification", "agent_turn"],
+      "questions": [
+        {"text": "What prompt does the initializer use?", "expected_agent_ids": ["initializer"], "required_plan_evidence_targets": ["agent_templates"]},
+        {"text": "Show me the initializer agent instructions and explain them briefly.", "expected_agent_ids": ["initializer"], "required_plan_evidence_targets": ["agent_templates"]},
+        {"text": "How does the initializer decide the first model settings?", "expected_agent_ids": ["initializer"], "required_plan_evidence_targets": ["agent_templates"]},
+        "What does the initializer prompt say about the dataset columns?",
+        "Can you explain the training initializer template?",
+        "Which instructions guide the initializer when a run starts?",
+        "Does this setup show an initializer decision or only its prompt template?",
+        "What is the difference between the setup recommendation and initializer prompt?",
+        {"text": "What prompt does the run setup agent use to suggest an architecture?", "required_source_ids": ["P_setup"]},
+        {"text": "Where can I see the model recommendation instructions?", "required_source_ids": ["P_setup"]}
+      ]
+    },
+    {
+      "category": "setup_architecture_and_pinn",
+      "scenario": "setup",
+      "expected_scope": "setup",
+      "required_source_kinds": ["setup"],
+      "forbidden_source_kinds": ["results", "cycle", "verification", "agent_turn"],
+      "questions": [
+        "Should I start with an LSTM or an MLP for these measurements?",
+        "Why is an LSTM selected in the starting setup?",
+        "What does the starting model card in my setup mean by sequence memory?",
+        "What does my setup say about using PINN?",
+        "Why is the physics constraint turned off in this setup?",
+        "Would an equation be needed before PINN can be enabled?",
+        "Has the current setup validated a physics equation?",
+        "Can I use an MLP even though LabCD suggested an LSTM?",
+        "What should I consider before choosing PINN for this model?",
+        "Is PINN active in the setup or is it only being discussed?"
+      ]
+    },
+    {
+      "category": "setup_dataset_and_assumptions",
+      "scenario": "setup",
+      "expected_scope": "setup",
+      "required_source_kinds": ["setup", "measurement"],
+      "forbidden_source_kinds": ["results", "cycle", "verification", "agent_turn"],
+      "questions": [
+        "Which state names from the uploaded dataset are listed in my starting setup?",
+        "How many measured inputs and output states are listed in my starting setup?",
+        {"text": "Which states were marked as possible wrap angles in the starting setup?", "required_plan_evidence_targets": ["dataset_profile"]},
+        "What trajectory structure is selected in my starting setup?",
+        "Did the starting setup data check find likely boundaries between trajectories?",
+        "What dataset assumptions are saved in the starting setup?",
+        "Does my starting setup use automatic or manual angle detection?",
+        "Which input and output counts should the starting network use?",
+        "What sampling interval is recorded in my starting setup?",
+        "Can you explain the data assumptions in my starting setup before I train?"
+      ]
+    },
+    {
+      "category": "setup_value_questions",
+      "scenario": "setup",
+      "expected_scope": "setup",
+      "required_source_kinds": ["setup"],
+      "forbidden_source_kinds": ["results", "cycle", "verification", "agent_turn"],
+      "questions": [
+        "What is my current learning rate?",
+        "What is the current epoch limit for the starting setup?",
+        "How many neurons are planned in each starting layer?",
+        "What batch size is set right now?",
+        "What is the current dropout value?",
+        "Which activation function is selected?",
+        "What is the current early-stop patience?",
+        "What optimization priority is selected?",
+        "What trajectory split mode is configured?",
+        "Is the selected starting architecture an LSTM or MLP?"
+      ]
+    },
+    {
+      "category": "run_summary_and_metrics",
+      "scenario": "run",
+      "expected_scope": "run",
+      "required_source_kinds": ["results", "verification"],
+      "forbidden_source_kinds": ["setup"],
+      "questions": [
+        "How did this run go?",
+        {"text": "What was the best validation MSE in this run?", "planner_only": true, "must_mention_any": [["0\\.0018", "1\\.8e-3"]], "required_plan_evidence_targets": ["run_summary"], "forbidden_plan_evidence_targets": ["state_ranking"], "forbidden_source_kinds": ["calculation"], "required_source_kinds": ["results"], "expected_ranking_goal": "none"},
+        "What does the held-out verification say about this model?",
+        "How many samples were aligned in this run's saved test comparison?",
+        "What is the difference between the run's validation error and held-out rollout error?",
+        "Did this run finish successfully?",
+        "Summarize the results of this training run.",
+        "What does the saved run report establish, and what does it not establish?",
+        "How long did this run take?",
+        "What was the final training status in this run?"
+      ]
+    },
+    {
+      "category": "run_state_ranking",
+      "scenario": "run",
+      "expected_scope": "run",
+      "required_source_kinds": ["results", "verification", "calculation"],
+      "required_source_ids": ["V2"],
+      "forbidden_source_kinds": ["setup"],
+      "questions": [
+        {"text": "Which state was predicted best?", "must_mention_any": [["s_speed"]], "expected_ranking_goal": "best_state", "required_plan_evidence_targets": ["state_ranking", "verification"]},
+        {"text": "Which state has the worst normalized error?", "must_mention_any": [["s_temp"]], "expected_ranking_goal": "worst_state", "required_plan_evidence_targets": ["state_ranking", "verification"]},
+        {"text": "Rank the states by held-out normalized RMSE.", "must_mention_all": ["s_speed", "s_heading", "s_temp"], "expected_ranking_goal": "all_states", "required_plan_evidence_targets": ["state_ranking", "verification"]},
+        "Which output state is easiest for this model to predict?",
+        "Which state is most difficult to predict in this run?",
+        "Compare the held-out prediction errors for each state.",
+        "Is s_speed more accurate than s_heading in this run?",
+        "What is the per-state rollout error ranking?",
+        "Which state has the lowest held-out error and which has the highest?",
+        "Does the measured ranking prove why one state was easier to predict?"
+      ]
+    },
+    {
+      "category": "run_cycle_specific",
+      "scenario": "run",
+      "expected_scope": "run",
+      "required_source_kinds": ["results", "cycle"],
+      "forbidden_source_kinds": ["setup"],
+      "questions": [
+        {"text": "What happened in cycle 1?", "must_mention_any": [["0\\.0041"]], "expected_cycle_numbers": [1], "required_plan_evidence_targets": ["cycle_history"]},
+        {"text": "What was the validation MSE for cycle 2?", "must_mention_any": [["0\\.0018"]], "expected_cycle_numbers": [2], "required_plan_evidence_targets": ["cycle_history"]},
+        "Which candidate had the lowest validation error in this run?",
+        "Did cycle 3 improve on cycle 2?",
+        "What settings were recorded for candidate 1?",
+        "How many epochs did cycle 2 in this run use?",
+        "What changed between candidate 1 and candidate 2 in this run?",
+        "Which cycle in this run trained for the longest time?",
+        "Was the third candidate in this run stopped early?",
+        "What does this run's cycle history say about the search?"
+      ]
+    },
+    {
+      "category": "run_agent_records_and_prompts",
+      "scenario": "run",
+      "expected_scope": "run",
+      "required_source_kinds": ["results", "agent_turn"],
+      "forbidden_source_kinds": ["setup"],
+      "questions": [
+        {"text": "What did the initializer actually propose in this run?", "expected_agent_ids": ["initializer"], "required_plan_evidence_targets": ["agent_logs"]},
+        {"text": "What did the data inspector find in this run's recorded agent log?", "expected_agent_ids": ["data_inspector"], "required_plan_evidence_targets": ["agent_logs"]},
+        {"text": "Why did the critic reject that candidate in this run?", "expected_agent_ids": ["critic"], "required_plan_evidence_targets": ["agent_logs", "agent_activity"]},
+        "What did the explorer change for the next cycle in this run?",
+        "Show the actor's recorded decision for cycle 2 in this run.",
+        "Did an agent say the input signal was constant in this run?",
+        "Which agent suggested changing the learning rate in this run?",
+        "What evidence is in this run's agents' actual replies?",
+        "Did the report agent record a conclusion about this run?",
+        "Can you distinguish a saved agent reply from a prompt template?"
+      ]
+    },
+    {
+      "category": "run_settings_and_prompt_snapshot",
+      "scenario": "run",
+      "expected_scope": "run",
+      "required_source_kinds": ["results", "settings"],
+      "forbidden_source_kinds": ["setup"],
+      "questions": [
+        "Which settings were captured when this run started?",
+        {"text": "What learning rate did the saved run use?", "required_plan_evidence_targets": ["recorded_settings", "run_summary"]},
+        "How was the dataset split for this run?",
+        "Does this run have a snapshot of the initializer prompt?",
+        "What architecture was recorded in the run context?",
+        "Were angle indices saved with this run?",
+        "What trajectory structure did the run use?",
+        "Can the current template prove what this run's agent saw?",
+        "What is known from the saved settings and what is missing?",
+        "Was PINN enabled in the recorded run configuration?"
+      ]
+    },
+    {
+      "category": "active_run_chat",
+      "scenario": "live_run",
+      "expected_scope": "run",
+      "purpose": "live_run_chat",
+      "required_source_kinds": ["live_run"],
+      "forbidden_source_kinds": ["setup"],
+      "questions": [
+        "How is the current cycle progressing?",
+        "What candidate is training now?",
+        "What is the active epoch and current loss?",
+        "Did the last candidate complete yet?",
+        "What should I expect the initializer to do next?",
+        "Can you explain the latest live run update?",
+        "What does the current checkpoint say about training?",
+        "Is the run still active or has it finished?",
+        "How many cycles have completed so far?",
+        "What did the latest live agent update report?"
+      ]
+    },
+    {
+      "category": "missing_run_safety",
+      "scenario": "empty",
+      "expected_scope": "run",
+      "expected_status": "clarification",
+      "offline_answer": true,
+      "forbidden_source_kinds": ["results", "cycle", "verification", "agent_turn"],
+      "questions": [
+        "What was the validation MSE in my last run?",
+        "Which state was best in cycle 2?",
+        "What did the initializer decide in that run?",
+        "Can you show my saved run results?",
+        "Did the last candidate finish successfully?",
+        "What did the training agents say?",
+        "Why did cycle 3 perform worse?",
+        "What is the held-out RMSE for my model?",
+        "How did my last training run perform?",
+        "What was the learning rate in the saved run?"
+      ]
+    },
+    {
+      "category": "run_context_followups",
+      "scenario": "run_followup",
+      "expected_scope": "run",
+      "required_source_kinds": ["results"],
+      "questions": [
+        "for cycle 3",
+        "yes, that one",
+        {"text": "why?", "expected_scope": "run"},
+        "what about the second candidate?",
+        "and the worst state?",
+        "how so?",
+        "can you explain that more?",
+        "what does that mean?",
+        "tell me more",
+        "what happened to it?"
+      ]
+    },
+    {
+      "category": "setup_context_followups",
+      "scenario": "setup_followup",
+      "expected_scope": "setup",
+      "required_source_kinds": ["setup"],
+      "questions": [
+        {"text": "yes", "expected_status": "clarification"},
+        "use that one",
+        "why?",
+        "what about the LSTM?",
+        "can you explain that more?",
+        "how many neurons?",
+        "and the learning rate?",
+        "what does that mean?",
+        "the second option",
+        "tell me more"
+      ]
+    },
+    {
+      "category": "semantic_scope_disambiguation",
+      "scenario": "run",
+      "planner_only": true,
+      "questions": [
+        {"text": "In general, how does an LSTM retain sequence information?", "scenario": "live_run", "purpose": "live_run_chat", "expected_scope": "general", "expected_agent_ids": [], "forbidden_plan_evidence_targets": ["run_summary", "live_state"], "expected_plan_answerer": "conversation"},
+        {"text": "What does the current checkpoint say about cycle 2?", "scenario": "live_run", "purpose": "live_run_chat", "expected_scope": "run", "expected_cycle_numbers": [2], "required_plan_evidence_targets": ["live_state"], "expected_plan_answerer": "conversation"},
+        {"text": "Not the Initializer; after the Critic's cycle 1 feedback, what did the Actor change for cycle 2?", "expected_scope": "run", "expected_agent_ids": ["actor", "critic"], "expected_cycle_numbers": [2], "required_plan_evidence_targets": ["agent_logs", "cycle_history"], "expected_plan_answerer": "conversation", "must_mention_all": ["Actor", "64"]},
+        {"text": "Compare the Critic's cycle 1 recommendation with the Actor's actual change for cycle 2.", "expected_scope": "run", "expected_agent_ids": ["critic", "actor"], "expected_cycle_numbers": [1, 2], "required_plan_evidence_targets": ["agent_logs", "cycle_history"], "expected_plan_answerer": "conversation", "must_mention_all": ["Actor", "64"]},
+        {"text": "Do not summarize cycle 2. What was the best validation MSE across the full run?", "expected_scope": "run", "expected_cycle_numbers": [], "expected_ranking_goal": "none", "required_plan_evidence_targets": ["run_summary"], "forbidden_plan_evidence_targets": ["cycle_history", "state_ranking"], "expected_plan_answerer": "conversation"},
+        {"text": "I do not need the prompt template; what did the Initializer actually propose in this saved run?", "expected_scope": "run", "expected_agent_ids": ["initializer"], "required_plan_evidence_targets": ["agent_logs"], "forbidden_plan_evidence_targets": ["agent_templates"], "expected_plan_answerer": "conversation"},
+        {"text": "Which measured signals could wrap in the uploaded dataset?", "scenario": "setup", "expected_scope": "general", "required_plan_evidence_targets": ["dataset_profile"], "expected_plan_answerer": "conversation"},
+        {"text": "How do the Actor's own instructions guide its next-candidate choice?", "scenario": "empty", "expected_scope": "general", "expected_agent_ids": ["actor"], "required_plan_evidence_targets": ["agent_templates"], "required_source_kinds": ["template"], "expected_plan_answerer": "conversation"},
+        {"text": "Why?", "scenario": "setup_followup", "expected_scope": "setup", "expected_status": "clarification", "required_plan_evidence_targets": ["setup_recommendation"], "expected_plan_answerer": "conversation"},
+        {"text": "What happened in the second candidate?", "expected_scope": "run", "expected_agent_ids": [], "expected_cycle_numbers": [2], "required_plan_evidence_targets": ["cycle_history"], "forbidden_plan_evidence_targets": ["agent_logs", "agent_activity"], "expected_plan_answerer": "conversation"}
+      ]
+    },
+    {
+      "category": "settings_chat_edits",
+      "scenario": "setup",
+      "expected_scope": null,
+      "expected_handler": "planner",
+      "questions": [
+        {"text": "change epoch to 2", "changes": {"epochs": 2}},
+        {"text": "set the learning rate to 0.002", "changes": {"manual_starting_lr": 0.002}},
+        {"text": "use an MLP", "changes": {"architecture": "MLP"}},
+        {"text": "set the LSTM history to 12", "changes": {"lstm_seq_length": 12}},
+        {"text": "set batch size to 32", "changes": {"batch_size": 32}},
+        {"text": "set early stop patience to 18", "changes": {"early_stop_patience": 18}},
+        {"text": "set dropout to 0.1", "changes": {"manual_dropout_rate": 0.1}},
+        {"text": "set weight decay to 0.0005", "changes": {"manual_weight_decay": 0.0005}},
+        {"text": "use 3 layers with 64, 128, and 64 neurons", "changes": {"manual_starting_hidden_layers": [64, 128, 64]}},
+        {"text": "make it 4 recurrent layers with 96 neurons each", "changes": {"manual_starting_hidden_layers": [96, 96, 96, 96]}},
+        {"text": "set search effort to thorough", "changes": {"run_mode": "heavy"}},
+        {"text": "set candidate cycles to 5", "changes": {"max_cycles": 5}},
+        {"text": "set optimization priority to accuracy", "changes": {"optimization_goal": "accuracy"}},
+        {"text": "turn on PINN", "changes": {"use_pinn": true}},
+        {"text": "disable automatic angle detection", "changes": {"auto_detect_angles": false}},
+        {"text": "set trajectory structure to several stacked runs", "changes": {"multi_trajectory": true}},
+        {"text": "set the integrator to rk4", "changes": {"integrator_type": "RK4"}},
+        {"text": "set the system context to a fluid process", "changes": {"customer_description": "a fluid process"}},
+        {"text": "set rollout horizon to 20 steps", "changes": {"rollout_horizon": 20}},
+        {"text": "set the MSE target to 0.002", "changes": {"mse_target": 0.002}},
+        {"text": "set the starting learning rate to 0.02", "changes": {"manual_starting_lr": 0.02}, "expected_rejection": "selected search range"}
+      ]
+    }
+  ]
+}

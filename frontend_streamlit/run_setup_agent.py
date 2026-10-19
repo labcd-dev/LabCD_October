@@ -88,7 +88,7 @@ def _physics_cues(chat: dict) -> list[str]:
 
     rows = dataset.get("rows")
     if isinstance(rows, int) and 10 <= rows < 50:
-        cues.append(f"The file contains only {rows} samples, so the measured data provide limited evidence for the dynamics.")
+        cues.append(f"The file contains only {rows} samples, so the measured data reveal little about the system dynamics.")
     return cues
 
 

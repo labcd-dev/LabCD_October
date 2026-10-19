@@ -54,6 +54,20 @@ def is_excel_request(question: str) -> bool:
     )
 
 
+def is_excel_help_request(question: str) -> bool:
+    """Recognize how-to questions so they get guidance instead of a workbook job."""
+    text = re.sub(r"\s+", " ", (question or "").strip().casefold())
+    if not text:
+        return False
+    creation = r"(?:make|create|build|generate|export|save|convert|prepare)"
+    workbook = r"(?:excel|spreadsheet|workbook|xlsx)"
+    return bool(
+        re.search(rf"\bhow\s+to\b.{{0,60}}\b{creation}\b.{{0,45}}\b{workbook}\b", text)
+        or re.search(rf"\bhow\s+(?:do|can|should|would)\s+(?:i|we|you)\b.{{0,80}}\b{creation}\b.{{0,45}}\b{workbook}\b", text)
+        or re.search(rf"\b(?:show|teach|explain)\s+(?:me\s+)?how\b.{{0,65}}\b{creation}\b.{{0,45}}\b{workbook}\b", text)
+    )
+
+
 def _json_table(text: str) -> tuple[list[str], list[list[Any]]] | None:
     try:
         value = json.loads(text)

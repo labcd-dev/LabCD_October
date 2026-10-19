@@ -22,6 +22,9 @@ def export_standalone_inference_script(
     output_dir: Union[str, Path],
     architecture: str = "MLP",
     lstm_seq_length: int = 10,
+    physics_mode: str = "pinn",
+    hard_constraint_indices: Optional[List[int]] = None,
+    physics_equation_file: Optional[str | Path] = None,
 ) -> Path:
     """
     Write deployed_controller_<env>.py into output_dir/deployment/.
@@ -37,28 +40,66 @@ def export_standalone_inference_script(
     action_scale = model.action_scale.cpu().numpy().flatten().tolist()
     output_mean = model.output_mean.cpu().numpy().flatten().tolist()
     output_scale = model.output_scale.cpu().numpy().flatten().tolist()
-    in_dim = state_dim + action_dim + 1
+    angle_indices = list(getattr(model, "angle_indices", ()) or ())
+    in_dim = state_dim + len(angle_indices) + action_dim + 1
     ARCH = (architecture or "MLP").strip().upper()
+    PHYSICS_MODE = str(physics_mode or "pinn").strip().lower()
+    HARD_CONSTRAINTS = sorted({int(index) for index in (hard_constraint_indices or [])
+                               if 0 <= int(index) < int(state_dim)})
+    PHYSICS_PARAMETER_ESTIMATES = dict(getattr(model, "physics_parameter_estimates", {}) or {})
+    physics_source = ""
+    if PHYSICS_MODE == "pcnn":
+        equation_path = Path(physics_equation_file or "")
+        if not equation_path.is_file():
+            raise ValueError("PCNN export needs the validated physics equation saved with this run.")
+        physics_source = equation_path.read_text(encoding="utf-8")
+        if "def compute_analytical_xdot" not in physics_source:
+            raise ValueError("The saved PCNN equation does not define compute_analytical_xdot.")
 
     weights_name = pth_stem if pth_stem.endswith(".pth") else f"{pth_stem}.pth"
 
     if ARCH == "LSTM":
-        hidden_size = int(hidden_layers[0]) if hidden_layers else 128
-        num_layers = int(len(hidden_layers)) if hidden_layers else 2
+        widths = [int(width) for width in hidden_layers] or [128, 128]
         SEQ_LEN = int(lstm_seq_length)
-        network_init = f"""
+        if len(set(widths)) == 1:
+            # Preserve the original key names for previously trained models.
+            hidden_size = widths[0]
+            network_init = f"""
         self.lstm = nn.LSTM(
             input_size={in_dim},
             hidden_size={hidden_size},
-            num_layers={num_layers},
+            num_layers={len(widths)},
             batch_first=True
         )
-        self.fc_out = nn.Linear({hidden_size}, {state_dim})"""
-        forward_pass = """
+        self.fc_out = nn.Linear({widths[-1]}, {state_dim})"""
+            forward_pass = """
         x = torch.cat([state_norm, action_norm, dt], dim=-1)
         if x.dim() == 2:
             x = x.unsqueeze(1)
         lstm_out, _ = self.lstm(x)
+        out_norm = self.fc_out(lstm_out[:, -1, :])"""
+        else:
+            recurrent_modules = []
+            layer_input_dim = in_dim
+            for index, width in enumerate(widths):
+                recurrent_modules.append(
+                    f"            nn.LSTM(input_size={layer_input_dim}, "
+                    f"hidden_size={width}, num_layers=1, batch_first=True)"
+                )
+                layer_input_dim = width
+            module_lines = ",\n".join(recurrent_modules)
+            network_init = f"""
+        self.lstm_layers = nn.ModuleList([
+{module_lines}
+        ])
+        self.fc_out = nn.Linear({widths[-1]}, {state_dim})"""
+            forward_pass = """
+        x = torch.cat([state_norm, action_norm, dt], dim=-1)
+        if x.dim() == 2:
+            x = x.unsqueeze(1)
+        lstm_out = x
+        for layer in self.lstm_layers:
+            lstm_out, _ = layer(lstm_out)
         out_norm = self.fc_out(lstm_out[:, -1, :])"""
         controller_class = f"""
 class NeuralController:
@@ -70,13 +111,22 @@ class NeuralController:
         self.action_buffer = deque(maxlen=self.seq_len)
         self.dt_buffer = deque(maxlen=self.seq_len)
         self.model = DeployableDynamicsModel().to(self.device)
-        self.model.load_state_dict(torch.load(weights_path, map_location=self.device, weights_only=True))
+        state = torch.load(weights_path, map_location=self.device, weights_only=True)
+        state = {{key: value for key, value in state.items() if not key.startswith("physics_fn.")}}
+        self.model.load_state_dict(state)
         self.model.eval()
 
     def commit_to_memory(self, state, action, dt):
         self.state_buffer.append(state)
         self.action_buffer.append(action)
         self.dt_buffer.append(dt)
+
+    def wrap_state(self, state):
+        # Project periodic angles to [-pi, pi) after integrating the state.
+        wrapped = np.asarray(state, dtype=float).copy()
+        for index in self.model.angle_indices:
+            wrapped[..., index] = (wrapped[..., index] + np.pi) % (2.0 * np.pi) - np.pi
+        return wrapped
 
     def predict_xdot(self, state, action, dt):
         temp_s = list(self.state_buffer) + [state]
@@ -126,11 +176,20 @@ class NeuralController:
     def __init__(self, weights_path="{weights_name}", device="cpu"):
         self.device = torch.device(device)
         self.model = DeployableDynamicsModel().to(self.device)
-        self.model.load_state_dict(torch.load(weights_path, map_location=self.device, weights_only=True))
+        state = torch.load(weights_path, map_location=self.device, weights_only=True)
+        state = {{key: value for key, value in state.items() if not key.startswith("physics_fn.")}}
+        self.model.load_state_dict(state)
         self.model.eval()
 
     def commit_to_memory(self, state, action, dt):
         pass
+
+    def wrap_state(self, state):
+        # Project periodic angles to [-pi, pi) after integrating the state.
+        wrapped = np.asarray(state, dtype=float).copy()
+        for index in self.model.angle_indices:
+            wrapped[..., index] = (wrapped[..., index] + np.pi) % (2.0 * np.pi) - np.pi
+        return wrapped
 
     def predict_xdot(self, state, action, dt):
         with torch.no_grad():
@@ -141,6 +200,22 @@ class NeuralController:
             return out_phys.squeeze(0).cpu().numpy()
 """
 
+    physics_call = ("compute_analytical_xdot(physics_states, physics_actions)"
+                    if not PHYSICS_PARAMETER_ESTIMATES else
+                    f"compute_analytical_xdot(physics_states, physics_actions, parameter_values={PHYSICS_PARAMETER_ESTIMATES!r})")
+    pcnn_forward = f"""
+        physics_states = raw_state[:, -1, :] if raw_state.dim() == 3 else raw_state
+        physics_actions = action[:, -1, :] if action.dim() == 3 else action
+        physics_xdot = {physics_call}
+        out_phys = (out_norm * self.output_scale) + self.output_mean
+        if self.hard_constraint_indices:
+            hard_mask = torch.zeros(self.state_dim, device=state.device, dtype=torch.bool)
+            hard_mask[self.hard_constraint_indices] = True
+            out_phys = torch.where(hard_mask.unsqueeze(0), physics_xdot, out_phys)
+        return out_phys""" if PHYSICS_MODE == "pcnn" else """
+        out_phys = (out_norm * self.output_scale) + self.output_mean
+        return out_phys"""
+
     script_content = f'''"""
 STANDALONE NEURAL DYNAMICS CONTROLLER ({ARCH})
 Generated by AgentSysID – place next to the .pth weights file.
@@ -149,10 +224,16 @@ import torch
 import torch.nn as nn
 import numpy as np
 
+{physics_source}
+
 
 class DeployableDynamicsModel(nn.Module):
     def __init__(self):
         super().__init__()
+        self.state_dim = {int(state_dim)}
+        self.angle_indices = {angle_indices!r}
+        self.physics_mode = {PHYSICS_MODE!r}
+        self.hard_constraint_indices = {HARD_CONSTRAINTS!r}
         self.register_buffer("state_mean", torch.tensor({state_mean}, dtype=torch.float32))
         self.register_buffer("state_scale", torch.tensor({state_scale}, dtype=torch.float32))
         self.register_buffer("action_mean", torch.tensor({action_mean}, dtype=torch.float32))
@@ -162,11 +243,20 @@ class DeployableDynamicsModel(nn.Module):
 {network_init}
 
     def forward(self, state, action, dt):
+        raw_state = state
+        if self.angle_indices:
+            state_features = []
+            for index in range(self.state_dim):
+                value = state[..., index:index + 1]
+                if index in self.angle_indices:
+                    state_features.extend((torch.sin(value), torch.cos(value)))
+                else:
+                    state_features.append(value)
+            state = torch.cat(state_features, dim=-1)
         state_norm = (state - self.state_mean) / self.state_scale
         action_norm = (action - self.action_mean) / self.action_scale
 {forward_pass}
-        out_phys = (out_norm * self.output_scale) + self.output_mean
-        return out_phys
+{pcnn_forward}
 
 {controller_class}
 '''
@@ -218,10 +308,11 @@ plant_model = NeuralController(device="cpu")  # or "cuda"
 
 # 2. CONTROL LOOP
 dt = 0.01
-current_state = np.zeros(plant_model.model.state_mean.shape)
+current_state = np.zeros(plant_model.model.state_dim)
 proposed_action = np.zeros(plant_model.model.action_mean.shape)
 
 {integration_block}
+next_state_prediction = plant_model.wrap_state(next_state_prediction)
 print("Predicted Next State:", next_state_prediction)
 '''
     path = deploy_dir / "NN.py"

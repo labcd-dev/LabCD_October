@@ -1,0 +1,89 @@
+{
+  "benchmark": "LabCD answer routing and quality benchmark",
+  "benchmark_version": 1,
+  "mode": "live",
+  "created_at_utc": "2026-10-15T11:32:09+00:00",
+  "synthetic_data_only": true,
+  "total_cases": 1,
+  "passed": 0,
+  "failed": 1,
+  "blocked": 0,
+  "scored_cases": 1,
+  "pass_rate": 0.0,
+  "provider_blocked_cases": 0,
+  "warning_count": 0,
+  "by_category": {
+    "setup_architecture_and_pinn": {
+      "passed": 0,
+      "failed": 1,
+      "blocked": 0,
+      "total": 1,
+      "failures": [
+        "setup_architecture_and_pinn-01"
+      ]
+    }
+  },
+  "components": {
+    "routing": {
+      "passed": 0,
+      "total": 1,
+      "pass_rate": 0.0
+    },
+    "evidence_retrieval": {
+      "passed": 0,
+      "total": 1,
+      "pass_rate": 0.0
+    },
+    "settings_edits": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "local_answers": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    },
+    "completed_live_responses": {
+      "passed": 0,
+      "total": 1,
+      "pass_rate": 0.0
+    },
+    "model_generated_answers": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": null
+    }
+  },
+  "live_api_answer_cases": 1,
+  "planner_cases": 0,
+  "records": [
+    {
+      "status": "error",
+      "error": "ValueError: The question planner selected an unknown agent or evidence source.",
+      "answer": "",
+      "sources": [],
+      "id": "setup_architecture_and_pinn-01",
+      "category": "setup_architecture_and_pinn",
+      "question": "Should I start with an LSTM or an MLP for these measurements?",
+      "mode": "live",
+      "elapsed_seconds": 3.25,
+      "failures": [
+        "answer status: expected answer, got error",
+        "answer route: expected setup, got None",
+        "live model or diagnostic call failed",
+        "answer text is empty",
+        "evidence-scoped answer returned no source IDs",
+        "retrieval missed expected source kinds: setup"
+      ],
+      "warnings": [],
+      "expected_scope": "setup",
+      "route_passed": false,
+      "retrieval_passed": false,
+      "provider_blocked": false,
+      "outcome": "failed",
+      "answer_passed": false,
+      "model_answer_passed": null
+    }
+  ]
+}

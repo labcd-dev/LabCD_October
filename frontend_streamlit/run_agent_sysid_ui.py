@@ -20,7 +20,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP = Path(__file__).resolve().parent / "agent_sysid_app.py"
-DEFAULT_PORT = 8504
+DEFAULT_PORT = 8599
 
 
 def main() -> int:

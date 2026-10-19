@@ -52,7 +52,7 @@ def duration(seconds) -> str:
 def compare_rows(left: dict, right: dict) -> list[dict]:
     """Keep absent/NaN metrics distinct from valid zero measurements."""
     specs = [
-        ("Score / 100", "success_score", lambda x: f"{x:.2f}", True),
+        ("Fit + rollout score / 100", "success_score", lambda x: f"{x:.2f}", True),
         ("Validation MSE", "best_mse", lambda x: f"{x:.3e}", False),
         ("Validation RMSE", "best_rmse", lambda x: f"{x:.3e}", False),
         ("Training time", "training_seconds", duration, False),
@@ -77,9 +77,18 @@ def compare_rows(left: dict, right: dict) -> list[dict]:
                 change = f"{abs((b-a)/a)*100:.1f}% {'higher' if b>a else 'lower'}"
         rows.append({"Metric": label, "Run A": formatter(a) if a is not None else "Not recorded",
                      "Run B": formatter(b) if b is not None else "Not recorded", "B vs A": change})
-    for label, field in (("Architecture", "architecture"), ("Activation", "activation"), ("Model status", "model_status")):
-        rows.append({"Metric": label, "Run A": left.get(field) or "Not recorded",
-                     "Run B": right.get(field) or "Not recorded", "B vs A": "—"})
+    for label, field in (("Architecture", "architecture"), ("Activation", "activation"), ("Run quality rating", "model_status")):
+        def rating(entry):
+            value = str(entry.get(field) or "Not recorded")
+            legacy = {
+                "STABLE & HIGH-FIDELITY": "Legacy high fit/rollout rating",
+                "STABLE & ACCEPTABLE": "Legacy acceptable fit/rollout rating",
+                "UNSTABLE ROLLOUT": "Legacy weak rollout rating",
+                "UNSTABLE / FAILED": "Legacy low fit/rollout rating",
+            }
+            return legacy.get(value.upper(), value) if field == "model_status" else value
+        rows.append({"Metric": label, "Run A": rating(left),
+                     "Run B": rating(right), "B vs A": "—"})
     for label, field in (("Hidden layers", "hidden_layers"), ("Learning rate", "learning_rate"), ("Dropout", "dropout_rate")):
         rows.append({"Metric": label, "Run A": str((left.get("best_config") or {}).get(field, "Not recorded")),
                      "Run B": str((right.get("best_config") or {}).get(field, "Not recorded")), "B vs A": "—"})
@@ -174,8 +183,6 @@ def render_panel(output_dir, *, viewed=None, result=None, running=False) -> None
                 selected = st.selectbox("Plot", figures, format_func=lambda p: Path(p).stem.replace("_", " "), key=f"preview_plot_{scope}")
                 try:
                     st.image(selected, width="stretch")
-                    st.download_button("Download plot", Path(selected).read_bytes(), file_name=Path(selected).name,
-                                       mime="image/png", key=f"preview_plot_download_{scope}", width="stretch")
                 except OSError:
                     st.info("This plot is no longer available.")
             elif view == "Report":

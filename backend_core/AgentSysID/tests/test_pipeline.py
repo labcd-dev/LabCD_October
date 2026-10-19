@@ -70,7 +70,10 @@ def test_apply_to_config_maps_the_knobs():
         derivative_method="SAVITZKY_GOLAY",
         derivative_filter_tau=0.02,
         use_pinn=True,
+        physics_mode="PCNN",
         pinn_loss_weight=0.75,
+        pcnn_hard_constraint_states=["s_pitch"],
+        pcnn_hard_constraint_indices=[0],
         epochs=123,
         batch_size=64,
         customer_max_latency_ms=5.5,
@@ -94,6 +97,9 @@ def test_apply_to_config_maps_the_knobs():
     assert cfg.ROLLOUT_HORIZON == 4
     assert cfg.DERIVATIVE_FILTER_TAU == 0.02
     assert cfg.USE_PINN is True
+    assert cfg.PHYSICS_MODE == "pcnn"
+    assert cfg.PCNN_HARD_CONSTRAINT_STATES == ["s_pitch"]
+    assert cfg.PCNN_HARD_CONSTRAINT_INDICES == [0]
     assert cfg.PINN_LOSS_WEIGHT == 0.75
     assert cfg.EPOCHS == 123
     assert cfg.BATCH_SIZE == 64
@@ -182,6 +188,44 @@ def test_cycle_human_choice_guides_next_candidate_within_outer_limits():
     assert capped["weight_decay"] == cfg.WEIGHT_DECAY_MAX
 
 
+def test_cycle_human_custom_edits_are_applied_only_within_actor_bounds():
+    actor = ActorAgent("relu", initial_config={
+        "learning_rate": 0.001, "hidden_layers": [128, 96],
+        "dropout_rate": 0.1, "weight_decay": 0.001,
+        "batch_size": 64, "early_stop_patience": 20,
+        "lr_search_min": 0.0001, "lr_search_max": 0.002,
+        "hidden_size_search_min": 32, "hidden_size_search_max": 192,
+        "num_layers_search_min": 1, "num_layers_search_max": 3,
+    })
+    authorized = {
+        "learning_rate_min": 0.00001, "learning_rate_max": 0.01,
+        "hidden_size_min": 16, "hidden_size_max": 256,
+        "num_layers_min": 1, "num_layers_max": 4,
+    }
+
+    edited = apply_actor_human_choice(actor, "custom", authorized, edits={
+        "hidden_layers": [96, 64, 48], "learning_rate": 0.0005,
+        "dropout_rate": 0.2, "weight_decay": 0.002,
+        "batch_size": 128, "patience": 30, "epochs": 2,
+    })
+    assert edited["hidden_layers"] == [96, 64, 48]
+    assert edited["learning_rate"] == 0.0005
+    assert edited["dropout_rate"] == 0.2
+    assert edited["weight_decay"] == 0.002
+    assert edited["batch_size"] == 128
+    assert edited["patience"] == 30
+    assert edited["epochs"] == 2
+
+    with pytest.raises(ValueError, match="between 32 and 192"):
+        apply_actor_human_choice(actor, "custom", authorized,
+                                 edits={"hidden_layers": [256]})
+    with pytest.raises(ValueError, match="between 0.0001 and 0.002"):
+        apply_actor_human_choice(actor, "custom", authorized,
+                                 edits={"learning_rate": 0.01})
+    with pytest.raises(ValueError, match="between 1 and 5000"):
+        apply_actor_human_choice(actor, "custom", authorized, edits={"epochs": 0})
+
+
 def test_every_knob_reaches_a_real_config_attribute():
     """A field that maps to nothing would silently do nothing."""
     SysIDOptions(data_path="x.csv").apply_to_config()  # populate the mapping
@@ -213,7 +257,7 @@ def test_ui_exposes_every_option_field():
     knobs = {f.name for f in fields(SysIDOptions)} - _NON_KNOB_FIELDS
     # Credentials/model and trusted PINN code stay in the current server config;
     # export and override dictionaries are supplied by the conversation controller.
-    managed = {"pinn_equation_file", "api_provider", "llm_model", "llm_temperature",
+    managed = {"pinn_equation_file", "pcnn_hard_constraint_indices", "api_provider", "llm_model", "llm_temperature",
                "save_plot", "user_overrides", "initializer_overrides"}
     assert knobs - managed <= set(RunSettings.model_fields)
     assert set(RunSettings.model_fields) <= {f.name for f in fields(SysIDOptions)}
@@ -333,7 +377,7 @@ def test_end_to_end_run_emits_events_and_artifacts(tmp_path):
     assert stages_seen[0] == STAGES[0]
     assert "Report & packaging" in stages_seen
 
-    assert 0.0 <= result.success_score <= 100.0
+    assert result.success_score is not None and 0.0 <= result.success_score <= 100.0
     assert result.model_status
     assert result.cycles_run == 1
     assert result.elapsed_seconds > 0
@@ -350,5 +394,6 @@ def test_end_to_end_run_emits_events_and_artifacts(tmp_path):
     assert context["data_summary"]["state_columns"]
     assert verification["aligned_samples"] > 0
     assert verification["states"]
-    assert verification["protocol"]["selected_test_trajectory_index"] == 0
+    assert verification["protocol"]["evaluated_test_trajectory_numbers"] == [1]
+    assert len(verification["per_trajectory"]) == 1
     assert verification["protocol"]["target_chunk_horizon_seconds"] == 10.0

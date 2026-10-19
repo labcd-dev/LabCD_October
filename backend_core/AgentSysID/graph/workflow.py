@@ -49,6 +49,7 @@ def node_inspect(state: SysIDState) -> Dict[str, Any]:
         "_loader": loader,  # carried for downstream nodes
         "state_dim": loader.state_dim,
         "action_dim": loader.action_dim,
+        "angle_indices": list(loader.angle_indices),
         "complexity_tier": loader.complexity_tier,
         "complexity_label": loader.complexity_label,
         "quality_issues": list(loader.quality_issues),
@@ -114,6 +115,7 @@ def node_train_cycle(state: SysIDState) -> Dict[str, Any]:
         dropout_rate=config.get("dropout_rate", 0.0),
         weight_decay=config.get("weight_decay", 0.0),
         architecture=state.get("architecture"),
+        angle_indices=state.get("angle_indices", []),
     )
 
     if train_mse > 1e-8 and (val_mse / train_mse) > cfg.OVERFIT_RATIO_LIMIT:
@@ -219,6 +221,7 @@ def node_route(state: SysIDState) -> Dict[str, Any]:
 
 def node_finalize(state: SysIDState) -> Dict[str, Any]:
     """Verification rollout, success score, report text, PDF and ZIP."""
+    import shutil
     from pathlib import Path
 
     from backend_core.AgentSysID.agents import ReportAgent
@@ -240,6 +243,14 @@ def node_finalize(state: SysIDState) -> Dict[str, Any]:
 
     run_dir = Path(state.get("output_dir") or setup_run_dir(env_name=cfg.ENV_NAME))
     run_dir.mkdir(parents=True, exist_ok=True)
+    equation_file = None
+    if cfg.USE_PINN:
+        source = Path(cfg.PINN_EQUATION_FILE)
+        if not source.is_file():
+            raise ValueError("The validated physics equation is missing; PCNN/PINN artifacts cannot be exported.")
+        equation_file = run_dir / "physics_equation.py"
+        if source.resolve() != equation_file.resolve():
+            shutil.copyfile(source, equation_file)
     stamp = cfg.RUN_TIMESTAMP
     arch = str(state.get("architecture") or cfg.NETWORK_ARCHITECTURE).upper()
     best_cfg = state.get("best_config") or state["current_config"]
@@ -268,6 +279,9 @@ def node_finalize(state: SysIDState) -> Dict[str, Any]:
         output_dir=run_dir,
         architecture=arch,
         lstm_seq_length=int(cfg.LSTM_SEQ_LENGTH),
+        physics_mode=str(getattr(cfg, "PHYSICS_MODE", "pinn")) if cfg.USE_PINN else "off",
+        hard_constraint_indices=list(getattr(cfg, "PCNN_HARD_CONSTRAINT_INDICES", []) or []),
+        physics_equation_file=equation_file,
     )
     write_nn_inference_helper(cfg.ENV_NAME, run_dir, integrator=str(cfg.INTEGRATOR_TYPE))
 
@@ -290,12 +304,14 @@ def node_finalize(state: SysIDState) -> Dict[str, Any]:
         prefix=cfg.PLOT_FILENAME_PREFIX,
         env_name=cfg.ENV_NAME,
         architecture=arch,
+        angle_indices=state.get("angle_indices", []),
     )
     score, status = calculate_success_score(
         val_mse=float(state.get("best_mse", 0.0)),
         true_trajectory=true_traj,
         nn_trajectory=nn_traj,
         complexity_label=state.get("complexity_label", "Unknown"),
+        angle_indices=state.get("angle_indices", []),
     )
 
     latency = measure_inference_latency(model, state["state_dim"], state["action_dim"])
@@ -308,6 +324,7 @@ def node_finalize(state: SysIDState) -> Dict[str, Any]:
         best_rmse=float(state.get("best_rmse", 0.0)),
         latency=latency,
         use_pinn=cfg.USE_PINN,
+        physics_mode=str(getattr(cfg, "PHYSICS_MODE", "pinn")) if cfg.USE_PINN else "off",
         max_latency=cfg.CUSTOMER_MAX_LATENCY_MS,
         success_score=score,
         model_status=status,
@@ -324,6 +341,8 @@ def node_finalize(state: SysIDState) -> Dict[str, Any]:
         best_rmse=float(state.get("best_rmse", 0.0)),
         latency=latency,
         use_pinn=cfg.USE_PINN,
+        physics_mode=str(getattr(cfg, "PHYSICS_MODE", "pinn")) if cfg.USE_PINN else "off",
+        pcnn_hard_constraint_states=list(getattr(cfg, "PCNN_HARD_CONSTRAINT_STATES", []) or []),
         timestamp=stamp,
         abstract_text=abstract,
         conclusion_text=conclusion,

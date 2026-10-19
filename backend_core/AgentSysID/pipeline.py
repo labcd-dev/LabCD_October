@@ -23,11 +23,15 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 import signal
+import shutil
 import time
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
 
 from backend_core.AgentSysID import config as cfg
 from backend_core.AgentSysID.agents import (
@@ -65,7 +69,12 @@ from backend_core.AgentSysID.utils import (
     setup_run_dir,
     stop_requested,
 )
-from backend_core.AgentSysID.agents.run_evidence import snapshot_run, save_verification, write_json
+from backend_core.AgentSysID.agents.run_evidence import (
+    snapshot_run,
+    save_verification,
+    save_verification_series,
+    write_json,
+)
 
 #: Penalty MSE for a cycle rejected for severe overfitting, so the
 #: configuration can never win and the Critic registers a hard failure.
@@ -89,6 +98,7 @@ STAGES: Tuple[str, ...] = (
 
 EventCallback = Callable[[str, Dict[str, Any]], None]
 HumanReviewCallback = Callable[[str, Dict[str, Any]], Optional[Dict[str, Any]]]
+CandidateEditProvider = Callable[[int], Optional[Dict[str, Any]]]
 
 
 def _emit(on_event: Optional[EventCallback], kind: str, **payload: Any) -> None:
@@ -120,6 +130,7 @@ class SysIDOptions:
     interactive: bool = False
     max_cycles: Optional[int] = None
     human_in_the_loop: bool = False
+    preapproved_initializer: ClassVar[bool] = False
 
     # --- Questionnaire answers ----------------------------------------
     customer_description: Optional[str] = None
@@ -152,7 +163,10 @@ class SysIDOptions:
 
     # --- PINN ----------------------------------------------------------
     use_pinn: Optional[bool] = None
+    physics_mode: Optional[str] = None
     pinn_loss_weight: Optional[float] = None
+    pcnn_hard_constraint_states: Optional[List[str]] = None
+    pcnn_hard_constraint_indices: Optional[List[int]] = None
     pinn_equation_file: Optional[str] = None
 
     # --- Training limits -----------------------------------------------
@@ -227,7 +241,10 @@ class SysIDOptions:
             "use_state_filter": "USE_STATE_FILTER",
             "auto_filter_percentiles": "AUTO_FILTER_PERCENTILES",
             "use_pinn": "USE_PINN",
+            "physics_mode": "PHYSICS_MODE",
             "pinn_loss_weight": "PINN_LOSS_WEIGHT",
+            "pcnn_hard_constraint_states": "PCNN_HARD_CONSTRAINT_STATES",
+            "pcnn_hard_constraint_indices": "PCNN_HARD_CONSTRAINT_INDICES",
             "pinn_equation_file": "PINN_EQUATION_FILE",
             "epochs": "EPOCHS",
             "batch_size": "BATCH_SIZE",
@@ -269,6 +286,8 @@ class SysIDOptions:
             elif option_name == "derivative_method":
                 value = str(value).strip().lower()
             elif option_name == "manual_activation":
+                value = str(value).strip().lower()
+            elif option_name == "physics_mode":
                 value = str(value).strip().lower()
             elif option_name == "optimization_goal":
                 value = str(value).strip().lower()
@@ -312,7 +331,7 @@ class SysIDResult:
     best_mse: float = float("nan")
     best_rmse: float = float("nan")
     latency_ms: float = 0.0
-    success_score: float = 0.0
+    success_score: Optional[float] = None
     model_status: str = ""
     activation: str = ""
 
@@ -342,6 +361,13 @@ class SysIDResult:
     run_mode: str = ""
     architecture: str = ""
     use_pinn: bool = False
+    physics_mode: str = "off"
+    pcnn_hard_constraint_states: List[str] = field(default_factory=list)
+    # Runs saved before this field use the legacy equation-plus-residual rule.
+    pcnn_output_mode: str = "hard_constraints"
+    physics_equation_file: Optional[str] = None
+    physics_parameter_estimates: Dict[str, float] = field(default_factory=dict)
+    physics_parameter_metadata: List[Dict[str, Any]] = field(default_factory=list)
     finished_at: str = ""
 
     # ------------------------------------------------------------------
@@ -413,8 +439,10 @@ def print_pipeline_banner(data_path: str, arch: str) -> None:
         else "MLP (Memoryless Instantaneous State)"
     )
 
-    if cfg.USE_PINN:
-        architecture_mode = f"PINN ({arch_display} + Physics) | Weight: {cfg.PINN_LOSS_WEIGHT}"
+    if cfg.USE_PINN and str(getattr(cfg, "PHYSICS_MODE", "pinn")).lower() == "pcnn":
+        architecture_mode = f"PCNN ({arch_display} + exact selected-state constraints)"
+    elif cfg.USE_PINN:
+        architecture_mode = f"PINN ({arch_display} + soft physics loss) | Weight: {cfg.PINN_LOSS_WEIGHT}"
     else:
         architecture_mode = f"Pure {arch_display} (Data-Driven System ID)"
 
@@ -509,23 +537,24 @@ def apply_initializer_to_config(setup_config: Dict[str, Any], loader: ExcelDataL
 
 
 def estimate_model_parameter_count(
-    state_dim: int, action_dim: int, hidden_layers: Sequence[int], architecture: str
+    state_dim: int, action_dim: int, hidden_layers: Sequence[int], architecture: str,
+    angle_indices: Optional[Sequence[int]] = None,
 ) -> int:
     """Count trainable parameters using the exact MLP/LSTM layout in DynamicsModel."""
     widths = [max(1, int(width)) for width in hidden_layers] or [64]
-    input_dim = max(1, int(state_dim)) + max(0, int(action_dim)) + 1
+    angle_count = len({int(i) for i in (angle_indices or ()) if 0 <= int(i) < int(state_dim)})
+    input_dim = max(1, int(state_dim)) + angle_count + max(0, int(action_dim)) + 1
     output_dim = max(1, int(state_dim))
 
     if str(architecture).strip().upper() == "LSTM":
-        hidden_size = widths[0]
-        layer_count = len(widths)
         # PyTorch's LSTM has input/recurrent matrices and two bias vectors for
-        # each of its four gates at every layer.
+        # each of its four gates at every layer. Each layer receives the prior
+        # layer's hidden width, so widths may differ.
         recurrent = sum(
-            4 * hidden_size * (layer_input + hidden_size) + 8 * hidden_size
-            for layer_input in [input_dim] + [hidden_size] * (layer_count - 1)
+            4 * width * (layer_input + width) + 8 * width
+            for layer_input, width in zip([input_dim, *widths[:-1]], widths)
         )
-        return int(recurrent + (hidden_size + 1) * output_dim)
+        return int(recurrent + (widths[-1] + 1) * output_dim)
 
     params = 0
     previous_width = input_dim
@@ -536,11 +565,71 @@ def estimate_model_parameter_count(
 
 
 def apply_initializer_human_choice(
-    setup_config: Dict[str, Any], action: str, authorized_bounds: Dict[str, Any]
+    setup_config: Dict[str, Any], action: str, authorized_bounds: Dict[str, Any],
+    edits: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Apply a small, explicit client adjustment while respecting chosen limits."""
+    """Apply the client's reviewed starting values within the authorized search."""
     result = dict(setup_config)
-    if action == "compact":
+    if action == "custom":
+        allowed = {
+            "hidden_layers", "learning_rate", "epochs", "batch_size",
+            "early_stop_patience", "activation", "dropout_rate", "weight_decay",
+        }
+        if not isinstance(edits, dict) or not edits or set(edits) - allowed:
+            raise ValueError("The edited setup contains unsupported or missing settings.")
+
+        def finite_number(key: str, low: float, high: float) -> float:
+            value = edits[key]
+            if isinstance(value, bool):
+                raise ValueError(f"{key} must be a number.")
+            try:
+                number = float(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{key} must be a number.") from exc
+            if not math.isfinite(number) or not low <= number <= high:
+                raise ValueError(f"{key} must be between {low:g} and {high:g}.")
+            return number
+
+        def integer(key: str, low: int, high: int) -> int:
+            number = finite_number(key, low, high)
+            if not number.is_integer():
+                raise ValueError(f"{key} must be a whole number.")
+            return int(number)
+
+        lr_low = max(float(authorized_bounds["learning_rate_min"]), float(result["lr_search_min"]))
+        lr_high = min(float(authorized_bounds["learning_rate_max"]), float(result["lr_search_max"]))
+        width_low = max(int(authorized_bounds["hidden_size_min"]), int(result["hidden_size_search_min"]))
+        width_high = min(int(authorized_bounds["hidden_size_max"]), int(result["hidden_size_search_max"]))
+        layer_low = max(int(authorized_bounds["num_layers_min"]), int(result["num_layers_search_min"]))
+        layer_high = min(int(authorized_bounds["num_layers_max"]), int(result["num_layers_search_max"]))
+        if "hidden_layers" in edits:
+            widths = edits["hidden_layers"]
+            if not isinstance(widths, (list, tuple)) or not layer_low <= len(widths) <= layer_high:
+                raise ValueError(f"Choose between {layer_low} and {layer_high} hidden layers.")
+            for width in widths:
+                if isinstance(width, bool) or not isinstance(width, (int, float)) or not float(width).is_integer():
+                    raise ValueError("Hidden layer widths must be whole numbers.")
+                if not width_low <= int(width) <= width_high:
+                    raise ValueError(f"Hidden layer widths must be between {width_low} and {width_high}.")
+            result["hidden_layers"] = [int(width) for width in widths]
+        if "learning_rate" in edits:
+            result["learning_rate"] = finite_number("learning_rate", lr_low, lr_high)
+        for key, low, high in (
+            ("epochs", 1, 5000), ("batch_size", 8, 4096),
+            ("early_stop_patience", 1, 1000),
+        ):
+            if key in edits:
+                result[key] = integer(key, low, high)
+        if "dropout_rate" in edits:
+            result["dropout_rate"] = finite_number("dropout_rate", 0.0, float(cfg.DROPOUT_RATE_MAX))
+        if "weight_decay" in edits:
+            result["weight_decay"] = finite_number("weight_decay", 0.0, float(cfg.WEIGHT_DECAY_MAX))
+        if "activation" in edits:
+            activation = str(edits["activation"]).strip().lower()
+            if activation not in cfg.AVAILABLE_ACTIVATIONS:
+                raise ValueError("Choose a supported activation.")
+            result["activation"] = activation
+    elif action == "compact":
         minimum_width = int(authorized_bounds["hidden_size_min"])
         minimum_layers = int(authorized_bounds["num_layers_min"])
         layers = [max(minimum_width, int(round(int(width) * 0.75)))
@@ -581,10 +670,71 @@ def apply_initializer_human_choice(
 
 
 def apply_actor_human_choice(
-    actor: ActorAgent, action: str, authorized_bounds: Dict[str, Any]
+    actor: ActorAgent, action: str, authorized_bounds: Dict[str, Any],
+    edits: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Steer the next candidate after the client has seen early validation evidence."""
-    if action == "compact":
+    if action == "custom":
+        allowed = {
+            "hidden_layers", "learning_rate", "dropout_rate", "weight_decay",
+            "batch_size", "patience", "epochs",
+        }
+        if not isinstance(edits, dict) or not edits or set(edits) - allowed:
+            raise ValueError("The next-candidate edits contain unsupported settings.")
+
+        def number(key: str, low: float, high: float) -> float:
+            value = edits[key]
+            if isinstance(value, bool):
+                raise ValueError(f"{key} must be a number.")
+            try:
+                parsed = float(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{key} must be a number.") from exc
+            if not math.isfinite(parsed) or not low <= parsed <= high:
+                raise ValueError(f"{key} must be between {low:g} and {high:g}.")
+            return parsed
+
+        def integer(key: str, low: int, high: int) -> int:
+            parsed = number(key, low, high)
+            if not parsed.is_integer():
+                raise ValueError(f"{key} must be a whole number.")
+            return int(parsed)
+
+        if "hidden_layers" in edits:
+            widths = edits["hidden_layers"]
+            if (not isinstance(widths, (list, tuple)) or
+                    not actor.num_layers_min <= len(widths) <= actor.num_layers_max):
+                raise ValueError(
+                    f"Choose between {actor.num_layers_min} and {actor.num_layers_max} hidden layers."
+                )
+            checked_widths = []
+            for width in widths:
+                if isinstance(width, bool):
+                    raise ValueError("Hidden layer widths must be whole numbers.")
+                try:
+                    parsed = float(width)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("Hidden layer widths must be whole numbers.") from exc
+                if (not math.isfinite(parsed) or not parsed.is_integer() or
+                        not actor.hs_min <= int(parsed) <= actor.hs_max):
+                    raise ValueError(
+                        f"Hidden layer widths must be whole numbers between {actor.hs_min} and {actor.hs_max}."
+                    )
+                checked_widths.append(int(parsed))
+            actor.current_config["hidden_layers"] = checked_widths
+        if "learning_rate" in edits:
+            actor.current_config["learning_rate"] = number("learning_rate", actor.lr_min, actor.lr_max)
+        if "dropout_rate" in edits:
+            actor.current_config["dropout_rate"] = number("dropout_rate", 0.0, float(cfg.DROPOUT_RATE_MAX))
+        if "weight_decay" in edits:
+            actor.current_config["weight_decay"] = number("weight_decay", 0.0, float(cfg.WEIGHT_DECAY_MAX))
+        if "batch_size" in edits:
+            actor.current_config["batch_size"] = integer("batch_size", 8, 4096)
+        if "patience" in edits:
+            actor.current_config["patience"] = integer("patience", 1, 1000)
+        if "epochs" in edits:
+            actor.current_config["epochs"] = integer("epochs", 1, 5000)
+    elif action == "compact":
         actor.hs_max = max(actor.hs_min, min(actor.hs_max, int(round(actor.hs_max * 0.75))))
         actor.num_layers_max = max(actor.num_layers_min, min(actor.num_layers_max, actor.num_layers_min))
         cfg.HIDDEN_SIZE_MAX = actor.hs_max
@@ -613,7 +763,7 @@ def apply_actor_human_choice(
             float(cfg.WEIGHT_DECAY_MAX),
             max(0.00001, float(actor.current_config.get("weight_decay", 0.0001)) * 2.0),
         )
-    if action in {"compact", "widen", "regularize"}:
+    if action in {"custom", "compact", "widen", "regularize"}:
         actor._add_to_visited(actor.current_config)
     return dict(actor.current_config)
 
@@ -689,6 +839,7 @@ def run_pipeline(
     on_event: Optional[EventCallback] = None,
     install_signal_handler: bool = True,
     human_review: Optional[HumanReviewCallback] = None,
+    candidate_edit_provider: Optional[CandidateEditProvider] = None,
 ) -> SysIDResult:
     """
     Run the full identification pipeline and return a structured result.
@@ -703,6 +854,7 @@ def run_pipeline(
       ``cycle``     {cycle, max_cycles, config, train_mse, val_mse, rmse, is_best, best_mse}
       ``human_checkpoint`` {phase, ...} when a client decision is needed
       ``human_checkpoint_resolved`` {phase, action} after the client responds
+      ``human_guidance_applied`` {phase, cycle, config} for queued candidate edits
       ``latency``   {cycle, latency_ms, max_latency_ms}
       ``critic``    {cycle, diagnosis, status, lr_dir, lr_step, hidden_layers, reasoning}
       ``explorer``  {cycle, hidden_layers, reasoning}
@@ -710,6 +862,12 @@ def run_pipeline(
       ``done``      {result}
       ``error``     {message}
     """
+    # CLI runs reset their stop flag here. The Streamlit runner resets it
+    # immediately before starting this worker; resetting again during preflight
+    # can erase a client's Stop request before the first candidate begins.
+    if install_signal_handler:
+        reset_stop_flag()
+
     started = time.time()
     result = SysIDResult()
 
@@ -745,6 +903,10 @@ def run_pipeline(
 
     options.apply_to_config()
     result.env_name = cfg.ENV_NAME
+    result.use_pinn = bool(cfg.USE_PINN)
+    result.physics_mode = str(getattr(cfg, "PHYSICS_MODE", "pinn")).lower() if cfg.USE_PINN else "off"
+    result.pcnn_hard_constraint_states = list(getattr(cfg, "PCNN_HARD_CONSTRAINT_STATES", []) or [])
+    result.pcnn_output_mode = "hard_constraints"
     authorized_search_bounds = {
         "learning_rate_min": float(cfg.LEARNING_RATE_MIN),
         "learning_rate_max": float(cfg.LEARNING_RATE_MAX),
@@ -758,11 +920,11 @@ def run_pipeline(
     max_cycles = int(options.max_cycles or limits["max_cycles"])
     max_seconds = float(limits["max_hours"]) * 3600.0
 
-    # --- PINN template gate --------------------------------------------
+    # --- Physics equation template gate --------------------------------
     if cfg.USE_PINN and not ensure_pinn_template(cfg.PINN_EQUATION_FILE):
         result.status = "failed"
         result.message = (
-            f"PINN is enabled and a fresh template was written to "
+            f"{str(getattr(cfg, 'PHYSICS_MODE', 'pinn')).upper()} is enabled and a fresh template was written to "
             f"'{cfg.PINN_EQUATION_FILE}'. Define compute_analytical_xdot, then run again."
         )
         preserve_preflight_failure()
@@ -771,7 +933,6 @@ def run_pipeline(
 
     print_run_mode_banner(options.run_mode, limits)
 
-    reset_stop_flag()
     if install_signal_handler:
         try:
             signal.signal(signal.SIGINT, request_stop)
@@ -782,6 +943,21 @@ def run_pipeline(
     log_file = setup_logging(run_dir)
     result.run_dir = run_dir
     result.log_path = str(log_file)
+    if cfg.USE_PINN:
+        try:
+            equation_source = Path(cfg.PINN_EQUATION_FILE)
+            if not equation_source.is_file():
+                raise FileNotFoundError("The validated physics equation file is missing.")
+            equation_copy = run_dir / "physics_equation.py"
+            shutil.copyfile(equation_source, equation_copy)
+            cfg.PINN_EQUATION_FILE = str(equation_copy.resolve())
+            result.physics_equation_file = str(equation_copy.resolve())
+        except OSError as exc:
+            result.status = "failed"
+            result.message = f"Could not save the validated physics equation with this run: {exc}"
+            result.save_manifest()
+            _emit(on_event, "error", message=result.message)
+            return result
     _emit(on_event, "run_started", run_dir=str(run_dir.resolve()))
 
     def capture_context(phase, data_summary=None):
@@ -876,7 +1052,8 @@ def run_pipeline(
             setup_config.update(applied)
             print(f"\n   ✏️  Engineer overrides applied to the Initializer proposal: {applied}")
 
-        if human_review and options.human_in_the_loop and not stop_requested():
+        if (human_review and options.human_in_the_loop and
+                not options.preapproved_initializer and not stop_requested()):
             train_count = sum(len(trajectory.get("states", [])) for trajectory in train_trajs)
             val_count = sum(len(trajectory.get("states", [])) for trajectory in val_trajs)
             test_count = sum(len(trajectory.get("states", [])) for trajectory in test_trajs)
@@ -888,6 +1065,7 @@ def run_pipeline(
                 loader.action_dim,
                 setup_config.get("hidden_layers", [64]),
                 architecture,
+                loader.angle_indices,
             )
             varying_states = [
                 name for name in loader.state_cols
@@ -912,6 +1090,7 @@ def run_pipeline(
                 "dataset": {
                     "samples": int(len(loader.df)),
                     "states": list(loader.state_cols),
+                    "periodic_angle_states": [loader.state_cols[i] for i in loader.angle_indices],
                     "inputs": list(loader.action_cols),
                     "derivatives": list(loader.xdot_cols),
                     "varying_states": varying_states,
@@ -931,7 +1110,8 @@ def run_pipeline(
                 request_stop()
             else:
                 setup_config = apply_initializer_human_choice(
-                    setup_config, action, authorized_search_bounds
+                    setup_config, action, authorized_search_bounds,
+                    edits=review.get("edits"),
                 )
                 setup_config = initializer._clamp(setup_config)
             _emit(on_event, "human_guidance_applied", phase="initializer", action=action,
@@ -991,6 +1171,8 @@ def run_pipeline(
 
     capture_context("initialized", {
         "state_columns": loader.state_cols, "action_columns": loader.action_cols,
+        "periodic_angle_states": [loader.state_cols[i] for i in loader.angle_indices],
+        "angle_input_encoding": "sine_cosine" if loader.angle_indices else "raw_state",
         "rows": len(loader.df), "quality_issues": list(loader.quality_issues),
         "training_trajectory_lengths": [len(t["states"]) for t in train_trajs],
         "validation_trajectory_lengths": [len(t["states"]) for t in val_trajs],
@@ -999,6 +1181,7 @@ def run_pipeline(
     starting_config = {
         "learning_rate": setup_config.get("learning_rate", 0.001),
         "hidden_layers": setup_config.get("hidden_layers", [64]),
+        "epochs": int(setup_config.get("epochs", cfg.EPOCHS)),
         "activation": chosen_activation,
         "dropout_rate": setup_config.get("dropout_rate", cfg.DROPOUT_RATE),
         "weight_decay": setup_config.get("weight_decay", cfg.WEIGHT_DECAY),
@@ -1029,7 +1212,7 @@ def run_pipeline(
     tuning_base = STAGES.index("Tuning cycles") / len(STAGES)
 
     for iteration in range(max_cycles):
-        if stop_requested():
+        if iteration > 0 and stop_requested():
             print("\n🛑 Stop requested before the next candidate; compiling the best model found so far...")
             break
         elapsed_seconds = time.time() - started
@@ -1041,6 +1224,35 @@ def run_pipeline(
             break
 
         cycle_num = iteration + 1
+
+        if candidate_edit_provider is not None:
+            queued_edits = candidate_edit_provider(cycle_num) or {}
+            if queued_edits:
+                try:
+                    candidate_edits = dict(queued_edits)
+                    widths = [int(width) for width in (
+                        actor.current_config.get("hidden_layers") or [cfg.HIDDEN_SIZE_MIN]
+                    )]
+                    if "num_layers" in candidate_edits:
+                        layer_count = int(candidate_edits.pop("num_layers"))
+                        widths = widths[:layer_count] + [widths[-1]] * max(0, layer_count - len(widths))
+                    if "hidden_size" in candidate_edits:
+                        width = int(candidate_edits.pop("hidden_size"))
+                        widths = [width] * len(widths)
+                    if widths != actor.current_config.get("hidden_layers") and "hidden_layers" not in candidate_edits:
+                        candidate_edits["hidden_layers"] = widths
+                    next_config = apply_actor_human_choice(
+                        actor, "custom", authorized_search_bounds, edits=candidate_edits
+                    )
+                except (IndexError, KeyError, TypeError, ValueError) as exc:
+                    print(f"\n⚠️ Queued settings for cycle {cycle_num} were rejected: {exc}")
+                    _emit(on_event, "candidate_edit_rejected", cycle=cycle_num, message=str(exc))
+                else:
+                    print(f"\n🛠️ Applying queued client settings before cycle {cycle_num} starts.")
+                    _emit(on_event, "human_guidance_applied", phase="queued_candidate",
+                          action="custom", cycle=cycle_num, config=dict(next_config),
+                          edits=dict(queued_edits))
+
         print("\n" + "─" * 80)
         print(f" 🔄  [CYCLE {cycle_num:02d} / {max_cycles:02d}]  TRAINING INITIALIZED")
         print("─" * 80)
@@ -1065,7 +1277,7 @@ def run_pipeline(
             action_encoding_dim,
             hidden_layers=current_hl,
             learning_rate=current_lr,
-            epochs=setup_config.get("epochs", cfg.EPOCHS),
+            epochs=actor.current_config.get("epochs", setup_config.get("epochs", cfg.EPOCHS)),
             batch_size=actor.current_config.get("batch_size", cfg.BATCH_SIZE),
             patience=actor.current_config.get("patience", cfg.EARLY_STOP_PATIENCE),
             activation=chosen_activation,
@@ -1074,6 +1286,7 @@ def run_pipeline(
             lr_min=cfg.LR_SCHEDULE_MIN_FLOOR,
             architecture=arch,
             include_state_metrics=bool(options.human_in_the_loop),
+            angle_indices=loader.angle_indices,
         )
         cycle_training_seconds = time.perf_counter() - training_started
         result.training_seconds += cycle_training_seconds
@@ -1232,27 +1445,6 @@ def run_pipeline(
         else:
             actor.apply_critic_feedback(critic_output, tracker, cycle=cycle_num)
 
-        if (human_review and options.human_in_the_loop and cycle_num == 2
-                and cycle_num < max_cycles and not stop_requested()):
-            decision = human_review("early_results", {
-                "cycle": cycle_num,
-                "max_cycles": max_cycles,
-                "recent_results": [dict(row) for row in perf_history[-3:]],
-                "best_mse": tracker.best_mse,
-                "best_config": dict(tracker.best_config or {}),
-                "next_config": dict(actor.current_config),
-                "goal": str(getattr(cfg, "OPTIMIZATION_GOAL", "balanced")),
-                "state_validation_mse": state_validation_mse,
-            }) or {}
-            action = str(decision.get("action", "continue"))
-            if action == "stop":
-                _emit(on_event, "human_guidance_applied", phase="early_results", action=action,
-                      config=dict(actor.current_config))
-                break
-            next_config = apply_actor_human_choice(actor, action, authorized_search_bounds)
-            _emit(on_event, "human_guidance_applied", phase="early_results", action=action,
-                  config=next_config)
-
     result.cycles_run = len(perf_history)
     result.performance_history = perf_history
 
@@ -1265,6 +1457,13 @@ def run_pipeline(
         result.save_manifest()
         _emit(on_event, "error", message=result.message)
         return result
+
+    result.physics_parameter_estimates = dict(
+        getattr(best_model, "physics_parameter_estimates", {}) or {}
+    )
+    result.physics_parameter_metadata = list(
+        getattr(best_model, "physics_parameter_metadata", []) or []
+    )
 
     best_cfg = tracker.best_config or dict(actor.current_config)
     best_mse = tracker.best_mse if tracker.best_mse < float("inf") else float("nan")
@@ -1299,6 +1498,9 @@ def run_pipeline(
         output_dir=run_dir,
         architecture=arch,
         lstm_seq_length=int(cfg.LSTM_SEQ_LENGTH),
+        physics_mode=str(getattr(cfg, "PHYSICS_MODE", "pinn")) if cfg.USE_PINN else "off",
+        hard_constraint_indices=list(getattr(cfg, "PCNN_HARD_CONSTRAINT_INDICES", []) or []),
+        physics_equation_file=cfg.PINN_EQUATION_FILE if cfg.USE_PINN else None,
     )
     nn_helper = write_nn_inference_helper(
         env_name=cfg.ENV_NAME, output_dir=run_dir, integrator=str(cfg.INTEGRATOR_TYPE)
@@ -1320,30 +1522,81 @@ def run_pipeline(
 
     stage("Held-out verification")
     verification_horizon_seconds = 10.0
-    true_traj_data, nn_traj_data = plot_test_dataset_verification(
+    verification_trajs = list(test_trajs)
+    verification_test_numbers = list(range(1, len(test_trajs) + 1))
+    total_data_rows = sum(len(trajectory.get("states", ())) for trajectory in trajectories)
+    if (
+        len(test_trajs) > 1
+        and total_data_rows > 0
+        and all(len(trajectory.get("states", ())) * 10 < total_data_rows
+                for trajectory in test_trajs)
+    ):
+        # If every held-out run is smaller than 10% of the full dataset, keep
+        # verification on one complete (most recent) trajectory rather than
+        # combining several short runs into the report plot and score.
+        verification_trajs = [test_trajs[-1]]
+        verification_test_numbers = [len(test_trajs)]
+        print(
+            "    -> Each held-out trajectory is under 10% of the dataset; "
+            f"verifying only the most recent trajectory ({len(test_trajs)})."
+        )
+
+    verification_prefix = cfg.PLOT_FILENAME_PREFIX
+    if len(verification_trajs) == 1 and len(test_trajs) > 1:
+        verification_prefix = f"{cfg.PLOT_FILENAME_PREFIX}_trajectory_{verification_test_numbers[0]}"
+
+    true_traj_data, nn_traj_data, trajectory_ranges = plot_test_dataset_verification(
         best_model,
-        test_trajs,
+        verification_trajs,
         state_dim,
         action_encoding_dim,
         output_dir=run_dir,
         timestamp=run_stamp,
-        prefix=cfg.PLOT_FILENAME_PREFIX,
+        prefix=verification_prefix,
         env_name=cfg.ENV_NAME,
         architecture=arch,
         lstm_seq_length=int(cfg.LSTM_SEQ_LENGTH),
         integrator=str(cfg.INTEGRATOR_TYPE),
         target_horizon_seconds=verification_horizon_seconds,
         save_plot=bool(cfg.SAVE_PLOT),
+        return_trajectory_ranges=True,
+        angle_indices=loader.angle_indices,
     )
+    for trajectory_range in trajectory_ranges:
+        local_index = int(trajectory_range["trajectory_index"]) - 1
+        trajectory_range["trajectory_index"] = verification_test_numbers[local_index]
+
+    # Keep a single held-out trajectory's aligned points for the interactive
+    # Sandbox chart. The selected held-out sequence is saved separately and
+    # is not added to the client ZIP.
+    if verification_trajs and trajectory_ranges:
+        selected_range = trajectory_ranges[-1]
+        start, stop = int(selected_range["start"]), int(selected_range["stop"])
+        selected_test_number = int(selected_range["trajectory_index"])
+        selected_trajectory = test_trajs[selected_test_number - 1]
+        count = min(stop - start, len(selected_trajectory.get("times", ())))
+        if count >= 2:
+            selected_times = np.asarray(selected_trajectory["times"][:count], dtype=float)
+            selected_times = selected_times - selected_times[0]
+            if not save_verification_series(
+                run_dir,
+                selected_times,
+                true_traj_data[start:start + count],
+                nn_traj_data[start:start + count],
+                loader.state_cols,
+                trajectory_index=selected_test_number,
+            ):
+                print("Interactive single-trajectory verification data could not be saved.")
 
     try:
         if not save_verification(run_dir, true_traj_data, nn_traj_data, loader.state_cols, protocol={
-            "available_test_trajectories": len(test_trajs), "selected_test_trajectory_index": 0 if test_trajs else None,
+            "available_test_trajectories": len(test_trajs),
+            "evaluated_test_trajectory_numbers": [item["trajectory_index"] for item in trajectory_ranges],
             "target_chunk_horizon_seconds": verification_horizon_seconds,
-            "initialization": "Reset to measured state at each chunk start; first test trajectory only.",
-            "lstm_warmup": "Measured history preceding each chunk, then predicted states within the chunk.",
+            "initialization": "Each held-out trajectory starts independently; reset to measured state at each chunk start.",
+            "lstm_warmup": "Measured history preceding each chunk, then predicted states within that chunk.",
             "architecture": arch, "lstm_seq_length": int(cfg.LSTM_SEQ_LENGTH), "integrator": str(cfg.INTEGRATOR_TYPE),
-        }):
+        }, trajectory_ranges=trajectory_ranges, angle_indices=loader.angle_indices):
             print("Diagnostic verification summary could not be saved.")
     except Exception:
         print("Diagnostic verification summary could not be captured.")
@@ -1353,10 +1606,12 @@ def run_pipeline(
         true_trajectory=true_traj_data,
         nn_trajectory=nn_traj_data,
         complexity_label=getattr(loader, "complexity_label", "Stage 3"),
+        angle_indices=loader.angle_indices,
     )
 
     stage("Report & packaging")
     print("\n📝 Querying Report Agent to author the final manuscript text...")
+    _emit(on_event, "report_started")
     report_agent = ReportAgent(log_filename=str(log_file))
     abstract_text, conclusion_text = report_agent.generate_report_text(
         env_name=cfg.ENV_NAME,
@@ -1367,12 +1622,14 @@ def run_pipeline(
         best_rmse=best_rmse,
         latency=final_latency_ms,
         use_pinn=cfg.USE_PINN,
+        physics_mode=str(getattr(cfg, "PHYSICS_MODE", "pinn")) if cfg.USE_PINN else "off",
         max_latency=cfg.CUSTOMER_MAX_LATENCY_MS,
         success_score=final_score,
         model_status=model_status,
         complexity_label=getattr(loader, "complexity_label", "Unknown"),
         architecture=arch,
     )
+    _emit(on_event, "report_done")
 
     print("📄 Compiling automated engineering manuscript (PDF)...")
     pdf_path = generate_final_pdf(
@@ -1384,6 +1641,8 @@ def run_pipeline(
         best_rmse=best_rmse,
         latency=final_latency_ms,
         use_pinn=cfg.USE_PINN,
+        physics_mode=str(getattr(cfg, "PHYSICS_MODE", "pinn")) if cfg.USE_PINN else "off",
+        pcnn_hard_constraint_states=list(getattr(cfg, "PCNN_HARD_CONSTRAINT_STATES", []) or []),
         timestamp=run_stamp,
         abstract_text=abstract_text,
         conclusion_text=conclusion_text,
@@ -1440,17 +1699,15 @@ def run_pipeline(
     result.dataset = data_path
     result.run_mode = options.run_mode
     result.architecture = arch
-    result.use_pinn = bool(cfg.USE_PINN)
     result.finished_at = datetime.datetime.now().isoformat(timespec="seconds")
     result.save_manifest()
 
     elapsed_min = result.elapsed_seconds / 60.0
     print("✅ AgentSysID finished.")
     print(f"   Cycles run : {result.cycles_run} | Wall clock: {elapsed_min:.1f} min")
-    print(
-        f"   Best MSE   : {best_mse:.6f} (RMSE {best_rmse:.6f}) | "
-        f"Score: {final_score:.1f}/100 [{model_status}]"
-    )
+    score_text = (f"Fit/rollout score: {final_score:.1f}/100 [{model_status}]" if final_score is not None
+                  else f"Fit/rollout score unavailable [{model_status}]")
+    print(f"   Best MSE   : {best_mse:.6f} (RMSE {best_rmse:.6f}) | {score_text}")
     print(f"   Run folder : {run_dir.resolve()}")
     print(f"   History    : {dest_log}")
     print(f"   PDF        : {pdf_path}")
