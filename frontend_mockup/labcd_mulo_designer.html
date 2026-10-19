@@ -1,0 +1,1614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MuloDesigner · Chat mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#212121; --bg-elevated:#2f2f2f; --bg-hover:#3a3a3a; --bg-input:#303030;
+  --border:rgba(255,255,255,.08); --border-strong:rgba(255,255,255,.12);
+  --text:#ececec; --text-secondary:#b4b4b4; --text-muted:#8e8e8e; --text-faint:#6b6b6b;
+  --accent:#10a37f; --accent-soft:rgba(16,163,127,.14);
+  --user-bubble:#2f2f2f; --code-bg:#1a1a1a; --code-gutter:#1e1e1e;
+  --keyword:#c586c0; --string:#ce9178; --comment:#6a9955; --fn:#dcdcaa; --param:#9cdcfe; --number:#b5cea8;
+  --warn:#fbbf24;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--font);background:var(--bg);color:var(--text);overflow:hidden;-webkit-font-smoothing:antialiased;font-size:15px}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+
+/* ---------- layout ---------- */
+.app{display:grid;grid-template-columns:var(--rail-w,0px) minmax(0,1fr) var(--panel-w,0px);height:100vh;width:100%}
+.app.rail-open{--rail-w:256px}
+.app.panel-open{--panel-w:minmax(420px,48%)}
+.app:not(.rail-open) .rail{visibility:hidden}
+.app:not(.panel-open) .panel{visibility:hidden}
+
+/* ---------- artifact rail (collapsed by default) ---------- */
+.rail{min-width:0;min-height:0;overflow:hidden;background:var(--bg)}
+.app.rail-open .rail{border-right:1px solid var(--border)}
+.rail__inner{width:256px;height:100%;display:flex;flex-direction:column}
+.rail-head{display:flex;align-items:center;justify-content:space-between;padding:16px 12px 10px 16px;font-size:12.5px;color:var(--text-muted)}
+.rail-list{flex:1;overflow-y:auto;padding:0 10px 16px;display:flex;flex-direction:column;gap:6px}
+.rail-item{display:flex;align-items:center;gap:10px;padding:8px;border-radius:12px;text-align:left;width:100%;border:1px solid transparent;transition:background .15s}
+.rail-item:hover{background:var(--bg-elevated)}
+.rail-item[aria-pressed="true"]{background:var(--bg-hover);border-color:var(--border-strong)}
+.rail-item .artifact__body{min-width:0;flex:1}
+.rail .artifact__icon{width:32px;height:32px;font-size:12px;border-radius:9px}
+.count{display:inline-grid;place-items:center;min-width:20px;height:18px;padding:0 6px;border-radius:999px;background:rgba(255,255,255,.08);font-size:11px;color:var(--text-secondary);margin-left:6px;font-variant-numeric:tabular-nums}
+.icon-btn{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--text-muted);font-size:17px}
+.icon-btn:hover{background:var(--bg-hover);color:var(--text)}
+
+/* ---------- chat column ---------- */
+.chat{min-width:0;min-height:0;display:flex;flex-direction:column;position:relative}
+.chat-head{height:50px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 14px;gap:10px}
+.handle{display:inline-flex;align-items:center;font-size:12.5px;color:var(--text-secondary);padding:5px 10px;border-radius:999px;border:1px solid var(--border-strong)}
+.handle:hover{background:var(--bg-hover);color:var(--text)}
+.brand{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--text-secondary);padding:5px 12px;border-radius:999px;background:var(--bg-elevated);border:1px solid var(--border);opacity:0;transition:opacity .5s ease;margin:0 auto}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(16,163,127,.18)}
+.chat.live .live-dot{animation:pulse 1.6s ease-in-out infinite}
+.chat-head.active .brand{opacity:1}
+.reset{font-size:12.5px;color:var(--text-muted);padding:5px 10px;border-radius:8px;opacity:0;transition:opacity .5s ease}
+.chat-head.active .reset{opacity:1}
+.reset:hover{background:var(--bg-hover);color:var(--text)}
+.chat__scroll{flex:1;min-height:0;overflow-y:auto;padding:12px 0 24px;display:flex;flex-direction:column;align-items:center}
+.chat__inner{width:100%;max-width:720px;padding:0 24px;display:flex;flex-direction:column;gap:22px}
+.chat__scroll::-webkit-scrollbar{width:8px}
+.chat__scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
+
+/* empty state: composer centred, hint above it */
+.composer-wrap{flex-shrink:0;padding:8px 24px 22px;display:flex;flex-direction:column;align-items:center;transition:transform .5s cubic-bezier(.4,0,.2,1);width:100%}
+.chat.is-empty .composer-wrap{transform:translateY(-16vh)}
+.empty-hint{display:none;text-align:center;color:var(--text-muted);font-size:15px;max-width:440px;margin:0 auto 18px;line-height:1.5}
+.chat.is-empty .empty-hint{display:block}
+.case-row{margin-top:12px;display:flex;justify-content:center}
+.chat.is-empty .reset{pointer-events:none}
+.chat.is-empty .chat__scroll{visibility:hidden}
+
+/* composer (ChatGPT-style pill) */
+.composer{width:100%;max-width:720px;background:var(--bg-input);border:1px solid var(--border-strong);border-radius:24px;padding:12px 14px 12px 18px;display:flex;align-items:flex-end;gap:10px}
+.composer textarea{flex:1;background:transparent;border:none;outline:none;resize:none;color:var(--text);font-family:inherit;font-size:15px;line-height:1.45;max-height:120px;min-height:24px}
+.composer textarea::placeholder{color:var(--text-faint)}
+.composer__send{width:32px;height:32px;border-radius:50%;background:var(--text);color:var(--bg);display:grid;place-items:center;flex-shrink:0;opacity:.35}
+.composer__send:not(:disabled){opacity:1}
+.composer__send:disabled{cursor:not-allowed}
+
+/* ---------- turns ---------- */
+.user-turn{display:flex;justify-content:flex-end}
+.user-bubble{background:var(--user-bubble);border-radius:18px;padding:10px 16px;font-size:15px;line-height:1.45;max-width:420px}
+.assistant-turn{display:flex;flex-direction:column;gap:12px;width:100%;animation:rise .28s ease both}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.agent-tag{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;color:var(--text-muted)}
+.agent-tag .em{font-size:14px}
+.route{font-size:12px;color:var(--text-faint)}
+.assistant-text{font-size:15px;line-height:1.6;color:var(--text)}
+.assistant-text p+p{margin-top:10px}
+.note{font-size:13px;color:var(--text-faint);font-style:italic}
+.dots{display:flex;gap:5px;padding:6px 0}
+.dots span{width:6px;height:6px;border-radius:50%;background:var(--text-faint);animation:blink 1.2s infinite}
+.dots span:nth-child(2){animation-delay:.15s}
+.dots span:nth-child(3){animation-delay:.3s}
+@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* tool trace (collapsed by default) */
+.tool-trace{display:flex;flex-direction:column;gap:8px}
+.tool-trace__summary{display:inline-flex;align-items:center;gap:7px;font-size:14px;color:var(--text-secondary);padding:2px 0;width:fit-content}
+.tool-trace__summary:hover{color:var(--text)}
+.tool-trace__summary svg{transition:transform .2s;flex-shrink:0}
+.tool-trace__summary[aria-expanded="true"] svg{transform:rotate(180deg)}
+.tool-trace__list{display:none;border:1px solid var(--border-strong);border-radius:12px;overflow:hidden}
+.tool-trace__list[data-open="true"]{display:block}
+.tool-trace__item{padding:9px 14px;font-size:13.5px;color:var(--text-secondary);border-bottom:1px solid var(--border);line-height:1.4}
+.tool-trace__item:last-child{border-bottom:none}
+.spin{width:11px;height:11px;border-radius:50%;border:1.6px solid rgba(255,255,255,.15);border-top-color:var(--accent);animation:spin 1s linear infinite;display:inline-block;flex-shrink:0}
+.ok-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;flex-shrink:0}
+
+/* single live status line (the one thing that updates in place) */
+.run-status{display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--text-secondary);font-variant-numeric:tabular-nums}
+.run-status .run-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(16,163,127,.2);animation:pulse 1.6s ease-in-out infinite;flex-shrink:0}
+
+/* artifact chip groups */
+.artifacts{display:flex;flex-direction:column;gap:8px;width:100%;max-width:420px}
+
+/* ---------- Human-in-the-loop card (from chatgpt-style-ui reference) ---------- */
+.hitl-status{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--warn)}
+.hitl-status.ok{color:#86efac}
+.hitl-status__dot{width:8px;height:8px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 3px rgba(251,191,36,.2);animation:pulse 1.6s ease-in-out infinite}
+.hitl-status__dot.ok{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.2);animation:none}
+.hitl-card{width:100%;max-width:520px;border:1px solid var(--border-strong);border-radius:14px;background:var(--bg-elevated);overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.25);transition:opacity .2s}
+.hitl-card.is-resolved{opacity:.72;pointer-events:none}
+.hitl-card__header{display:flex;align-items:flex-start;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--border)}
+.hitl-card__header-text{flex:1;min-width:0}
+.hitl-card__title{font-size:14.5px;font-weight:500;line-height:1.4}
+.hitl-card__subtitle{font-size:12.5px;color:var(--text-muted);margin-top:4px;line-height:1.35}
+.hitl-card__timeout{display:inline-flex;align-items:center;gap:6px;flex-shrink:0;font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums;padding:4px 8px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid transparent;cursor:default;transition:border-color .15s,background .15s}
+.hitl-card__timeout:hover{border-color:var(--border-strong);background:rgba(255,255,255,.06)}
+.hitl-card__timeout-ring{width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.15);border-top-color:var(--accent);animation:spin 1s linear infinite;flex-shrink:0}
+.hitl-card__timeout[data-paused="true"] .hitl-card__timeout-ring{animation:none;border-top-color:rgba(255,255,255,.25)}
+.hitl-card__timeout-cancel{display:none;width:18px;height:18px;border-radius:4px;place-items:center;color:var(--text-muted)}
+.hitl-card__timeout:hover .hitl-card__timeout-cancel{display:grid}
+.hitl-card__close{width:28px;height:28px;border-radius:6px;display:grid;place-items:center;color:var(--text-muted);flex-shrink:0;margin:-4px -4px 0 0}
+.hitl-card__close:hover{background:var(--bg-hover);color:var(--text)}
+.hitl-card__options{display:flex;flex-direction:column;padding:4px 0}
+.hitl-option{display:flex;align-items:center;gap:12px;padding:11px 16px;font-size:14px;text-align:left;width:100%;transition:background .12s;border-bottom:1px solid var(--border);line-height:1.35}
+.hitl-option:last-child{border-bottom:none}
+.hitl-option:hover{background:var(--bg-hover)}
+.hitl-option[aria-pressed="true"]{background:rgba(16,163,127,.12)}
+.hitl-option__badge{width:26px;height:26px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid var(--border-strong);display:grid;place-items:center;font-size:12.5px;font-weight:600;color:var(--text-secondary);flex-shrink:0}
+.hitl-option[aria-pressed="true"] .hitl-option__badge{background:var(--accent);border-color:var(--accent);color:#fff}
+.hitl-option__label{flex:1;min-width:0}
+.hitl-option__label strong{font-weight:500}
+.defmark{margin-left:8px;font-size:11px;color:var(--text-muted);border:1px solid var(--border-strong);border-radius:999px;padding:0 6px}
+.hitl-option__desc{display:block;font-size:12.5px;color:var(--text-muted);margin-top:2px}
+.hitl-other{display:flex;align-items:center;padding:8px 16px;border-top:1px solid var(--border)}
+.hitl-other input{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--text);font-family:inherit;font-size:13.5px;padding:6px 0}
+.hitl-other input::placeholder{color:var(--text-faint)}
+.hitl-card__footer{display:flex;align-items:center;gap:8px;padding:10px 12px 12px;border-top:1px solid var(--border);background:rgba(0,0,0,.15)}
+.hitl-card__edit{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;color:var(--text-secondary);transition:background .12s,color .12s}
+.hitl-card__edit:hover{background:var(--bg-hover);color:var(--text)}
+.hitl-card__skip{margin-left:auto;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:500;color:var(--text-muted);transition:background .12s,color .12s}
+.hitl-card__skip:hover{background:var(--bg-hover);color:var(--text)}
+.hitl-card__confirm{padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;background:var(--accent);color:#fff;transition:filter .12s}
+.hitl-card__confirm:hover{filter:brightness(1.08)}
+.hitl-card__confirm:disabled{opacity:.4;cursor:not-allowed;filter:none}
+
+/* ---------- inline config card ---------- */
+.cfg-card{width:100%;max-width:520px;border:1px solid var(--border-strong);border-radius:14px;background:var(--bg-elevated);padding:14px 16px}
+.cfg-card.is-done{opacity:.6;pointer-events:none}
+.cfg-title{font-size:11.5px;letter-spacing:.05em;color:var(--text-muted);font-weight:600;margin-bottom:6px}
+.cfg-row{display:flex;gap:12px;padding:7px 0;border-top:1px solid var(--border);font-size:13.5px;line-height:1.45;align-items:baseline}
+.cfg-row>span:first-child{width:96px;color:var(--text-muted);flex-shrink:0}
+.cfg-row .val{color:var(--text);font-weight:500}
+.cfg-row .obj{color:var(--text-secondary);font-style:italic}
+.obj-edit{display:flex;gap:6px;flex:1;min-width:0}
+.obj-input{flex:1;min-width:0;background:var(--bg-input);border:1px solid var(--border-strong);border-radius:8px;color:var(--text);font-family:inherit;font-size:13px;padding:5px 8px;outline:none}
+.cfg-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.cfg-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--border);margin-top:12px;padding-top:12px}
+.chip-btn{border:1px solid var(--border-strong);padding:5px 11px;border-radius:999px;font-size:12.5px;color:var(--text-secondary);background:transparent;transition:background .12s,color .12s}
+.chip-btn:hover{background:var(--bg-hover);color:var(--text)}
+.btn-primary{background:var(--accent);color:#fff;padding:8px 16px;border-radius:9px;font-size:13px;font-weight:600}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-ghost{border:1px solid var(--border-strong);padding:7px 12px;border-radius:9px;font-size:13px;color:var(--text-secondary)}
+.btn-ghost:hover{background:var(--bg-hover);color:var(--text)}
+.link-btn{color:var(--text-muted);font-size:13px;text-decoration:underline;text-underline-offset:3px;text-align:left}
+.link-btn:hover{color:var(--text)}
+.next-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+
+/* ---------- artifact chip (ChatGPT-style card) ---------- */
+.artifact{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;border:1px solid var(--border-strong);background:var(--bg-elevated);transition:background .15s,border-color .15s;cursor:pointer;text-align:left;width:100%}
+.artifact:hover{background:var(--bg-hover);border-color:rgba(255,255,255,.18)}
+.artifact__icon{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;flex-shrink:0;font-size:14px;font-weight:600;color:#fff}
+.artifact__icon svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.gl{font-family:var(--mono);font-size:13px}
+.ico-tuning{background:linear-gradient(145deg,#14b8a6,#0f766e)}
+.ico-arch{background:linear-gradient(145deg,#3b82f6,#1d4ed8)}
+.ico-sandbox{background:linear-gradient(145deg,#8b5cf6,#6d28d9)}
+.ico-code{background:linear-gradient(145deg,#c47a3a,#a35f28)}
+.ico-json{background:linear-gradient(145deg,#64748b,#334155)}
+.ico-report{background:linear-gradient(145deg,#db7093,#be185d)}
+.ico-config{background:linear-gradient(145deg,#a3a3a3,#525252)}
+.artifact__body{flex:1;min-width:0}
+.artifact__title{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.artifact__type{font-size:12px;color:var(--text-muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip-actions{display:flex;gap:6px;flex-shrink:0}
+.artifact__action{padding:5px 12px;border-radius:999px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--text);white-space:nowrap;cursor:pointer;transition:background .15s}
+.artifact__action:hover{background:var(--bg-hover)}
+.spark{width:100%;height:22px;margin-top:4px;display:block}
+.spark path{fill:none;stroke:#60a5fa;stroke-width:1.4}
+
+/* ---------- artifact detail panel (code-panel chrome from reference) ---------- */
+.panel{min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--code-bg);border-left:1px solid var(--border);overflow:hidden}
+.panel.enter{animation:panelIn .28s ease}
+@keyframes panelIn{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
+.code-panel__header{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0;background:#1e1e1e}
+.panel-titles{flex:1;min-width:0}
+.code-panel__title{font-size:13.5px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.panel-type{font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.code-panel__actions{display:flex;align-items:center;gap:4px}
+.code-panel__btn{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;font-size:13px;color:var(--text-secondary);border:1px solid transparent;white-space:nowrap}
+.code-panel__btn:hover{background:var(--bg-hover);color:var(--text)}
+.code-panel__btn--icon{width:32px;height:32px;padding:0;display:grid;place-items:center;font-size:18px}
+.code-panel__body{flex:1;min-height:0;overflow:auto;display:flex}
+.code-panel__body::-webkit-scrollbar{width:8px;height:8px}
+.code-panel__body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
+.pv{flex:1;min-width:0;padding:18px 20px 28px;display:flex;flex-direction:column;gap:16px}
+.pv--code{padding:0;flex-direction:row;gap:0}
+.code-gutter{flex-shrink:0;padding:16px 0;background:var(--code-gutter);border-right:1px solid var(--border);user-select:none;text-align:right;min-width:48px}
+.code-gutter span{display:block;padding:0 12px;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text-faint)}
+.code-source{flex:1;padding:16px 20px;font-family:var(--mono);font-size:12.5px;line-height:1.6;white-space:pre;overflow-x:auto;tab-size:4;color:var(--text);margin:0}
+.tok-kw{color:var(--keyword)}
+.tok-fn{color:var(--fn)}
+.tok-str{color:var(--string)}
+.tok-cm{color:var(--comment)}
+.tok-param{color:var(--param)}
+.tok-num{color:var(--number)}
+.sec-title{font-size:12px;color:var(--text-muted);font-weight:500;margin-top:4px}
+.stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.tile{background:#1e1e1e;border:1px solid var(--border);border-radius:10px;padding:9px 10px;min-width:0}
+.tile__k{font-size:11px;color:var(--text-muted);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile__v{font-size:16px;font-weight:500;margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tile__s{font-size:11px;color:var(--text-faint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px}
+.tile.ok .tile__v{color:#86efac}
+.tile.warn .tile__v{color:var(--warn)}
+.pills{display:flex;flex-wrap:wrap;gap:6px}
+.pill{font-family:var(--mono);font-size:11.5px;color:var(--text-secondary);border:1px solid var(--border-strong);border-radius:999px;padding:3px 9px;white-space:nowrap}
+.plot{border:1px solid var(--border-strong);border-radius:12px;background:#1a1a1a;padding:8px}
+.chart{width:100%;height:auto;display:block}
+.ax{fill:#6b6b6b;font-size:10px;font-family:var(--mono)}
+.grid{stroke:#2a2a2a;stroke-width:1}
+.axis{stroke:#555;stroke-width:1}
+.gain-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.gain-card{border:1px solid var(--border-strong);border-radius:12px;background:#1a1a1a;padding:8px;min-width:0}
+.gain-card__t{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px 6px;margin-bottom:4px}
+.gain-card__t span{font-family:var(--mono);font-size:11px;color:var(--text-muted)}
+.llm-line{font-size:14px;line-height:1.6;color:var(--text-secondary)}
+.att-wrap summary{cursor:pointer;color:var(--text-secondary);font-size:13px}
+table.att{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}
+table.att th,table.att td{border-bottom:1px solid var(--border);padding:6px 8px;text-align:left;vertical-align:top}
+table.att th{color:var(--text-muted);font-weight:500}
+.cap{font-size:13px;color:var(--text-muted);line-height:1.55}
+.arch-wrap{border:1px solid var(--border-strong);border-radius:12px;background:#1a1a1a;padding:10px}
+.arch-wrap svg{width:100%;height:auto;display:block}
+.empty-plot{font-size:13px;color:var(--text-faint);padding:28px 0;text-align:center}
+.note-i{font-size:12px;color:var(--text-faint);font-style:italic;line-height:1.5}
+
+/* ---------- Simulation Lab (sandbox) ---------- */
+.lab-card{border:1px solid var(--border-strong);border-radius:14px;background:#242424;padding:14px 16px 16px}
+.lab-head{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:500;margin-bottom:4px}
+.lab-head .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(16,163,127,.2)}
+.lab-head__sub{font-family:var(--mono);font-size:11.5px;color:var(--text-muted);margin-left:auto}
+.lab-section{font-size:11.5px;color:var(--text-muted);font-weight:500;margin:14px 0 8px}
+.lab-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 12px}
+.lab-grid--sat{grid-template-columns:auto minmax(0,1fr) minmax(0,1fr);align-items:end}
+.lab-field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.lab-field>label{font-size:11.5px;color:var(--text-muted);font-weight:500}
+.lab-stepper{display:flex;align-items:center;background:#1a1a1a;border:1px solid var(--border-strong);border-radius:10px;overflow:hidden;height:36px}
+.lab-stepper input{flex:1;min-width:0;border:none;background:transparent;color:var(--text);font-family:var(--mono);font-size:13px;text-align:center;outline:none;height:100%;-moz-appearance:textfield}
+.lab-stepper input::-webkit-outer-spin-button,.lab-stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.lab-stepper button{width:30px;height:100%;display:grid;place-items:center;color:var(--text-muted);font-size:15px;flex-shrink:0}
+.lab-stepper button:hover{background:rgba(255,255,255,.06);color:var(--text)}
+.lab-select{height:36px;border-radius:10px;border:1px solid var(--border-strong);background:#1a1a1a;color:var(--text);font-family:inherit;font-size:13px;padding:0 10px;outline:none;width:100%}
+.chk{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-secondary);height:36px;white-space:nowrap}
+.lab-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.lab-status{font-size:13px;color:var(--text-secondary);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.lab-status .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.lab-status code{font-family:var(--mono);font-size:12px;color:#86efac;background:rgba(16,163,127,.12);padding:1px 6px;border-radius:4px}
+.lab-plot{border:1px solid var(--border-strong);border-radius:14px;background:#1e1e1e;padding:10px 8px 8px}
+.lab-plot.flash{animation:flash2 .35s ease}
+@keyframes flash2{from{opacity:.45}to{opacity:1}}
+.lab-legend{display:flex;flex-wrap:wrap;gap:8px 14px;padding:2px 8px 8px;font-size:11.5px;color:var(--text-muted)}
+.lab-legend span{display:inline-flex;align-items:center;gap:6px}
+.lab-legend i{width:14px;height:2px;border-radius:1px;display:inline-block}
+.lab-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.sessions{font-size:12px;color:var(--text-secondary);padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.sessions li{font-family:var(--mono);font-size:11.5px}
+
+/* toggles and text areas */
+.switch{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);cursor:pointer;position:relative;height:36px}
+.switch input{position:absolute;opacity:0;width:0;height:0}
+.track{width:34px;height:20px;border-radius:999px;background:#444;position:relative;transition:background .15s;flex-shrink:0}
+.track::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:2px;left:2px;transition:left .15s}
+.switch input:checked + .track{background:var(--accent)}
+.switch input:checked + .track::after{left:16px}
+.cfg-text{width:100%;background:#1a1a1a;border:1px solid var(--border-strong);border-radius:10px;color:var(--text);font-family:inherit;font-size:13.5px;padding:8px 10px;resize:vertical;outline:none}
+
+/* decision log */
+.dec{border:1px solid var(--border-strong);border-radius:10px;background:#1e1e1e}
+.dec summary{display:flex;gap:8px;align-items:center;padding:9px 12px;cursor:pointer;font-size:13px;list-style:none}
+.dec summary::-webkit-details-marker{display:none}
+.dec[open] summary{border-bottom:1px solid var(--border)}
+.dec .who{font-weight:500;white-space:nowrap}
+.dec .when{font-family:var(--mono);font-size:11px;color:var(--text-faint);white-space:nowrap}
+.dec .what{color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.dec-json{margin:0;padding:10px 12px;font-family:var(--mono);font-size:12px;color:var(--text-secondary);white-space:pre-wrap;word-break:break-word}
+
+/* JSON tree */
+.jn{font-family:var(--mono);font-size:12.5px;line-height:1.6}
+.jn>summary{cursor:pointer;list-style:none;color:var(--text-secondary)}
+.jn>summary::-webkit-details-marker{display:none}
+.jc{padding-left:18px;border-left:1px solid var(--border);margin-left:4px}
+.jl{font-family:var(--mono);font-size:12.5px;line-height:1.6;padding-left:18px}
+.jk{color:var(--param)}
+.jp{color:var(--text-muted)}
+.jm{color:var(--text-faint);font-size:11px}
+
+/* comparison report */
+.rep{width:100%;border-collapse:collapse;font-size:12.5px}
+.rep th,.rep td{border-bottom:1px solid var(--border);padding:7px 8px;text-align:left;white-space:nowrap}
+.rep th{color:var(--text-muted);font-weight:500}
+.rep td.num{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+
+/* accessibility: honour reduced motion */
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+}
+
+/* printing the comparison report to PDF */
+body.printing .chat,body.printing .rail,body.printing .handle{display:none!important}
+body.printing .app{display:block!important}
+body.printing .panel{display:flex!important;visibility:visible!important;width:100%;border:none}
+body.printing .panel,body.printing .panel *{background:#fff!important;color:#000!important;border-color:#bbb!important}
+body.printing .code-panel__actions,body.printing #panelClose{display:none!important}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- artifact rail: hidden until the first artifact exists, collapsed by default -->
+  <aside class="rail" id="rail" aria-label="Artifacts">
+    <div class="rail__inner">
+      <div class="rail-head"><span>Artifacts <span class="count" id="railCount">0</span></span><button type="button" class="icon-btn" id="railClose" aria-label="Collapse artifacts">×</button></div>
+      <div class="rail-list" id="railList"></div>
+    </div>
+  </aside>
+
+  <!-- chat column -->
+  <section class="chat is-empty" id="chat" aria-label="Conversation">
+    <header class="chat-head" id="chatHead">
+      <button type="button" class="handle" id="railHandle" hidden aria-label="Show artifacts">Artifacts <span class="count" id="railHandleCount">0</span></button>
+      <div class="brand"><span class="live-dot"></span>MuloDesigner</div>
+      <button type="button" class="reset" id="resetBtn">Reset</button>
+    </header>
+
+    <div class="chat__scroll" id="chatScroll">
+      <div class="chat__inner" id="chatInner"></div>
+    </div>
+
+    <div class="composer-wrap">
+      <div class="empty-hint">
+        Describe a plant or pick a case study to design multi-loop PID controllers.
+        <div class="case-row"><button type="button" class="chip-btn" id="caseChip">Quanser 2-DOF helicopter</button></div>
+      </div>
+      <form class="composer" id="composer" autocomplete="off">
+        <textarea id="composerInput" rows="1" placeholder="Ask anything" aria-label="Message"></textarea>
+        <button type="submit" class="composer__send" id="sendBtn" aria-label="Send" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <!-- artifact detail panel: slides in on demand -->
+  <aside class="panel" id="panel" aria-label="Artifact">
+    <header class="code-panel__header">
+      <div class="panel-titles"><div class="code-panel__title" id="panelTitle"></div><div class="panel-type" id="panelType"></div></div>
+      <div class="code-panel__actions" id="panelActions"></div>
+      <button type="button" class="code-panel__btn code-panel__btn--icon" id="panelClose" aria-label="Close panel">×</button>
+    </header>
+    <div class="code-panel__body" id="panelBody"></div>
+  </aside>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ================= utilities ================= */
+var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function tm(ms){ return REDUCED ? Math.round(ms*0.4) : ms; }
+function sleep(ms){ return new Promise(function(r){ setTimeout(r, tm(ms)); }); }
+function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function fmt(n){ return Math.round(n).toLocaleString("en-US"); }
+function fmtK(v){ return v>=1000 ? (v/1000).toFixed(1)+"k" : String(Math.round(v)); }
+function el(tag,cls,html){ var e=document.createElement(tag); if(cls) e.className=cls; if(html!==undefined) e.innerHTML=html; return e; }
+function $(s,r){ return (r||document).querySelector(s); }
+function copy(o){ return JSON.parse(JSON.stringify(o)); }
+function seeded(s){ return function(){ s=(s*16807)%2147483647; return s/2147483647; }; }
+function decimals(step){ var p=String(step).split("."); return p[1]?p[1].length:0; }
+function getPath(o,path){ return path.split(".").reduce(function(a,k){ return a==null?undefined:a[k]; }, o); }
+function setPath(o,path,v){ var ks=path.split("."), last=ks.pop(); var t=ks.reduce(function(a,k){ return a[k]; }, o); t[last]=v; }
+var ADVANCE=/^(go|continue|yes|ok|okay|start|proceed|confirm|sure|y)\b/i;
+
+/* ================= personas (labels used verbatim in chat, route labels and decision log) ================= */
+var AG={
+  arch:{em:"🏗️",name:"MuloArchitect"},
+  sup:{em:"🧑‍💼",name:"Supervisor Agent"},
+  opt:{em:"🎧",name:"Optimizer Agent"},
+  ft:{em:"👌",name:"Fine Tuner Agent"},
+  ev:{em:"🔍",name:"Evaluate Agent"}
+};
+
+/* ================= domain data (Quanser 2-DOF helicopter, real defaults) ================= */
+var CTRL_NAME={dpitch:"pitch-rate · dpitch",dyaw:"yaw-rate · dyaw",pitch:"pitch-angle · pitch",yaw:"yaw-angle · yaw"};
+var CTRL_SHORT={dpitch:"pitch-rate",dyaw:"yaw-rate",pitch:"pitch-angle",yaw:"yaw-angle"};
+var START={dpitch:{Kp:1.00,Ki:0.50,Kd:0.040},dyaw:{Kp:0.80,Ki:0.35,Kd:0.030},pitch:{Kp:1.50,Ki:0.20,Kd:0.20},yaw:{Kp:1.10,Ki:0.12,Kd:0.15}};
+var PERF={inner:{mse:0.010,settling_time:1.0,overshoot:8,control_effort:2.5},outer:{mse:0.050,settling_time:3.0,overshoot:6,control_effort:1.2}};
+var OPTIMIZERS=["Dummy","Agentic GA","PSO Optimizer"];
+var LLMS=["gpt-4o-mini","gpt-4o","gpt-5.4","gpt-5.4-mini","gpt-5.5","gpt-6-astra","gpt-6-luna"];
+
+/* attempt results, cumulative NFE across the whole cascade */
+var RUNS_INNER=[
+  {nfeEnd:520,best:0.112,score:61,mse:0.0214,settle:1.52,overshoot:14.8,effort:2.61,
+   gains:{dpitch:{Kp:1.40,Ki:0.70,Kd:0.060},dyaw:{Kp:1.02,Ki:0.44,Kd:0.040}},
+   llm:{pg:"pop 20 · gen 4",w:"mse .40 · OS .30 · settle .20 · effort .10",budget:"81%",summary:"Widened the Kp range and sampled Kd more finely; overshoot is the main failure."},
+   ft:"Attempt 1 overshoots by 14.8%. Tightening the search ranges around the best gains and raising the overshoot weight in the cost function."},
+  {nfeEnd:1240,best:0.087,score:72,mse:0.0151,settle:1.20,overshoot:10.9,effort:2.34,
+   gains:{dpitch:{Kp:1.62,Ki:0.81,Kd:0.078},dyaw:{Kp:1.17,Ki:0.52,Kd:0.050}},
+   llm:{pg:"pop 20 · gen 6",w:"mse .35 · OS .35 · settle .20 · effort .10",budget:"62%",summary:"Overshoot penalty raised; Kd recovered most of the damping."},
+   ft:"Overshoot is down to 10.9%, but settling is still slow. Narrowing the Kd range and reweighting settling time."},
+  {nfeEnd:1910,best:0.041,score:84,mse:0.0072,settle:0.84,overshoot:6.2,effort:1.93,
+   gains:{dpitch:{Kp:1.84,Ki:0.92,Kd:0.091},dyaw:{Kp:1.31,Ki:0.58,Kd:0.062}},
+   llm:{pg:"pop 20 · gen 5",w:"mse .30 · OS .30 · settle .30 · effort .10",budget:"44%",summary:"Settling weight raised; converged inside the narrowed ranges."}}
+];
+var RUNS_RERUN=[
+  {nfeEnd:2380,best:0.036,score:88,mse:0.0051,settle:0.79,overshoot:4.1,effort:2.02,
+   gains:{dpitch:{Kp:1.97,Ki:0.98,Kd:0.104},dyaw:{Kp:1.36,Ki:0.61,Kd:0.066}},
+   llm:{pg:"pop 20 · gen 4",w:"mse .25 · OS .45 · settle .20 · effort .10",budget:"31%",summary:"Overshoot ceiling of 5% enforced; effort rose slightly within limits."}}
+];
+var RUNS_OUTER=[
+  {nfeEnd:2480,best:0.205,score:58,mse:0.0961,settle:3.80,overshoot:21.4,effort:1.12,
+   gains:{pitch:{Kp:1.90,Ki:0.27,Kd:0.31},yaw:{Kp:1.36,Ki:0.16,Kd:0.22}},
+   llm:{pg:"pop 20 · gen 4",w:"mse .45 · OS .25 · settle .20 · effort .10",budget:"88%",summary:"First pass on the angle loops; overshoot dominates and yaw shows cross-coupling."},
+   ft:"The angle loops are overshooting into the inner loop’s bandwidth. Shrinking the Kp range and adding a control-effort penalty."},
+  {nfeEnd:3060,best:0.149,score:70,mse:0.0604,settle:3.10,overshoot:12.6,effort:0.97,
+   gains:{pitch:{Kp:2.15,Ki:0.31,Kd:0.38},yaw:{Kp:1.56,Ki:0.19,Kd:0.27}},
+   llm:{pg:"pop 20 · gen 5",w:"mse .40 · OS .30 · settle .20 · effort .10",budget:"63%",summary:"Pitch-angle overshoot still above target; Ki narrowed to reduce windup."},
+   ft:"Pitch-angle overshoot is 12.6%. Narrowing the Ki range and tightening the step weight before the final attempt."},
+  {nfeEnd:3540,best:0.118,score:79,mse:0.0338,settle:2.41,overshoot:4.1,effort:0.84,
+   gains:{pitch:{Kp:2.40,Ki:0.35,Kd:0.44},yaw:{Kp:1.72,Ki:0.21,Kd:0.31}},
+   llm:{pg:"pop 20 · gen 5",w:"mse .35 · OS .30 · settle .25 · effort .10",budget:"39%",summary:"Converged with overshoot inside the 6% target."}}
+];
+
+var LOOPS={
+  inner:{short:"inner",name:"Inner · Rate",label:"Inner loop · Rate (pitch + yaw)",baseline:0.318,target:80,nfeStart:0,ctrls:["dpitch","dyaw"],done:[],final:null},
+  outer:{short:"outer",name:"Outer · Angle",label:"Outer loop · Angle (pitch + yaw)",baseline:0.402,target:75,nfeStart:0,ctrls:["pitch","yaw"],done:[],final:null}
+};
+
+/* the live Full equation (Python) gains; Apply-to-code writes here */
+var CODE={gains:{dpitch:copy(START.dpitch),dyaw:copy(START.dyaw),pitch:copy(START.pitch),yaw:copy(START.yaw)},version:0};
+
+/* ================= state ================= */
+var S={
+  active:false, busy:false, done:false, gate:null, dock:null,
+  nfeTotal:0, seq:0, artifacts:[], openId:null, log:[],
+  sandboxUsed:false, skipOuter:false, cfg:{}, cfgCards:{}, arch:null
+};
+
+/* ================= DOM refs ================= */
+var appEl=$("#app"), chatEl=$("#chat"), headEl=$("#chatHead"), flow=$("#chatInner"), scroller=$("#chatScroll");
+var railList=$("#railList"), railCount=$("#railCount"), handle=$("#railHandle"), handleCount=$("#railHandleCount");
+var panel=$("#panel"), panelTitle=$("#panelTitle"), panelType=$("#panelType"), panelActions=$("#panelActions"), panelBody=$("#panelBody");
+var form=$("#composer"), input=$("#composerInput"), sendBtn=$("#sendBtn");
+var panelAct={};
+
+/* ================= chat primitives ================= */
+function scrollDown(){ requestAnimationFrame(function(){ scroller.scrollTop=scroller.scrollHeight; }); }
+function push(node){
+  if(S.dock && S.dock.parentNode===flow) flow.insertBefore(node,S.dock); else flow.appendChild(node);
+  scrollDown(); return node;
+}
+function logEntry(agent,loop,text,payload){
+  S.log.push({seq:++S.seq, agent:agent, loop:loop||null, nfe:Math.round(S.nfeTotal), text:text, payload:payload||{}});
+}
+function userSay(text){
+  var t=el("div","user-turn"); t.appendChild(el("div","user-bubble",esc(text))); push(t);
+}
+function agentSay(key,paras,opts){
+  opts=opts||{};
+  var a=AG[key];
+  var turn=el("div","assistant-turn");
+  if(opts.route) turn.appendChild(el("div","route",esc(opts.route)));
+  turn.appendChild(el("div","agent-tag",'<span class="em">'+a.em+'</span>'+esc(a.name)));
+  var body=el("div","assistant-text");
+  paras.forEach(function(p){ body.appendChild(el("p",null,esc(p))); });
+  turn.appendChild(body);
+  push(turn);
+  logEntry(key,opts.loop,paras.join(" "),Object.assign({message:paras.join(" ")},opts.payload||{}));
+  return turn;
+}
+function agentNote(text){ var t=el("div","assistant-turn"); t.appendChild(el("div","note",esc(text))); push(t); }
+function think(ms){
+  return new Promise(function(res){
+    var t=el("div","assistant-turn",'<div class="dots"><span></span><span></span><span></span></div>');
+    push(t);
+    setTimeout(function(){ t.remove(); res(); }, tm(ms));
+  });
+}
+
+/* quiet tool-trace: collapsed by default, expands to a few short lines */
+function makeTrace(){
+  var wrap=el("div","tool-trace");
+  var sum=el("button","tool-trace__summary"); sum.type="button"; sum.setAttribute("aria-expanded","false");
+  var list=el("div","tool-trace__list"); list.dataset.open="false";
+  wrap.appendChild(sum); wrap.appendChild(list);
+  var n=0, label="", isDone=false;
+  function paint(){
+    sum.innerHTML=(isDone?'<span class="ok-dot"></span>':'<span class="spin"></span>')+esc(label)+(n?" · "+n+" step"+(n>1?"s":""):"")+
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+  }
+  sum.addEventListener("click",function(){
+    var o=list.dataset.open==="true"; list.dataset.open=String(!o); sum.setAttribute("aria-expanded",String(!o));
+  });
+  paint();
+  return {
+    el:wrap,
+    label:function(t){ label=t; paint(); },
+    add:function(t){ n++; list.appendChild(el("div","tool-trace__item",esc(t))); paint(); },
+    done:function(t){ label=t; isDone=true; paint(); }
+  };
+}
+
+/* the single status line: sits at the bottom of the flow and updates in place */
+function openDock(){
+  var t=el("div","assistant-turn",'<div class="run-status"><span class="run-dot"></span><span class="run-text"></span></div>');
+  flow.appendChild(t); S.dock=t; chatEl.classList.add("live"); scrollDown();
+}
+function setDock(text){ if(S.dock) S.dock.querySelector(".run-text").textContent=text; }
+function closeDock(){ if(S.dock){ S.dock.remove(); S.dock=null; } chatEl.classList.remove("live"); }
+function activate(){ S.active=true; chatEl.classList.remove("is-empty"); headEl.classList.add("active"); }
+
+/* ================= artifacts ================= */
+var ICON={
+  tuning:'<svg viewBox="0 0 24 24"><path d="M3 17c3-7 5-9 9-9s6 6 9 9"/></svg>',
+  arch:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="6" rx="1"/><rect x="14" y="14" width="7" height="6" rx="1"/><path d="M10 7h4v10h-4"/></svg>',
+  sandbox:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg>',
+  code:'<span class="gl">&lt;/&gt;</span>',
+  json:'<span class="gl">{ }</span>',
+  report:'<svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg>',
+  config:'<svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></svg>'
+};
+
+/* inline chip in the chat: whole card opens the panel, pill actions do their own thing */
+function chipEl(a,o){
+  var acts=o.actions||[{label:"Open"}];
+  var b=el("div","artifact"); b.setAttribute("role","button"); b.tabIndex=0;
+  b.innerHTML='<div class="artifact__icon ico-'+a.kind+'">'+ICON[a.kind]+'</div>'+
+    '<div class="artifact__body"><div class="artifact__title">'+esc(o.title||a.title)+'</div><div class="artifact__type">'+esc(o.sub||a.type)+'</div></div>'+
+    '<div class="chip-actions">'+acts.map(function(x,i){ return '<span class="artifact__action" data-i="'+i+'">'+esc(x.label)+'</span>'; }).join("")+'</div>';
+  b.addEventListener("click",function(e){
+    var t=e.target.closest(".artifact__action");
+    if(t){ e.stopPropagation(); var act=acts[+t.dataset.i]; if(act && act.fn){ act.fn(); return; } }
+    openArtifact(a.id);
+  });
+  b.addEventListener("keydown",function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); openArtifact(a.id); } });
+  return b;
+}
+
+function addArtifact(o,container){
+  var a={id:o.id, kind:o.kind, title:o.title, type:o.type, data:o.data||{}};
+  S.artifacts.push(a);
+  renderRail();
+  if(o.inline){
+    var chip=chipEl(a,{title:o.chipTitle, sub:o.chipSub, actions:o.actions});
+    if(container) container.appendChild(chip);
+    else { var t=el("div","assistant-turn"); t.appendChild(chip); push(t); }
+  }
+  return a;
+}
+
+function renderRail(){
+  railList.innerHTML="";
+  S.artifacts.forEach(function(a){
+    var b=el("button","rail-item"); b.type="button"; b.setAttribute("aria-pressed",String(S.openId===a.id));
+    b.innerHTML='<div class="artifact__icon ico-'+a.kind+'">'+ICON[a.kind]+'</div>'+
+      '<div class="artifact__body"><div class="artifact__title">'+esc(a.title)+'</div><div class="artifact__type">'+esc(a.type)+'</div>'+
+      (a.kind==="tuning"?sparkSvg(a):"")+'</div>';
+    b.addEventListener("click",function(){ openArtifact(a.id); });
+    railList.appendChild(b);
+  });
+  railCount.textContent=String(S.artifacts.length);
+  handleCount.textContent=String(S.artifacts.length);
+  handle.hidden = S.artifacts.length===0;
+}
+
+/* ================= series helpers (deterministic, built from the attempt results) ================= */
+function bandsFor(key,idx){
+  var L=LOOPS[key], out=[], p=L.nfeStart;
+  for(var i=0;i<=idx;i++){ var r=L.done[i]; out.push({x0:p,x1:r.nfeEnd,label:"A"+(i+1)}); p=r.nfeEnd; }
+  return out;
+}
+function costPts(key,upTo){
+  var L=LOOPS[key], out=[], pn=L.nfeStart, pb=L.baseline;
+  for(var i=0;i<=upTo;i++){
+    var r=L.done[i], rnd=seeded(17+i*5+(key==="outer"?40:0));
+    for(var s=0;s<=14;s++){
+      if(i>0 && s===0) continue;
+      var t=s/14, x=pn+(r.nfeEnd-pn)*t;
+      var y=pb+(r.best-pb)*(1-Math.exp(-3*t))/(1-Math.exp(-3)) + (rnd()-0.5)*0.004*(1-t);
+      out.push([x,Math.max(y,r.best*0.9)]);
+    }
+    pn=r.nfeEnd; pb=r.best;
+  }
+  return out;
+}
+function gainPts(key,upTo,ctrl,param){
+  var L=LOOPS[key], out=[], pn=L.nfeStart, pv=START[ctrl][param];
+  for(var i=0;i<=upTo;i++){
+    var r=L.done[i], tgt=r.gains[ctrl][param];
+    for(var s=0;s<=10;s++){
+      if(i>0 && s===0) continue;
+      var t=s/10, e=t*t*(3-2*t);
+      out.push([pn+(r.nfeEnd-pn)*t, pv+(tgt-pv)*e]);
+    }
+    pn=r.nfeEnd; pv=tgt;
+  }
+  return out;
+}
+function sparkSvg(a){
+  var L=LOOPS[a.data.loop], idx=a.data.idx<0?L.done.length-1:a.data.idx;
+  var pts=costPts(a.data.loop,idx);
+  var xs=pts.map(function(p){ return p[0]; }), ys=pts.map(function(p){ return p[1]; });
+  var x0=Math.min.apply(null,xs), x1=Math.max.apply(null,xs), y0=Math.min.apply(null,ys), y1=Math.max.apply(null,ys);
+  var d=pts.map(function(p,i){
+    return (i?"L":"M")+(((p[0]-x0)/((x1-x0)||1))*220).toFixed(1)+","+(24-((p[1]-y0)/((y1-y0)||1))*22).toFixed(1);
+  }).join("");
+  return '<svg class="spark" viewBox="0 0 220 26" preserveAspectRatio="none"><path d="'+d+'"/></svg>';
+}
+function makeCfg(key){
+  return {optimizer:"Agentic GA", llm:"gpt-4o-mini", maxAttempts:5, wallClock:150, budget:1, history:3,
+    variant:"elaborate", seed:42, webSearch:false, pop:20, gens:15,
+    objective: key==="inner" ? "Stabilize rates with minimal overshoot, settle <1s" : "Track angle setpoints with minimal cross-coupling, settle <3s",
+    _editing:false};
+}
+
+/* ================= SVG line chart (hand-drawn, no library) ================= */
+function lineChart(o){
+  var W=o.w||560, H=o.h||170, pl=44, pr=10, pt=10, pb=22;
+  var all=[]; o.series.forEach(function(s){ s.pts.forEach(function(p){ all.push(p); }); });
+  var x0=o.x0!==undefined?o.x0:Math.min.apply(null,all.map(function(p){return p[0];}));
+  var x1=o.x1!==undefined?o.x1:Math.max.apply(null,all.map(function(p){return p[0];}));
+  var y0=o.y0!==undefined?o.y0:Math.min.apply(null,all.map(function(p){return p[1];}));
+  var y1=o.y1!==undefined?o.y1:Math.max.apply(null,all.map(function(p){return p[1];}));
+  if(x1===x0) x1=x0+1;
+  if(y1===y0) y1=y0+1;
+  if(o.y0===undefined || o.y1===undefined){
+    var pad=(y1-y0)*0.08;
+    if(o.y0===undefined) y0-=pad;
+    if(o.y1===undefined) y1+=pad;
+  }
+  function X(x){ return pl+(x-x0)/(x1-x0)*(W-pl-pr); }
+  function Y(y){ return pt+(1-(y-y0)/(y1-y0))*(H-pt-pb); }
+  var yFmt=o.yFmt||function(n){ return n.toFixed(2); };
+  var xFmt=o.xFmt||function(n){ return String(Math.round(n)); };
+  var g="";
+  (o.bands||[]).forEach(function(b,i){
+    var xa=X(b.x0), xb=X(b.x1);
+    g+='<rect x="'+xa.toFixed(1)+'" y="'+pt+'" width="'+Math.max(0,xb-xa).toFixed(1)+'" height="'+(H-pt-pb)+'" fill="'+(i%2?"rgba(255,255,255,0.02)":"rgba(255,255,255,0.05)")+'"/>';
+    g+='<text class="ax" x="'+((xa+xb)/2).toFixed(1)+'" y="'+(pt+10)+'" text-anchor="middle">'+b.label+'</text>';
+  });
+  for(var k=0;k<=3;k++){
+    var v=y0+(y1-y0)*k/3, yy=Y(v).toFixed(1);
+    g+='<line class="grid" x1="'+pl+'" x2="'+(W-pr)+'" y1="'+yy+'" y2="'+yy+'"/>';
+    g+='<text class="ax" x="'+(pl-6)+'" y="'+(parseFloat(yy)+3).toFixed(1)+'" text-anchor="end">'+yFmt(v)+'</text>';
+  }
+  for(var j=0;j<=4;j++){
+    var xv=x0+(x1-x0)*j/4;
+    g+='<text class="ax" x="'+X(xv).toFixed(1)+'" y="'+(H-6)+'" text-anchor="middle">'+xFmt(xv)+'</text>';
+  }
+  g+='<line class="axis" x1="'+pl+'" x2="'+pl+'" y1="'+pt+'" y2="'+(H-pb)+'"/>';
+  g+='<line class="axis" x1="'+pl+'" x2="'+(W-pr)+'" y1="'+(H-pb)+'" y2="'+(H-pb)+'"/>';
+  o.series.forEach(function(s){
+    if(!s.pts.length) return;
+    var d=s.pts.map(function(p,i){ return (i?"L":"M")+X(p[0]).toFixed(1)+","+Y(p[1]).toFixed(1); }).join("");
+    g+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="'+(s.w||1.6)+'" stroke-linejoin="round" stroke-linecap="round"'+(s.dash?' stroke-dasharray="'+s.dash+'"':"")+'/>';
+  });
+  return '<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(o.label||"chart")+'">'+g+'</svg>';
+}
+
+/* ================= tuning artifact (cost, gains, metrics, LLM summary) ================= */
+function gainCard(key,idx,param){
+  var L=LOOPS[key], cur=L.done[idx], cols=["#60a5fa","#4ade80"];
+  var series=L.ctrls.map(function(c,ci){ return {color:cols[ci], w:1.5, pts:gainPts(key,idx,c,param)}; });
+  var heads=L.ctrls.map(function(c,ci){
+    return '<b style="color:'+cols[ci]+';font-weight:500">'+CTRL_SHORT[c]+' '+cur.gains[c][param].toFixed(param==="Kd"?3:2)+'</b>';
+  }).join(" ");
+  return '<div class="gain-card"><div class="gain-card__t"><span style="font-size:12px;color:var(--text);font-weight:500;font-family:inherit">'+param+'</span><span>'+heads+'</span></div>'+
+    lineChart({label:param+" vs NFE", series:series, bands:bandsFor(key,idx), x0:L.nfeStart, x1:cur.nfeEnd, w:260, h:140,
+      yFmt:function(v){ return v.toFixed(param==="Kd"?2:1); }, xFmt:fmtK})+'</div>';
+}
+function viewTuning(a){
+  var key=a.data.loop, L=LOOPS[key], idx=a.data.idx<0?L.done.length-1:a.data.idx, cur=L.done[idx], cfg=S.cfg[key], pt=PERF[key];
+  function tile(k,v,s,cls){ return '<div class="tile'+(cls?" "+cls:"")+'"><div class="tile__k">'+k+'</div><div class="tile__v">'+v+'</div><div class="tile__s">'+s+'</div></div>'; }
+  function ok(v,t){ return v<=t?"ok":"warn"; }
+  var costChart=lineChart({label:"Best cost vs NFE", series:[{color:"#e5e5e5",w:1.8,pts:costPts(key,idx)}], bands:bandsFor(key,idx),
+    x0:L.nfeStart, x1:cur.nfeEnd, y0:0, yFmt:function(v){ return v.toFixed(2); }, xFmt:fmtK});
+  var status=tile("Attempt",(idx+1)+" / "+cfg.maxAttempts,"","")+
+    tile("Cumulative NFE",fmt(cur.nfeEnd),"loop start "+fmt(L.nfeStart),"")+
+    tile("Best cost",cur.best.toFixed(3),"baseline "+L.baseline.toFixed(3),"")+
+    tile("Success score",cur.score+"/100","target "+L.target,"");
+  var perf=tile("mse",cur.mse.toFixed(4),"target ≤ "+pt.mse,ok(cur.mse,pt.mse))+
+    tile("settling_time",cur.settle.toFixed(2)+" s","target ≤ "+pt.settling_time+" s",ok(cur.settle,pt.settling_time))+
+    tile("overshoot",cur.overshoot.toFixed(1)+" %","target ≤ "+pt.overshoot+" %",ok(cur.overshoot,pt.overshoot))+
+    tile("control_effort",cur.effort.toFixed(2),"target ≤ "+pt.control_effort,ok(cur.effort,pt.control_effort));
+  var pills=["Optimizer "+cfg.optimizer,"Model "+cfg.llm,"Max attempts "+cfg.maxAttempts,"Wall clock "+cfg.wallClock+" s",
+    "Cost budget $"+cfg.budget.toFixed(2),"Variant "+cfg.variant,"Seed "+cfg.seed].map(function(p){ return '<span class="pill">'+esc(p)+'</span>'; }).join("");
+  var gains=["Kp","Ki","Kd"].map(function(p){ return gainCard(key,idx,p); }).join("");
+  var rows=L.done.slice(0,idx+1).map(function(r,i){
+    return '<tr><td>A'+(i+1)+'</td><td>'+r.llm.pg+'</td><td>'+r.llm.w+'</td><td>'+r.llm.budget+'</td><td>'+r.score+'/100</td></tr>';
+  }).join("");
+  return '<div class="pv">'+
+    '<div class="pills">'+pills+'</div>'+
+    '<div class="stat-grid">'+status+'</div>'+
+    '<div class="sec-title">Performance metrics</div>'+
+    '<div class="stat-grid">'+perf+'</div>'+
+    '<div class="sec-title">Best cost vs NFE</div>'+
+    '<div class="plot">'+costChart+'</div>'+
+    '<div class="sec-title">Kp / Ki / Kd vs NFE · shaded bands are per-attempt search windows</div>'+
+    '<div class="gain-grid">'+gains+'</div>'+
+    '<div class="sec-title">LLM summary</div>'+
+    '<p class="llm-line">'+esc(cur.llm.summary)+'</p>'+
+    '<details class="att-wrap"><summary>Attempt-by-attempt summaries</summary>'+
+      '<table class="att"><thead><tr><th>Attempt</th><th>Pop / gen</th><th>Cost weights</th><th>Budget left</th><th>Score</th></tr></thead><tbody>'+rows+'</tbody></table></details>'+
+    '<button type="button" class="link-btn" data-view="decisions" data-loop="'+key+'">View full decision log →</button>'+
+  '</div>';
+}
+
+/* ================= architecture / block diagram (inline SVG, attributes only so it exports cleanly) ================= */
+function archSvg(final){
+  function pg(key,c){
+    if(!final) return "PID · tuning pending";
+    var L=LOOPS[key], g=L.done[L.done.length-1].gains[c];
+    return "Kp "+g.Kp.toFixed(2)+" · Ki "+g.Ki.toFixed(2)+" · Kd "+g.Kd.toFixed(3);
+  }
+  function box(x,y,name,sub){
+    return '<rect x="'+x+'" y="'+y+'" width="190" height="52" rx="10" fill="#2b2b2b" stroke="#4a4a4a"/>'+
+      '<text x="'+(x+95)+'" y="'+(y+22)+'" text-anchor="middle" fill="#ececec" font-size="13">'+name+'</text>'+
+      '<text x="'+(x+95)+'" y="'+(y+40)+'" text-anchor="middle" fill="#8e8e8e" font-size="10" font-family="IBM Plex Mono, monospace">'+sub+'</text>';
+  }
+  var arrow='fill="none" stroke="#9a9a9a" stroke-width="1.5" marker-end="url(#ah)"';
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" font-family="-apple-system, Segoe UI, Roboto, sans-serif">'+
+    '<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9a9a9a"/></marker></defs>'+
+    '<rect x="24" y="16" width="496" height="112" rx="12" fill="rgba(255,255,255,0.02)" stroke="#3a3a3a"/>'+
+    '<text x="40" y="38" fill="#8e8e8e" font-size="11">Outer · Angle</text>'+
+    '<text x="504" y="38" fill="#6b6b6b" font-size="10" text-anchor="end">'+(final?"FINAL":"PROPOSED")+'</text>'+
+    box(56,60,"pitch-angle",pg("outer","pitch"))+box(290,60,"yaw-angle",pg("outer","yaw"))+
+    '<rect x="24" y="180" width="496" height="112" rx="12" fill="rgba(255,255,255,0.02)" stroke="#3a3a3a"/>'+
+    '<text x="40" y="202" fill="#8e8e8e" font-size="11">Inner · Rate</text>'+
+    box(56,224,"pitch-rate",pg("inner","dpitch"))+box(290,224,"yaw-rate",pg("inner","dyaw"))+
+    '<rect x="56" y="330" width="424" height="44" rx="10" fill="#1e1e1e" stroke="#4a4a4a"/>'+
+    '<text x="268" y="356" text-anchor="middle" fill="#b4b4b4" font-size="12">Quanser 2-DOF helicopter · plant</text>'+
+    '<path d="M151,112 L151,222" '+arrow+'/><path d="M385,112 L385,222" '+arrow+'/>'+
+    '<text x="160" y="170" fill="#6b6b6b" font-size="10">setpoint</text><text x="394" y="170" fill="#6b6b6b" font-size="10">setpoint</text>'+
+    '<path d="M151,276 L151,328" '+arrow+'/><path d="M385,276 L385,328" '+arrow+'/>'+
+    '<text x="160" y="306" fill="#6b6b6b" font-size="10">V_p</text><text x="394" y="306" fill="#6b6b6b" font-size="10">V_y</text>'+
+    '<path d="M480,352 L612,352 L612,86 L480,86" fill="none" stroke="#6b6b6b" stroke-dasharray="4 3" marker-end="url(#ah)"/>'+
+    '<text x="598" y="200" fill="#6b6b6b" font-size="10" text-anchor="middle">θ, ψ</text>'+
+    '</svg>';
+}
+function viewArch(a){
+  return '<div class="pv"><div class="arch-wrap">'+archSvg(a.data.final)+'</div>'+
+    '<p class="cap">'+(a.data.final
+      ? "Final cascade. Each outer controller’s output sets the matching inner setpoint, and inner outputs drive the plant voltages."
+      : "Proposed cascade, for confirmation before tuning. Each outer controller’s output will set the matching inner setpoint, and inner outputs drive the plant voltages.")+'</p></div>';
+}
+
+/* ================= Full equation (Python) ================= */
+function codeLines(){
+  var G=CODE.gains;
+  function k(s){ return '<span class="tok-kw">'+s+'</span>'; }
+  function n(s){ return '<span class="tok-num">'+s+'</span>'; }
+  function c(s){ return '<span class="tok-cm">'+s+'</span>'; }
+  function q(s){ return '<span class="tok-str">'+s+'</span>'; }
+  function f(s){ return '<span class="tok-fn">'+s+'</span>'; }
+  function p(s){ return '<span class="tok-param">'+s+'</span>'; }
+  function ctrlLine(name,g,lim){
+    return '    '+q('"'+name+'"')+': {'+q('"Kp"')+': '+n(g.Kp.toFixed(2))+', '+q('"Ki"')+': '+n(g.Ki.toFixed(2))+', '+
+      q('"Kd"')+': '+n(g.Kd.toFixed(3))+', '+q('"u_min"')+': '+n(lim[0].toFixed(1))+', '+q('"u_max"')+': '+n(lim[1].toFixed(1))+'},';
+  }
+  return [
+    k("import")+" numpy "+k("as")+" np",
+    "",
+    c("# MuloDesigner · Quanser 2-DOF helicopter · full cascade"),
+    c("# Outer · Angle outputs become the setpoints of Inner · Rate"),
+    "",
+    c("# Physical parameters (Quanser datasheet)"),
+    "Mp  = "+n("1.3872")+"      "+c("# kg    helicopter body mass"),
+    "Jp  = "+n("0.0384")+"      "+c("# kg·m² pitch inertia"),
+    "Jy  = "+n("0.0432")+"      "+c("# kg·m² yaw inertia"),
+    "lcm = "+n("0.186")+"       "+c("# m     center-of-mass distance"),
+    "Kpp = "+n("0.204")+"       "+c("# N·m/V pitch thrust gain"),
+    "Kyy = "+n("0.072")+"       "+c("# N·m/V yaw thrust gain"),
+    "Kpy = "+n("0.0068")+"      "+c("# N·m/V cross-coupling"),
+    "Kyp = "+n("0.0219")+"      "+c("# N·m/V cross-coupling"),
+    "Bp  = "+n("0.800")+"       "+c("# N·m·s/rad pitch damping"),
+    "By  = "+n("0.318")+"       "+c("# N·m·s/rad yaw damping"),
+    "g   = "+n("9.81"),
+    "",
+    c("# Inner · Rate: parallel PID controllers, one per controlled variable"),
+    "INNER_RATE = {",
+    ctrlLine("dpitch",G.dpitch,[-5,5]),
+    ctrlLine("dyaw",G.dyaw,[-5,5]),
+    "}",
+    "",
+    c("# Outer · Angle: outputs feed the inner-loop setpoints"),
+    "OUTER_ANGLE = {",
+    ctrlLine("pitch",G.pitch,[-1,1]),
+    ctrlLine("yaw",G.yaw,[-1,1]),
+    "}",
+    "",
+    k("def")+" "+f("pid")+"("+p("ctrl")+", "+p("error")+", "+p("integral")+", "+p("d_error")+", "+p("dt")+"):",
+    "    "+q('"""Parallel PID with saturation. Returns (u, integral)."""'),
+    "    integral += error * dt",
+    "    u = ctrl["+q('"Kp"')+"] * error + ctrl["+q('"Ki"')+"] * integral + ctrl["+q('"Kd"')+"] * d_error",
+    "    "+k("return")+" "+f("float")+"(np.clip(u, ctrl["+q('"u_min"')+"], ctrl["+q('"u_max"')+"])), integral",
+    "",
+    k("def")+" "+f("dynamics")+"("+p("t")+", "+p("x")+", "+p("u")+"):",
+    "    "+q('"""Nonlinear dynamics. x = [theta, psi, theta_dot, psi_dot], u = [V_p, V_y]."""'),
+    "    theta, psi, theta_d, psi_d = x",
+    "    Vp, Vy = u",
+    "    theta_dd = ((Kpp * Vp + Kpy * Vy) - Bp * theta_d - Mp * g * lcm * np.cos(theta)) / Jp",
+    "    psi_dd = ((Kyy * Vy + Kyp * Vp) * np.cos(theta) - By * psi_d) / Jy",
+    "    "+k("return")+" np.array([theta_d, psi_d, theta_dd, psi_dd])",
+    "",
+    c("# Cascade wiring: outer outputs become inner setpoints; inner outputs drive V_p, V_y")
+  ];
+}
+function plain(h){ var d=document.createElement("div"); d.innerHTML=h; return d.textContent; }
+function codeText(){ return plain(codeLines().join("\n")); }
+function viewCode(){
+  var lines=codeLines();
+  return '<div class="pv pv--code"><div class="code-gutter">'+lines.map(function(_,i){ return '<span>'+(i+1)+'</span>'; }).join("")+
+    '</div><pre class="code-source">'+lines.join("\n")+'</pre></div>';
+}
+
+/* ================= structure JSON (collapsible tree) ================= */
+function structureObj(){
+  var c=S.cfg.inner||makeCfg("inner");
+  return {
+    system:"Quanser 2-DOF helicopter",
+    plant:{states:["theta","psi","theta_dot","psi_dot"], inputs:["V_p","V_y"]},
+    cascade:[
+      {order:1, loop:"inner_rate_control", name:"Inner · Rate", controllers:[
+        {id:"dpitch", label:"pitch-rate", drives:"plant.V_p", setpoint_from:"outer_angle_control.pitch"},
+        {id:"dyaw", label:"yaw-rate", drives:"plant.V_y", setpoint_from:"outer_angle_control.yaw"}]},
+      {order:2, loop:"outer_angle_control", name:"Outer · Angle", controllers:[
+        {id:"pitch", label:"pitch-angle", feeds:"inner_rate_control.dpitch.setpoint"},
+        {id:"yaw", label:"yaw-angle", feeds:"inner_rate_control.dyaw.setpoint"}]}
+    ],
+    optimizer:{choice:c.optimizer, llm:c.llm, max_attempts:c.maxAttempts, wall_clock_s:c.wallClock,
+      cost_budget_usd:c.budget, history_buffer_size:c.history, prompt_variant:c.variant, random_seed:c.seed},
+    targets:PERF,
+    status:{inner:LOOPS.inner.done.length?"tuned":"pending", outer:S.skipOuter?"skipped":(LOOPS.outer.done.length?"tuned":"pending")}
+  };
+}
+function jt(v,key,depth){
+  if(v!==null && typeof v==="object"){
+    var arr=Array.isArray(v), keys=Object.keys(v);
+    var head=(key!==null?'<span class="jk">'+esc(key)+'</span>: ':"")+'<span class="jp">'+(arr?"[":"{")+'</span>';
+    var body=keys.map(function(k){ return jt(v[k], arr?null:k, depth+1); }).join("");
+    return '<details class="jn"'+(depth<2?" open":"")+'><summary>'+head+' <span class="jm">'+keys.length+(arr?" items":" keys")+'</span></summary>'+
+      '<div class="jc">'+body+'</div><div class="jp" style="padding-left:18px">'+(arr?"]":"}")+'</div></details>';
+  }
+  var val=typeof v==="string" ? '<span class="tok-str">"'+esc(v)+'"</span>' : '<span class="tok-num">'+esc(String(v))+'</span>';
+  return '<div class="jl">'+(key!==null?'<span class="jk">'+esc(key)+'</span>: ':"")+val+'</div>';
+}
+function viewJson(){ return '<div class="pv">'+jt(structureObj(),null,0)+'</div>'; }
+
+/* ================= comparison report ================= */
+function loopRow(key){
+  var L=LOOPS[key]; if(!L.done.length) return null;
+  var r=L.done[L.done.length-1], pt=PERF[key];
+  var met=[r.mse<=pt.mse, r.settle<=pt.settling_time, r.overshoot<=pt.overshoot, r.effort<=pt.control_effort].filter(Boolean).length;
+  return '<tr><td>'+esc(L.label)+'</td><td class="num">'+L.done.length+'</td><td class="num">'+r.best.toFixed(3)+'</td><td class="num">'+r.score+'/100</td>'+
+    '<td class="num">'+r.mse.toFixed(4)+'</td><td class="num">'+r.settle.toFixed(2)+'</td><td class="num">'+r.overshoot.toFixed(1)+'</td><td class="num">'+r.effort.toFixed(2)+'</td><td class="num">'+met+'/4</td></tr>';
+}
+function viewReport(){
+  var rows=(loopRow("inner")||"")+(loopRow("outer")||'<tr><td>Outer · Angle loop</td><td colspan="8" class="note-i">skipped</td></tr>');
+  var rerun=LOOPS.inner.done.length>3;
+  var summary='<p class="llm-line">Inner loop: '+LOOPS.inner.done.length+' attempts'+(rerun?", including one re-run under the 5% overshoot ceiling":"")+
+    '. '+(S.skipOuter?"Outer loop skipped.":"Outer loop: "+LOOPS.outer.done.length+" attempts, target met on the last one.")+'</p>';
+  var opt='<table class="rep"><thead><tr><th>Inner loop</th><th>Agentic GA (gpt-4o-mini)</th><th>PSO Optimizer (pop 20, gen 15)</th></tr></thead><tbody>'+
+    '<tr><td>Best cost</td><td class="num">0.041</td><td class="num">0.052</td></tr>'+
+    '<tr><td>Score</td><td class="num">84/100</td><td class="num">79/100</td></tr>'+
+    '<tr><td>Cumulative NFE</td><td class="num">1,910</td><td class="num">300</td></tr>'+
+    '<tr><td>LLM spend</td><td class="num">$0.38</td><td class="num">$0.00</td></tr></tbody></table>';
+  return '<div class="pv"><div class="sec-title">Loop results</div>'+
+    '<div style="overflow-x:auto"><table class="rep"><thead><tr><th>Loop</th><th>Attempts</th><th>Best cost</th><th>Score</th><th>mse</th><th>settling (s)</th><th>overshoot (%)</th><th>effort</th><th>Targets</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    summary+
+    '<div class="sec-title">Optimizer comparison</div><div style="overflow-x:auto">'+opt+'</div>'+
+    '<p class="note-i">The PSO column is an illustrative placeholder. No PSO run was executed in this prototype.</p></div>';
+}
+function printReport(){
+  document.body.classList.add("printing");
+  try { window.print(); } catch(e) {}
+  setTimeout(function(){ document.body.classList.remove("printing"); }, 400);
+}
+
+/* ================= config: full settings reachable from the panel ================= */
+function field(label,inner){ return '<div class="lab-field"><label>'+label+'</label>'+inner+'</div>'; }
+function stepper(ctx,path,step,dec){
+  var root=rootFor(ctx), v=root?parseFloat(getPath(root,path)):0; if(isNaN(v)) v=0;
+  var attrs=' data-ctx="'+ctx+'" data-path="'+path+'" data-dec="'+dec+'"';
+  return '<div class="lab-stepper"><button type="button" data-step="'+(-step)+'"'+attrs+' aria-label="Decrease">−</button>'+
+    '<input type="number" step="'+step+'" value="'+v.toFixed(dec)+'" data-ctx="'+ctx+'" data-path="'+path+'" data-type="num" aria-label="'+esc(path)+'"/>'+
+    '<button type="button" data-step="'+step+'"'+attrs+' aria-label="Increase">+</button></div>';
+}
+function viewConfig(a){
+  var key=a.data.key, c=S.cfg[key], ctx="cfg:"+key;
+  function sel(path,opts){
+    return '<select class="lab-select" data-ctx="'+ctx+'" data-path="'+path+'">'+opts.map(function(o){
+      return '<option'+(o===c[path]?" selected":"")+'>'+esc(o)+'</option>';
+    }).join("")+'</select>';
+  }
+  var web='<label class="switch"><input type="checkbox" data-ctx="'+ctx+'" data-path="webSearch"'+(c.webSearch?" checked":"")+'/><span class="track"></span>'+(c.webSearch?"On":"Off")+'</label>';
+  return '<div class="pv"><div class="note-i">Full run settings for '+esc(LOOPS[key].label)+'. Edits update the proposed config card in chat.</div>'+
+    '<div class="lab-grid">'+
+      field("Optimizer",sel("optimizer",OPTIMIZERS))+
+      field("LLM model",sel("llm",LLMS))+
+      field("Max attempts",stepper(ctx,"maxAttempts",1,0))+
+      field("Max wall clock (s)",stepper(ctx,"wallClock",10,0))+
+      field("Max cost budget ($)",stepper(ctx,"budget",0.1,2))+
+      field("History buffer size",stepper(ctx,"history",1,0))+
+      field("Prompt variant",sel("variant",["elaborate","concise"]))+
+      field("Random seed",stepper(ctx,"seed",1,0))+
+      field("Population size (PSO)",stepper(ctx,"pop",1,0))+
+      field("Generations (PSO)",stepper(ctx,"gens",1,0))+
+      field("Web search",web)+
+    '</div><div class="sec-title">Control objective</div>'+
+    '<textarea class="cfg-text" rows="2" data-ctx="'+ctx+'" data-path="objective" data-type="str">'+esc(c.objective)+'</textarea></div>';
+}
+
+/* ================= agent decision log (reverse-chronological, collapsed entries) ================= */
+function viewDecisions(loop){
+  var items=S.log.filter(function(e){ return !e.loop || e.loop===loop; }).slice().reverse();
+  if(!items.length) return '<div class="pv"><div class="empty-plot">No decisions logged yet.</div></div>';
+  return '<div class="pv">'+items.map(function(e){
+    var A=AG[e.agent], txt=e.text.length>96 ? e.text.slice(0,93)+"…" : e.text;
+    return '<details class="dec"><summary><span class="em">'+A.em+'</span><span class="who">'+esc(A.name)+'</span>'+
+      '<span class="when">NFE '+fmt(e.nfe)+'</span><span class="what">'+esc(txt)+'</span></summary>'+
+      '<pre class="dec-json">'+esc(JSON.stringify(e.payload,null,2))+'</pre></details>';
+  }).join("")+'</div>';
+}
+
+/* ================= Simulation Lab (sandbox) ================= */
+var SIGF={
+  step:[["amp","Amp",0.1,1],["t0","t0 (s)",0.1,1]],
+  ramp:[["slope","Slope",0.1,2],["t0","t0 (s)",0.1,1]],
+  sine:[["amp","Amp",0.1,1],["freq","f (Hz)",0.05,2],["phase","φ (rad)",0.1,2],["offset","Offset",0.1,1]],
+  regulate:[["sp","Setpoint",0.1,1],["offset","Offset",0.1,1]],
+  pulse:[["amp","Amp",0.1,1],["t0","t0 (s)",0.1,1],["width","Width (s)",0.1,1]]
+};
+function sigFields(d){
+  return (SIGF[d.sig]||[]).map(function(f){ return field(f[1],stepper("sb","sigp."+f[0],f[2],f[3])); }).join("");
+}
+function viewSandbox(a){
+  var d=a.data, ctrls=["dpitch","dyaw"], sigs=["step","ramp","sine","regulate","pulse"], base="gains."+d.ctrl+".";
+  var copts=ctrls.map(function(c){ return '<option value="'+c+'"'+(c===d.ctrl?" selected":"")+'>'+esc(CTRL_NAME[c])+'</option>'; }).join("");
+  var sopts=sigs.map(function(s){ return '<option value="'+s+'"'+(s===d.sig?" selected":"")+'>'+s+'</option>'; }).join("");
+  return '<div class="pv">'+
+    '<div class="lab-card">'+
+      '<div class="lab-head"><span class="dot"></span>Simulation Lab<span class="lab-head__sub">'+esc(CTRL_SHORT[d.ctrl])+'</span></div>'+
+      '<div class="lab-grid" style="grid-template-columns:minmax(0,1fr)">'+field("Controller",'<select class="lab-select" data-ctx="sb" data-path="ctrl" data-role="ctrl">'+copts+'</select>')+'</div>'+
+      '<div class="lab-section">PID gains</div>'+
+      '<div class="lab-grid">'+field("Kp",stepper("sb",base+"Kp",0.05,2))+field("Ki",stepper("sb",base+"Ki",0.05,2))+field("Kd",stepper("sb",base+"Kd",0.005,3))+'</div>'+
+      '<div class="lab-section">Saturation</div>'+
+      '<div class="lab-grid lab-grid--sat"><label class="chk"><input type="checkbox" data-ctx="sb" data-path="sat.on"'+(d.sat.on?" checked":"")+'/> Enable</label>'+
+        field("min",stepper("sb","sat.min",0.5,1))+field("max",stepper("sb","sat.max",0.5,1))+'</div>'+
+      '<div class="lab-section">Test signal</div>'+
+      '<div class="lab-grid">'+field("Wave",'<select class="lab-select" data-ctx="sb" data-path="sig" data-role="sig">'+sopts+'</select>')+
+        field("T (s)",stepper("sb","T",0.5,1))+sigFields(d)+'</div>'+
+      '<div class="lab-actions"><button type="button" class="btn-primary" data-do="sb-run">▶ Run sim</button>'+
+        '<button type="button" class="btn-ghost" data-do="sb-apply">Apply to code</button>'+
+        '<button type="button" class="btn-ghost" data-do="sb-reset">Reset to original</button></div>'+
+    '</div>'+
+    '<div class="lab-status" id="sbStatus"></div>'+
+    '<div class="lab-plot" id="sbPlot"></div>'+
+    '<div class="lab-metrics" id="sbMetrics"></div>'+
+    '<div class="sec-title">Sandbox sessions</div><div id="sbSessions"></div>'+
+  '</div>';
+}
+function simulate(g,d){
+  var T=Math.max(0.5,d.T), dt=0.01, N=Math.round(T/dt);
+  var wn=2+2.5*Math.sqrt(Math.max(g.Kp,0.05));
+  var z=Math.min(1.2,Math.max(0.1,0.15+6.2*g.Kd));
+  var sat=d.sat, p=d.sigp, sig=d.sig;
+  function ref(t){
+    var r=0;
+    if(sig==="step") r=t>=p.t0?p.amp:0;
+    else if(sig==="ramp") r=t>=p.t0?p.slope*(t-p.t0):0;
+    else if(sig==="sine") r=p.amp*Math.sin(2*Math.PI*p.freq*t+p.phase)+p.offset;
+    else if(sig==="regulate") r=p.sp+p.offset;
+    else if(sig==="pulse") r=(t>=p.t0 && t<p.t0+p.width)?p.amp:0;
+    if(sat.on) r=Math.max(sat.min,Math.min(sat.max,r));
+    return r;
+  }
+  var y=0, v=0, ts=[], ys=[], rs=[], peak=-Infinity;
+  for(var i=0;i<=N;i++){
+    var t=i*dt, r=ref(t);
+    ts.push(t); ys.push(y); rs.push(r); if(y>peak) peak=y;
+    var acc=wn*wn*(r-y)-2*z*wn*v;
+    v+=acc*dt; y+=v*dt;
+  }
+  var fin=rs[rs.length-1], os=null, st=null;
+  if((sig==="step"||sig==="regulate") && Math.abs(fin)>1e-6){
+    os=Math.max(0,(peak-fin)/Math.abs(fin)*100);
+    var band=0.02*Math.abs(fin), last=0;
+    for(var j=0;j<ys.length;j++) if(Math.abs(ys[j]-fin)>band) last=ts[j];
+    st=last;
+  }
+  var trim=sig==="regulate"?p.sp+p.offset:(sig==="sine"?p.offset:0);
+  return {ts:ts, ys:ys, rs:rs, trim:trim, overshoot:os, settle:st, peak:peak, T:T, sig:sig};
+}
+function plotBlock(r){
+  var svg=lineChart({label:"Simulation response", h:230, w:600, x0:0, x1:r.T, xFmt:function(v){ return v.toFixed(0)+"s"; },
+    yFmt:function(v){ return v.toFixed(2); }, series:[
+      {color:"#60a5fa", w:1.8, pts:r.ts.map(function(t,i){ return [t,r.ys[i]]; })},
+      {color:"#a3a3a3", w:1.4, dash:"5 4", pts:r.ts.map(function(t,i){ return [t,r.rs[i]]; })},
+      {color:"#4ade80", w:1.2, dash:"1 3", pts:[[0,r.trim],[r.T,r.trim]]}
+    ]});
+  return '<div class="lab-legend"><span><i style="background:#60a5fa"></i> Actual value</span>'+
+    '<span><i style="background:#a3a3a3"></i> Reference setpoint</span><span><i style="background:#4ade80"></i> Trim operating point</span></div>'+svg;
+}
+function sbDraw(flash){
+  var a=curArt(); if(!a || a.kind!=="sandbox") return;
+  var d=a.data, plot=$("#sbPlot"); if(!plot) return;
+  var r=d.last;
+  plot.innerHTML = r ? plotBlock(r) : '<div class="empty-plot">Run a simulation to see the response.</div>';
+  if(flash){ plot.classList.remove("flash"); void plot.offsetWidth; plot.classList.add("flash"); }
+  $("#sbStatus").innerHTML='<span class="dot"></span><code>'+esc(d.sig)+'</code> · <code>u['+esc(CTRL_SHORT[d.ctrl])+']</code> · t ∈ [0, '+d.T.toFixed(2)+'] s';
+  $("#sbMetrics").innerHTML=[
+    ["Overshoot", r&&r.overshoot!=null ? r.overshoot.toFixed(1)+" %" : "—"],
+    ["Settling", r&&r.settle!=null ? r.settle.toFixed(2)+" s" : "—"],
+    ["Peak", r ? r.peak.toFixed(2) : "—"]
+  ].map(function(m){ return '<div class="tile"><div class="tile__k">'+m[0]+'</div><div class="tile__v">'+m[1]+'</div></div>'; }).join("");
+  $("#sbSessions").innerHTML = d.sessions.length
+    ? '<ol class="sessions">'+d.sessions.map(function(s){
+        return '<li>#'+s.n+' · '+esc(CTRL_SHORT[s.ctrl])+' · '+s.sig+' · T '+s.T.toFixed(1)+' s · OS '+(s.os==null?"—":s.os.toFixed(1)+" %")+' · settle '+(s.st==null?"—":s.st.toFixed(2)+" s")+'</li>';
+      }).join("")+'</ol>'
+    : '<div class="note-i">No runs yet.</div>';
+}
+function sbRun(){
+  var a=curArt(); if(!a) return;
+  var d=a.data, res=simulate(d.gains[d.ctrl], d);
+  d.last=res;
+  d.sessions.push({n:d.sessions.length+1, ctrl:d.ctrl, sig:d.sig, T:res.T, os:res.overshoot, st:res.settle});
+  S.sandboxUsed=true;
+  sbDraw(true);
+}
+function sbApply(){
+  var a=curArt(); if(!a) return;
+  var d=a.data, g=d.gains[d.ctrl];
+  CODE.gains[d.ctrl]=copy(g); CODE.version++;
+  var ca=S.artifacts.filter(function(x){ return x.id==="code"; })[0];
+  if(ca){ ca.type="PY · updated from Inner · Sandbox"; renderRail(); }
+  refreshIfOpen("code");
+  agentSay("sup",["Applied "+CTRL_SHORT[d.ctrl]+" gains (Kp "+g.Kp.toFixed(2)+" · Ki "+g.Ki.toFixed(2)+" · Kd "+g.Kd.toFixed(3)+") to Full equation (Python)."],
+    {loop:"inner", payload:{applied_to:"code", controller:d.ctrl, gains:copy(g)}});
+}
+function sbReset(){
+  var a=curArt(); if(!a) return;
+  a.data.gains=copy(LOOPS.inner.final.gains);
+  renderPanel(a);
+}
+function sandboxAction(name){
+  if(name==="sb-run") sbRun();
+  else if(name==="sb-apply") sbApply();
+  else if(name==="sb-reset") sbReset();
+}
+
+/* ================= artifact panel ================= */
+function curArt(){ for(var i=0;i<S.artifacts.length;i++){ if(S.artifacts[i].id===S.openId) return S.artifacts[i]; } return null; }
+function refreshIfOpen(kind){ var a=curArt(); if(a && a.kind===kind) renderPanel(a); }
+function showPanel(){
+  appEl.classList.add("panel-open");
+  panel.classList.remove("enter"); void panel.offsetWidth; panel.classList.add("enter");
+  panelBody.scrollTop=0;
+}
+function openArtifact(id){
+  var a=null; S.artifacts.forEach(function(x){ if(x.id===id) a=x; });
+  if(!a) return;
+  S.openId=id; showPanel(); renderPanel(a); renderRail();
+}
+function closePanel(){ S.openId=null; appEl.classList.remove("panel-open"); renderRail(); }
+function openDecisions(loop){
+  var back=S.openId, id="dec-"+loop;
+  S.openId=id; showPanel();
+  renderPanel({id:id, kind:"decisions", title:"Agent decision log", type:LOOPS[loop].label+" · newest first", data:{loop:loop, back:back}});
+  renderRail();
+}
+function renderPanel(a){
+  if(!a) return;
+  panelAct={};
+  var acts=[], body="", title=a.title, type=a.type;
+  switch(a.kind){
+    case "tuning":
+      body=viewTuning(a); acts.push(["dl","Download gains"]);
+      panelAct.dl=function(){ downloadGains(a.data.loop,a.data.idx); }; break;
+    case "arch":
+      body=viewArch(a); acts.push(["dl","Download SVG"]);
+      panelAct.dl=function(){ download("mulo_cascade.svg", archSvg(a.data.final), "image/svg+xml"); }; break;
+    case "sandbox":
+      body=viewSandbox(a); break;
+    case "code":
+      body=viewCode(); acts.push(["copy","Copy"],["dl","Download .py"]);
+      panelAct.copy=function(){ copyText(codeText()); };
+      panelAct.dl=function(){ download("mulo_full_equation.py", codeText(), "text/x-python"); }; break;
+    case "json":
+      body=viewJson(); acts.push(["copy","Copy"],["dl","Download JSON"]);
+      panelAct.copy=function(){ copyText(JSON.stringify(structureObj(),null,2)); };
+      panelAct.dl=function(){ download("mulo_structure.json", JSON.stringify(structureObj(),null,2), "application/json"); }; break;
+    case "report":
+      body=viewReport(); acts.push(["dl","Download PDF"]); panelAct.dl=printReport; break;
+    case "config":
+      body=viewConfig(a); break;
+    case "decisions":
+      body=viewDecisions(a.data.loop); acts.push(["back","← Back"]);
+      panelAct.back=function(){
+        var b=a.data.back, ok=S.artifacts.some(function(x){ return x.id===b; });
+        if(ok) openArtifact(b); else closePanel();
+      }; break;
+  }
+  panelTitle.textContent=title;
+  panelType.textContent=type;
+  panelActions.innerHTML=acts.map(function(x){ return '<button type="button" class="code-panel__btn" data-act="'+x[0]+'">'+esc(x[1])+'</button>'; }).join("");
+  var keep=panelBody.scrollTop;
+  panelBody.innerHTML=body;
+  panelBody.scrollTop=keep;
+  if(a.kind==="sandbox") sbDraw(false);
+}
+function download(name,text,mime){
+  var b=new Blob([text],{type:mime}), u=URL.createObjectURL(b), a=el("a");
+  a.href=u; a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(u); a.remove(); }, 500);
+}
+function downloadGains(key,idx){
+  var L=LOOPS[key], i=idx<0?L.done.length-1:idx, r=L.done[i];
+  download("mulo_"+key+"_attempt"+r.n+"_gains.json", JSON.stringify({loop:key, attempt:r.n, gains:r.gains,
+    metrics:{best_cost:r.best, score:r.score, mse:r.mse, settling_time:r.settle, overshoot_pct:r.overshoot, control_effort:r.effort}}, null, 2), "application/json");
+}
+function copyText(t){ if(navigator.clipboard) navigator.clipboard.writeText(t).catch(function(){}); }
+
+panelActions.addEventListener("click",function(e){
+  var b=e.target.closest("[data-act]");
+  if(b && panelAct[b.dataset.act]) panelAct[b.dataset.act]();
+});
+$("#panelClose").addEventListener("click",closePanel);
+
+/* delegated controls inside the panel: steppers, sandbox actions, decision-log link, artifact links */
+function rootFor(ctx){
+  if(ctx==="sb"){ var a=curArt(); return a?a.data:null; }
+  if(ctx.indexOf("cfg:")===0) return S.cfg[ctx.slice(4)];
+  return null;
+}
+function afterEdit(ctx,role){
+  if(ctx.indexOf("cfg:")===0) touchCfg(ctx.slice(4));
+  else if(role==="ctrl" || role==="sig") renderPanel(curArt());
+}
+function stepValue(btn){
+  var ctx=btn.dataset.ctx, root=rootFor(ctx); if(!root) return;
+  var step=parseFloat(btn.dataset.step), path=btn.dataset.path, dec=parseInt(btn.dataset.dec,10)||0;
+  var cur=parseFloat(getPath(root,path))||0;
+  var nv=+(cur+step).toFixed(dec+1);
+  setPath(root,path,nv);
+  var inp=btn.parentNode.querySelector("input");
+  if(inp) inp.value=nv.toFixed(dec);
+  afterEdit(ctx,"");
+}
+panelBody.addEventListener("click",function(e){
+  var st=e.target.closest("[data-step]");
+  if(st){ stepValue(st); return; }
+  var d=e.target.closest("[data-do]");
+  if(d){ sandboxAction(d.dataset.do); return; }
+  var v=e.target.closest("[data-view]");
+  if(v){ openDecisions(v.dataset.loop); return; }
+  var o=e.target.closest("[data-open]");
+  if(o){ openArtifact(o.dataset.open); }
+});
+panelBody.addEventListener("change",function(e){
+  var t=e.target, ctx=t.dataset.ctx;
+  if(!ctx || !t.dataset.path) return;
+  var root=rootFor(ctx); if(!root) return;
+  var v;
+  if(t.type==="checkbox") v=t.checked;
+  else if(t.dataset.type==="num"){ v=parseFloat(t.value); if(isNaN(v)) return; }
+  else v=t.value;
+  setPath(root,t.dataset.path,v);
+  afterEdit(ctx,t.dataset.role||"");
+});
+
+/* ================= human-in-the-loop card ================= */
+function askHitl(spec){
+  return new Promise(function(resolve){
+    var turn=el("div","assistant-turn");
+    var st=el("div","hitl-status",'<span class="hitl-status__dot"></span>Needs your input');
+    var card=el("div","hitl-card");
+    var optsHtml=spec.options.map(function(o){
+      return '<button type="button" class="hitl-option" role="option" data-value="'+o.v+'" aria-pressed="'+(o.v===spec.def)+'">'+
+        '<span class="hitl-option__badge">'+o.v+'</span><span class="hitl-option__label"><strong>'+esc(o.t)+'</strong>'+
+        (o.v===spec.def?'<span class="defmark">default</span>':"")+'<span class="hitl-option__desc">'+esc(o.d)+'</span></span></button>';
+    }).join("");
+    card.innerHTML=
+      '<div class="hitl-card__header"><div class="hitl-card__header-text"><div class="hitl-card__title">'+esc(spec.title)+'</div>'+
+        '<div class="hitl-card__subtitle">'+esc(spec.sub)+' Auto-continues on '+spec.def+' in <span class="secs">30</span>s if you don’t respond.</div></div>'+
+      '<div class="hitl-card__timeout" data-paused="false" title="Hover to pause"><span class="hitl-card__timeout-ring"></span><span class="cd">30s</span>'+
+        '<button type="button" class="hitl-card__timeout-cancel" aria-label="Cancel auto-continue"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>'+
+      '<button type="button" class="hitl-card__close" aria-label="Dismiss"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>'+
+      '<div class="hitl-card__options" role="listbox">'+optsHtml+'</div>'+
+      '<div class="hitl-other"><input type="text" class="other" placeholder="Something else… describe what to change" aria-label="Custom response"/></div>'+
+      '<div class="hitl-card__footer"><button type="button" class="hitl-card__edit">Edit draft</button>'+
+        '<button type="button" class="hitl-card__skip">Skip</button><button type="button" class="hitl-card__confirm">Continue</button></div>';
+    turn.appendChild(st); turn.appendChild(card); push(turn);
+
+    var selected=spec.def, touched=false, done=false, remaining=30, paused=false, timer=null;
+    var cd=card.querySelector(".cd"), secs=card.querySelector(".secs"), tbox=card.querySelector(".hitl-card__timeout");
+    var other=card.querySelector(".other"), confirmBtn=card.querySelector(".hitl-card__confirm");
+    var opts=[].slice.call(card.querySelectorAll(".hitl-option"));
+
+    function paintSel(){ opts.forEach(function(o){ o.setAttribute("aria-pressed",String(o.dataset.value===selected)); }); }
+    function paintCd(){ cd.textContent=remaining+"s"; secs.textContent=String(remaining); tbox.dataset.paused=String(paused); }
+    function titleOf(v){ var o=spec.options.filter(function(x){ return x.v===v; })[0]; return o ? v+" · "+o.t : v; }
+    function finish(value,text,auto,echo){
+      if(done) return;
+      done=true;
+      clearInterval(timer); timer=null;
+      if(S.gate && S.gate.card===card) S.gate=null;
+      card.classList.add("is-resolved");
+      st.classList.add("ok");
+      st.innerHTML='<span class="hitl-status__dot ok"></span>'+(auto?"Auto-continued with "+value:"Received your input");
+      if(echo) userSay(echo);
+      resolve({value:value, text:text||"", auto:!!auto});
+    }
+    function tick(){
+      if(paused) return;
+      remaining--; paintCd();
+      if(remaining<=0 && !touched) finish(spec.def,"",true,null);
+    }
+    timer=setInterval(tick,1000);
+    paintCd();
+
+    /* composer messages arrive here; they were already echoed in the chat */
+    S.gate={type:"hitl", card:card, submit:function(text){
+      var t=text.trim();
+      if(ADVANCE.test(t)) return finish(selected||spec.def,"",false,null);
+      var m=t.match(/^([a-d])\b/i);
+      if(m && spec.options.some(function(o){ return o.v===m[1].toUpperCase(); })) return finish(m[1].toUpperCase(),"",false,null);
+      return finish("T",t,false,null);
+    }};
+
+    opts.forEach(function(o){
+      o.addEventListener("click",function(){
+        touched=true; paused=true; selected=o.dataset.value; paintSel();
+        other.value=""; confirmBtn.disabled=false; paintCd();
+      });
+    });
+    other.addEventListener("input",function(){
+      touched=true; paused=true; selected=null; paintSel();
+      confirmBtn.disabled=!other.value.trim(); paintCd();
+    });
+    other.addEventListener("keydown",function(e){
+      if(e.key==="Enter" && other.value.trim()){ e.preventDefault(); finish("T",other.value.trim(),false,other.value.trim()); }
+    });
+    confirmBtn.addEventListener("click",function(){
+      if(other.value.trim()) return finish("T",other.value.trim(),false,other.value.trim());
+      finish(selected||spec.def,"",false,titleOf(selected||spec.def));
+    });
+    card.querySelector(".hitl-card__skip").addEventListener("click",function(){
+      finish(spec.def,"",false,"Skip — use the default ("+spec.def+")");
+    });
+    card.querySelector(".hitl-card__close").addEventListener("click",function(){
+      card.style.display="none";
+      finish(spec.def,"",false,"Dismissed — using "+spec.def);
+    });
+    card.querySelector(".hitl-card__edit").addEventListener("click",function(){
+      touched=true; paused=true; paintCd();
+      other.placeholder="Edit the control objective or describe the change…";
+      other.focus();
+    });
+    card.querySelector(".hitl-card__timeout-cancel").addEventListener("click",function(e){
+      e.stopPropagation();
+      touched=true; clearInterval(timer); timer=null;
+      cd.textContent="—"; secs.textContent="—"; tbox.dataset.paused="true";
+    });
+    tbox.addEventListener("mouseenter",function(){ if(!touched){ paused=true; paintCd(); } });
+    tbox.addEventListener("mouseleave",function(){ if(!touched && timer){ paused=false; paintCd(); } });
+  });
+}
+
+/* ================= inline config card ================= */
+function buildCfgCard(key){
+  var turn=el("div","assistant-turn");
+  var card=el("div","cfg-card"); card.dataset.key=key;
+  turn.appendChild(card); push(turn);
+  S.cfgCards[key]=card;
+  card.addEventListener("click",function(e){
+    var b=e.target.closest("[data-act]");
+    if(!b || card.classList.contains("is-done")) return;
+    cfgAct(key,b.dataset.act);
+  });
+  card.addEventListener("keydown",function(e){
+    if(e.key==="Enter" && e.target.classList && e.target.classList.contains("obj-input")){ e.preventDefault(); cfgAct(key,"obj-save"); }
+  });
+  renderCfgCard(key);
+}
+function renderCfgCard(key){
+  var card=S.cfgCards[key]; if(!card) return;
+  var c=S.cfg[key], L=LOOPS[key], pso=c.optimizer==="PSO Optimizer";
+  var rows='<div class="cfg-row"><span>Architecture</span><span class="val">'+esc(c.optimizer)+'</span></div>';
+  if(pso){
+    rows+='<div class="cfg-row"><span>Search</span><span class="val">Population '+c.pop+' · Generations '+c.gens+'</span></div>';
+  } else {
+    rows+='<div class="cfg-row"><span>Budget</span><span class="val">Max attempts '+c.maxAttempts+' · Wall clock '+c.wallClock+'s · Cost budget $'+c.budget.toFixed(2)+'</span></div>'+
+      '<div class="cfg-row"><span>LLM</span><span class="val">'+esc(c.llm)+'</span></div>';
+  }
+  var objRow=c._editing
+    ? '<div class="cfg-row"><span>Objective</span><span class="obj-edit"><input class="obj-input" value="'+esc(c.objective)+'" aria-label="Control objective"/><button type="button" class="btn-ghost" data-act="obj-save">Save</button></span></div>'
+    : '<div class="cfg-row"><span>Objective</span><span class="obj">“'+esc(c.objective)+'”</span></div>';
+  var chips=[
+    c.budget===1 ? ["budget-toggle","Lower cost budget"] : ["budget-toggle","Restore $1.00"],
+    pso ? ["opt-toggle","Switch to Agentic GA"] : ["opt-toggle","Switch to PSO"],
+    ["obj-edit","Edit objective"]
+  ];
+  card.innerHTML='<div class="cfg-title">PROPOSED CONFIG — '+esc(L.label)+'</div>'+rows+objRow+
+    '<div class="cfg-chips">'+chips.map(function(ch){ return '<button type="button" class="chip-btn" data-act="'+ch[0]+'">'+esc(ch[1])+'</button>'; }).join("")+'</div>'+
+    '<div class="cfg-foot"><button type="button" class="link-btn" data-act="open-cfg">All settings ↗</button>'+
+      '<button type="button" class="btn-primary" data-act="start">Start '+L.short+' loop</button></div>';
+  if(c._editing){ var inp=card.querySelector(".obj-input"); if(inp) inp.focus(); }
+}
+function touchCfg(key){
+  renderCfgCard(key);
+  if(S.openId==="cfg-"+key) renderPanel(curArt());
+}
+function doneCard(key){ var card=S.cfgCards[key]; if(card) card.classList.add("is-done"); }
+function cfgAct(key,act){
+  var c=S.cfg[key], card=S.cfgCards[key];
+  if(act==="start"){
+    userSay("Start "+LOOPS[key].short+" loop");
+    doneCard(key);
+    if(S.gate && S.gate.type==="config" && S.gate.key===key){ var g=S.gate; S.gate=null; g.resolve(); }
+    return;
+  }
+  if(act==="budget-toggle") c.budget = c.budget===1 ? 0.5 : 1;
+  else if(act==="opt-toggle") c.optimizer = c.optimizer==="PSO Optimizer" ? "Agentic GA" : "PSO Optimizer";
+  else if(act==="obj-edit") c._editing=true;
+  else if(act==="obj-save"){
+    var inp=card.querySelector(".obj-input"), v=inp?inp.value.trim():"";
+    if(v) c.objective=v;
+    c._editing=false;
+    agentNote("Objective updated.");
+  }
+  else if(act==="open-cfg"){ openArtifact("cfg-"+key); return; }
+  touchCfg(key);
+}
+function awaitStart(key){
+  return new Promise(function(resolve){
+    S.gate={type:"config", key:key, resolve:resolve, submit:function(text){
+      var t=text.trim();
+      if(ADVANCE.test(t)){ var g=S.gate; S.gate=null; doneCard(key); g.resolve(); return; }
+      S.cfg[key].objective=t;
+      touchCfg(key);
+      agentNote("Objective updated to “"+t+"”. Say go to start.");
+    }};
+  });
+}
+
+/* ================= attempt runner (streams status in place, one chip per attempt) ================= */
+function syncCode(key){
+  var L=LOOPS[key]; if(!L.final) return;
+  L.ctrls.forEach(function(c){ CODE.gains[c]=copy(L.final.gains[c]); });
+  CODE.version++;
+  refreshIfOpen("code");
+}
+async function runAttempts(key,list){
+  var L=LOOPS[key], cfg=S.cfg[key];
+  if(!L.done.length) L.nfeStart=S.nfeTotal;
+  openDock();
+  agentSay("opt",["Running "+L.short+" loop with "+cfg.optimizer+
+    (cfg.optimizer==="PSO Optimizer" ? " (population "+cfg.pop+", "+cfg.gens+" generations)" : " on "+cfg.llm)+
+    ". Budget $"+cfg.budget.toFixed(2)+", up to "+cfg.maxAttempts+" attempts."],
+    {loop:key, payload:{optimizer:cfg.optimizer, llm:cfg.llm, max_attempts:cfg.maxAttempts, wall_clock_s:cfg.wallClock,
+      cost_budget_usd:cfg.budget, history_buffer_size:cfg.history, prompt_variant:cfg.variant, random_seed:cfg.seed}});
+
+  for(let i=0;i<list.length;i++){
+    let a=list[i], n=L.done.length+1;
+    let pn=L.done.length?L.done[L.done.length-1].nfeEnd:L.nfeStart;
+    let pb=L.done.length?L.done[L.done.length-1].best:L.baseline;
+    for(let s=1;s<=3;s++){
+      let nfe=Math.round(pn+(a.nfeEnd-pn)*s/3), best=pb+(a.best-pb)*s/3;
+      S.nfeTotal=nfe;
+      setDock("🎧 Running "+L.short+" loop · Attempt "+n+"/"+cfg.maxAttempts+" · NFE "+fmt(nfe)+" · Best cost "+best.toFixed(3));
+      await sleep(650);
+    }
+    a.n=n;
+    L.done.push(a);
+    S.nfeTotal=a.nfeEnd;
+    let idx=L.done.length-1;
+    addArtifact({id:key+"-a"+n, kind:"tuning", title:L.name+" · Attempt "+n, type:"Tuning run · "+cfg.optimizer,
+      data:{loop:key, idx:idx}, inline:true, chipTitle:L.name+" · Attempt "+n,
+      chipSub:"Best cost "+a.best.toFixed(3)+" · Score "+a.score+"/100",
+      actions:[{label:"Open"},{label:"Download gains", fn:function(){ downloadGains(key,idx); }}]});
+
+    let met=a.score>=L.target, last=(i===list.length-1), unused=cfg.maxAttempts-n;
+    logEntry("ev",key,"Attempt "+n+" scored "+a.score+"/100 against the "+L.target+" target.",
+      {attempt:n, score:a.score, target:L.target, verdict:met?"accept":"continue", overshoot_pct:a.overshoot});
+    if(met){
+      agentSay("ev",["Attempt "+n+" scored "+a.score+"/100, which clears the "+L.target+" target."+
+        (unused>0?" Stopping early with "+unused+" attempt"+(unused>1?"s":"")+" unused.":"")],{loop:key});
+      break;
+    }
+    if(!last){
+      agentSay("ft",[a.ft],{loop:key, payload:{adjustment:a.ft, next_attempt:n+1}});
+    } else {
+      agentSay("ev",["Attempt "+n+" scored "+a.score+"/100, below the "+L.target+" target. The run stops at the attempt limit."],{loop:key});
+    }
+  }
+  closeDock();
+  L.final=L.done[L.done.length-1];
+  syncCode(key);
+}
+
+/* ================= sandbox artifact (opened from the inner-loop next-step card) ================= */
+function openSandbox(){
+  if(!S.artifacts.some(function(x){ return x.id==="sb-inner"; })){
+    addArtifact({id:"sb-inner", kind:"sandbox", title:"Inner · Sandbox", type:"Simulation Lab · artifact",
+      data:{ctrl:"dpitch", gains:copy(LOOPS.inner.final.gains), sat:{on:false,min:-5,max:5}, sig:"step",
+        sigp:{amp:1,t0:1,slope:0.5,freq:0.5,phase:0,offset:0,sp:1,width:2}, T:10, last:null, sessions:[]},
+      inline:true, chipTitle:"Inner · Sandbox", chipSub:"Simulation Lab · artifact", actions:[{label:"Open"}]});
+  }
+  openArtifact("sb-inner");
+}
+
+/* ================= scripted cascade: Quanser 2-DOF helicopter ================= */
+function quickChip(label,fn){
+  var b=el("button","chip-btn",esc(label)); b.type="button";
+  b.addEventListener("click",fn);
+  return b;
+}
+async function scenario(first){
+  S.busy=true;
+  activate();
+  S.cfg.inner=makeCfg("inner");
+  S.cfg.outer=makeCfg("outer");
+  userSay(first);
+  await sleep(550);
+
+  agentSay("sup",["Got it — routing to MuloDesigner."]);
+  await think(700);
+  var archTurn=agentSay("arch",[
+    "I’ll treat this as a two-loop cascade. The inner loop holds two parallel controllers, pitch-rate and yaw-rate, and the outer loop holds two more, pitch-angle and yaw-angle, whose outputs become the inner loop’s setpoints.",
+    "I’ve loaded the default Quanser 2-DOF plant and this structure, so you can check the cascade before we tune anything."
+  ],{route:"↳ handed off to MuloArchitect · plant + structure", payload:{structure:{loops:["inner_rate_control","outer_angle_control"],controllers:4}}});
+  S.arch=addArtifact({id:"arch", kind:"arch", title:"Architecture diagram", type:"Block diagram · proposed", data:{final:false},
+    inline:true, chipTitle:"Proposed architecture", chipSub:"Block diagram · 2 loops × 2 controllers", actions:[{label:"Open"}]}, archTurn);
+
+  await sleep(500);
+  var d1=await askHitl({
+    title:"What should we do next with this plant model?",
+    sub:"Choose an option or edit the draft objective.",
+    def:"A",
+    options:[
+      {v:"A",t:"Confirm plant & structure and start tuning",d:"Accept the draft cascade and start the inner loop"},
+      {v:"B",t:"Edit control objectives / loop order",d:"Change targets or swap which loop is tuned first"},
+      {v:"C",t:"Change optimizer or budgets",d:"Switch GA / PSO, or adjust attempts, wall clock, and cost"},
+      {v:"D",t:"Something else…",d:"Describe it in the box below"}
+    ]
+  });
+  if(d1.auto) agentNote("Auto-continued with A after 30 s.");
+  if(d1.value==="T"){
+    S.cfg.inner.objective=d1.text;
+    agentSay("arch",["Noted. I’ll fold that into the control objective before tuning starts."]);
+  } else if(d1.value!=="A" && !d1.auto){
+    agentSay("sup",["Noted. I’ll set that up in the run config before tuning starts."]);
+  }
+
+  var tr=makeTrace();
+  push(tr.el);
+  tr.label("Planning cascade…");
+  var steps=["Planning cascade…","Inspecting plant & trim…","Drafting inner-loop GA config…"];
+  for(let q=0;q<steps.length;q++){ await sleep(750); tr.add(steps[q]); }
+  tr.done("Drafted inner-loop config");
+
+  addArtifact({id:"json", kind:"json", title:"Structure JSON", type:"JSON · cascade structure · draft", data:{}});
+  addArtifact({id:"code", kind:"code", title:"Full equation (Python)", type:"PY · draft from plant model", data:{}});
+  addArtifact({id:"cfg-inner", kind:"config", title:"Inner · Rate · Config", type:"Run settings · editable", data:{key:"inner"}});
+
+  await sleep(450);
+  agentSay("sup",["Inner loop first, since its output sets the outer loop’s targets. Here’s the proposed config for rate control."],{loop:"inner"});
+  buildCfgCard("inner");
+  await awaitStart("inner");
+  await runAttempts("inner", RUNS_INNER);
+  agentSay("sup",["Inner loop (rate) complete — best cost "+LOOPS.inner.final.best.toFixed(3)+", score "+LOOPS.inner.final.score+
+    "/100. A sandbox is ready if you want to tweak gains or test signals before locking."],{loop:"inner"});
+  addArtifact({id:"inner-final", kind:"tuning", title:"Inner · Rate · Final gains + curves", type:"Tuning · loop final", data:{loop:"inner", idx:-1}});
+
+  var decided=false, sbOpened=false, reran=false;
+  while(!decided){
+    var opts=[{v:"A",t:"Accept & move to outer loop",d:"Lock the inner loop and tune the angle loops next"}];
+    if(!sbOpened) opts.push({v:"B",t:"Open Sandbox",d:"Adjust Kp / Ki / Kd and simulate step, ramp, sine, or pulse"});
+    if(!reran) opts.push({v:"C",t:"Re-run inner loop with tighter overshoot constraint",d:"One more attempt under a 5% overshoot ceiling"});
+    opts.push({v:"D",t:"Skip remaining loops / export now",d:"Package the inner loop as it stands"});
+    var d2=await askHitl({title:"Inner loop is ready. What next?", sub:"Pick an option, or describe a change below.", def:"A", options:opts});
+    if(d2.auto) agentNote("Auto-continued with A after 30 s.");
+    if(d2.value==="B"){
+      sbOpened=true;
+      openSandbox();
+      agentSay("sup",["Sandbox is open. Gains start at the inner loop’s final values. Apply any changes to the equation, then choose Accept to move on."],{loop:"inner"});
+    } else if(d2.value==="C"){
+      reran=true;
+      agentSay("sup",["Re-running the inner loop with the overshoot ceiling at 5%. One more attempt is available under the budget."],{loop:"inner"});
+      await runAttempts("inner", RUNS_RERUN);
+      agentSay("sup",["Re-run complete. The inner loop is updated, and the outer loop will use the new gains."],{loop:"inner"});
+    } else if(d2.value==="D"){
+      S.skipOuter=true;
+      agentSay("sup",["Skipping the outer loop. I’ll package the inner loop as it stands."]);
+      decided=true;
+    } else {
+      decided=true;
+      if(d2.value==="T") agentSay("sup",["Noted. I’ll apply that before the outer loop starts."]);
+    }
+  }
+
+  if(!S.skipOuter){
+    agentSay("sup",["Inner loop locked. The outer loop now treats the tuned rate loop as its plant, so its angle controllers can be tuned against that closed-loop response."],{loop:"outer"});
+    addArtifact({id:"cfg-outer", kind:"config", title:"Outer · Angle · Config", type:"Run settings · editable", data:{key:"outer"}});
+    buildCfgCard("outer");
+    await awaitStart("outer");
+    await runAttempts("outer", RUNS_OUTER);
+    agentSay("sup",["Outer loop (angle) complete — best cost "+LOOPS.outer.final.best.toFixed(3)+", score "+LOOPS.outer.final.score+
+      "/100. Both loops are locked, so the cascade is ready to package."],{loop:"outer"});
+    addArtifact({id:"outer-final", kind:"tuning", title:"Outer · Angle · Final gains + curves", type:"Tuning · loop final", data:{loop:"outer", idx:-1}});
+    S.arch.data.final=true;
+    S.arch.type="Block diagram · final";
+    renderRail();
+    refreshIfOpen("arch");
+  }
+
+  addArtifact({id:"report", kind:"report", title:"Comparison report", type:"Metrics · loops + optimizers", data:{}});
+  var head=S.skipOuter ? "Cascade finished (inner rate only; outer loop skipped)." : "Cascade finished (inner rate + outer angle).";
+  var sum=agentSay("sup",[head],{loop:null});
+  var list=el("div","artifacts");
+  var items=[["arch","Architecture diagram"],["inner-final","Inner final gains + curves"]];
+  if(!S.skipOuter) items.push(["outer-final","Outer final gains + curves"]);
+  items.push(["code","Full equation (Python)"],["json","Structure JSON"],["report","Comparison report"]);
+  if(S.artifacts.some(function(x){ return x.id==="sb-inner"; })) items.push(["sb-inner","Sandbox sessions"]);
+  items.forEach(function(it){
+    var art=S.artifacts.filter(function(x){ return x.id===it[0]; })[0];
+    if(art) list.appendChild(chipEl(art,{title:it[1], sub:art.type, actions:[{label:"Open"}]}));
+  });
+  sum.appendChild(list);
+  sum.appendChild(el("div","assistant-text","<p>Want a side-by-side cost comparison, a different outer-loop objective, or the download package?</p>"));
+  var nx=el("div","next-row");
+  nx.appendChild(quickChip("Side-by-side cost comparison",function(){ openArtifact("report"); }));
+  nx.appendChild(quickChip("Different outer-loop objective",function(){ openArtifact("cfg-outer"); }));
+  nx.appendChild(quickChip("Download package",function(){ download("mulo_structure.json", JSON.stringify(structureObj(),null,2), "application/json"); }));
+  sum.appendChild(nx);
+  S.busy=false;
+  S.done=true;
+}
+
+/* ================= composer ================= */
+function autosize(){ input.style.height="auto"; input.style.height=Math.min(input.scrollHeight,120)+"px"; }
+function onUserText(text){
+  if(!S.active){ if(!S.busy) scenario(text); return; }
+  userSay(text);
+  if(S.gate){ S.gate.submit(text); return; }
+  if(S.busy) agentNote("Working on it — I’ll pick this up at the next decision point.");
+  else if(S.done) agentNote("This mock ends at the wrap-up. Open any chip above to inspect it.");
+  else agentNote("Nothing is waiting on you right now.");
+}
+form.addEventListener("submit",function(e){
+  e.preventDefault();
+  var t=input.value.trim();
+  if(!t) return;
+  input.value=""; autosize(); sendBtn.disabled=true;
+  onUserText(t);
+});
+input.addEventListener("keydown",function(e){
+  if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); form.requestSubmit(); }
+});
+input.addEventListener("input",function(){ sendBtn.disabled=!input.value.trim(); autosize(); });
+
+/* ================= init ================= */
+$("#caseChip").addEventListener("click",function(){
+  input.value="Quanser 2-DOF helicopter";
+  sendBtn.disabled=false; autosize(); input.focus();
+});
+$("#resetBtn").addEventListener("click",function(){ location.reload(); });
+$("#railClose").addEventListener("click",function(){ appEl.classList.remove("rail-open"); });
+handle.addEventListener("click",function(){ appEl.classList.add("rail-open"); });
+renderRail();
+
+})();
+</script>
+</body>
+</html>
