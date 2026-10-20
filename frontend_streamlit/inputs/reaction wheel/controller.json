@@ -1,5 +1,6 @@
 {
-  "control_architecture": "Cascaded",
+  "system_name":"Pendulum on a Rotating Wheel",
+  "description":"A pendulum attached to a rotating wheel, where the wheel's angular velocity is controlled by an input torque to balance the pendulum.",
   "pid_loops": [
     {
       "loop_name": "inner_wheel_velocity_control",

@@ -1,5 +1,6 @@
 {
-  "control_architecture": "Cascaded",
+  "system_name":"Quadcopter",
+  "description":"A quadcopter's pitch and yaw angles controlled by main and tail motor voltages/PWM.",
   "pid_loops": [
     {
       "loop_name": "inner_rate_control",

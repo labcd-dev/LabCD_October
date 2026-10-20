@@ -1,5 +1,6 @@
 {
-  "control_architecture": "Cascaded",
+  "system_name": "Underwater Vehicle",
+  "description": "The system describes the dynamics of an underwater vehicle where the states are controlled by the input force or thrust applied to the vehicle.",
   "pid_loops": [
     {
       "loop_name": "inner_pitch_rate_control",

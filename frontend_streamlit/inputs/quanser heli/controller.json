@@ -1,5 +1,6 @@
 {
-  "control_architecture": "Cascaded",
+  "system_name": "Helicopter",
+  "description": "The system describes the dynamics of a helicopter's pitch and yaw angles controlled by two actuator inputs.",
   "pid_loops": [
     {
       "loop_name": "inner_rate_control",

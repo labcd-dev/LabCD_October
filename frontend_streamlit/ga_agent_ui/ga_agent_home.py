@@ -231,7 +231,6 @@ def display_home_page(run_by_ga_agent_ui: bool = True) -> None:
                 supervisor_agent = MuloSupervisorAgent(
                     run_config=run_config,
                     controller_structure=controller_data["controller"],
-                    system_identification=controller_data["system"],
                     trimming_result=controller_data["trimming"],
                     equation=controller_data["equation"],
                 )

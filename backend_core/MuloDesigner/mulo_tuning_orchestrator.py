@@ -18,11 +18,10 @@ from backend_core.MuloDesigner.tuning_engine import (
 
 class MuloTuningOrchestrator:
 
-    def __init__(self, run_config: Dict[str, Any], controller_structure: List[Any],
-                 system_identification: Dict[str, Any], trimming_result: Dict[str, Any], equation: str):
+    def __init__(self, run_config: Dict[str, Any], controller_structure: Dict[str, Any], trimming_result: Dict[str, Any], equation: str):
         self.run_config = run_config
         self.equation = equation
-        self.case_study = generate_case_study(system_identification, trimming_result, self.equation)
+        self.case_study = generate_case_study(controller_structure, trimming_result, self.equation)
         self.controller_structure = add_constraint_to_controller(self.run_config, controller_structure, trimming_result)
         self.control_block = []
         self.loop_index = 0
@@ -332,15 +331,15 @@ class MuloTuningOrchestrator:
         return []
 
 
-def generate_case_study(system_identification: Dict[str, Any], trimming_result: Dict[str, Any], equation: str) -> Dict[
+def generate_case_study(controller_structure: Dict[str, Any], trimming_result: Dict[str, Any], equation: str) -> Dict[
     str, Any]:
     trim_values = [float(num) for num in trimming_result["equilibrium"]["u_e"]]
     trim_ics = [float(num) for num in trimming_result["equilibrium"]["x_e"]]
 
     return {
-        "system_name": system_identification["system_name"],
+        "system_name": controller_structure["system_name"],
         "python_code": equation,
-        "system_description": system_identification["description"],
+        "system_description": controller_structure["description"],
         "control_objective": "Design a controller to regulate pitch attitude (theta) to a desired setpoint with minimal settling time, overshoot, and steady-state error",
         "target": None,
         "num_inputs": trimming_result["system"]["n_inputs"],

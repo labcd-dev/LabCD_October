@@ -1,5 +1,6 @@
 {
-  "control_architecture": "Cascaded",
+  "system_name": "DC Motor",
+  "description": "The system describes the dynamics of a DC motor where the input voltage controls the motor's angular velocity and position.",
   "pid_loops": [
     {
       "loop_name": "inner_current_control",
@@ -10,20 +11,16 @@
           "output_signal": "voltage_command",
           "output_variable_in_equation": "U[0]",
           "controller_output": {
-            "variable_name": "voltage_command",
             "is_bounded": true,
             "min_bound": 0.0,
             "max_bound": 120.0,
             "unit": "Volts"
           },
           "target": {
-            "description": "Deduced operational range of this state under typical tracking conditions",
             "min_value": 1.0,
             "max_value": 1.0,
             "unit": "Amperes"
-          },
-          "output_unit": "Volts",
-          "input_unit": "Amperes"
+          }
         }
       ]
     },
@@ -33,11 +30,9 @@
         {
           "controlled_variable": "omega",
           "controlled_variable_in_equation": "X[1]",
-          "setpoint_variable_in_equation": "X_sp[1]",
           "output_signal": "current_setpoint",
           "output_variable_in_equation": "X_sp[0]",
           "controller_output": {
-            "variable_name": "current_setpoint",
             "is_bounded": true,
             "min_bound": 0.0,
             "max_bound": 150.0,
@@ -48,9 +43,7 @@
             "min_value": 0.5,
             "max_value": 0.5,
             "unit": "rad/s"
-          },
-          "output_unit": "Amperes",
-          "input_unit": "rad/s"
+          }
         }
       ]
     }

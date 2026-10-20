@@ -1,5 +1,6 @@
 {
-  "control_architecture": "Cascaded",
+  "system_name":"Mass-Spring-Damper System with Uncontrolled Mass",
+  "description":"A system with two masses (zs, zu) connected by a spring (ks) and damper (bs), where zs is directly driven by an input force (u) and zu is influenced by an additional damping force (kt*zu), controlled by applying a force u to the first mass.",
   "pid_loops": [
     {
       "loop_name": "inner_velocity_control",

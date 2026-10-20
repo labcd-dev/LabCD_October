@@ -168,10 +168,9 @@ class MuloSupervisorAgent:
         "user_context", "user_context_history",
     }
 
-    def __init__(self, run_config: Dict[str, Any], controller_structure: List[Any],
-                 system_identification: Dict[str, Any], trimming_result: Dict[str, Any], equation: str):
-        self.orchestrator = MuloTuningOrchestrator(run_config, controller_structure, system_identification,
-                                                   trimming_result, equation)
+    def __init__(self, run_config: Dict[str, Any], controller_structure: Dict[str, Any],
+                 trimming_result: Dict[str, Any], equation: str):
+        self.orchestrator = MuloTuningOrchestrator(run_config, controller_structure, trimming_result, equation)
         self._graph = None
         self.initial_run_config = {} # TODO: most be removed and handled through Orchestrator
         self.llm_agent = Agents(model_name=run_config["llm_model"])

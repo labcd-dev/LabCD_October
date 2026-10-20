@@ -1,5 +1,6 @@
 {
-  "control_architecture": "Cascaded",
+  "system_name":"Chemical Reactor",
+  "description":"A continuous chemical reactor with temperature control via coolant temperature, where the controller input (u[0]) adjusts the coolant flow to regulate the reactor's concentration (CA) and temperature (T).",
   "pid_loops": [
     {
       "loop_name": "inner_Tc_control",

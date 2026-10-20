@@ -1,5 +1,6 @@
 {
-  "control_architecture": "Single-loop",
+  "system_name":"Universal Plant",
+  "description":"A dynamic system controlled by a mechanical work input (Wt) affecting pressure, angular velocity, and mechanical energy transfer.",
   "pid_loops": [
     {
       "loop_name": "most_inner_control",
