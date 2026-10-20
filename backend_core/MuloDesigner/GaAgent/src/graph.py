@@ -112,6 +112,7 @@ class GAConfigState(TypedDict):
     controller_name: str
     llm_agent_instance: Any
     signal_type: str
+    supervisor_comment: str
 
 
 # =================================== NODES ===================================
@@ -331,6 +332,27 @@ def design_ga_config_node(state: GAConfigState) -> Dict[str, Any]:
             last_attempt_time=last_attempt_time,
         )
 
+    # --- INJECT DYNAMIC COST PENALTIES ---
+    current_weights = state['tuning_specs']['weights']
+    fixed_targets = state['tuning_specs']['fixed_targets']
+
+    dynamic_metrics = [k for k in current_weights.keys() if
+                       k not in ['mse', 'settling_time', 'overshoot', 'control_effort']]
+
+    if dynamic_metrics:
+        dyn_target_str = "\n".join(
+            [f"- {m}: Target={fixed_targets.get(m)}, Current Weight={current_weights.get(m)}" for m in
+             dynamic_metrics])
+        system_prompt += (
+            f"\n\n==================================================\n"
+            f"DYNAMIC COST PENALTIES ACTIVE:\n"
+            f"The supervisor has added the following new metrics to your fitness function:\n"
+            f"{dyn_target_str}\n\n"
+            f"You MUST include these metrics as keys in your JSON 'weights' dictionary output, assigning them appropriate float values.\n"
+            f"=================================================="
+        )
+    # --------------------------------------
+
     agent = state.get('llm_agent_instance')
 
     if agent is None:
@@ -338,6 +360,18 @@ def design_ga_config_node(state: GAConfigState) -> Dict[str, Any]:
         agent = Agents(model_name=state['llm_model'], temperature=state['temperature'])
     else:
         agent.temperature = state['temperature']
+
+    # --- INJECT SUPERVISOR COMMENT HERE ---
+    supervisor_comment = state.get('supervisor_comment', '')
+    if supervisor_comment:
+        system_prompt += (
+            f"\n\n==================================================\n"
+            f"CRITICAL DIRECTIVE FROM SUPERVISOR AGENT:\n"
+            f"\"{supervisor_comment}\"\n"
+            f"You MUST prioritize and strictly obey these instructions when formulating your configuration.\n"
+            f"=================================================="
+        )
+    # --------------------------------------
 
     response_text, usage = agent.design_agent(system_prompt, user_prompt)
     try:
@@ -504,11 +538,13 @@ def evaluate_ga_node(state: GAConfigState) -> Dict[str, Any]:
     max_cost_budget = coerce_float(state.get('max_cost_budget'), float('inf'))
     max_attempts = max(int(coerce_float(state.get('max_attempts'), 1)), 1)
 
+    active_metric_keys = list(fixed_targets.keys())
     success_score = 0
     metric_comparisons = {}
+
     if opt_results['success']:
         achieved_metrics = opt_results.get('achieved_metrics', {})
-        for metric in METRIC_KEYS:
+        for metric in active_metric_keys:
             achieved_val = coerce_float(achieved_metrics.get(metric), float('inf'))
             target_val = fixed_targets[metric]
             passed = achieved_val <= target_val
@@ -520,17 +556,20 @@ def evaluate_ga_node(state: GAConfigState) -> Dict[str, Any]:
                 'passed': bool(passed)
             }
     else:
-        success_score = 0
-        for metric in METRIC_KEYS:
+        for metric in active_metric_keys:
             metric_comparisons[metric] = {
                 'achieved': None,
                 'target': fixed_targets[metric],
                 'passed': False
             }
 
+    # Normalize score to a 100-point scale so your "Proceed" logic stays intact
+    total_possible = len(active_metric_keys) * 25
+    normalized_score = int((success_score / total_possible) * 100) if total_possible > 0 else 0
+
     logger.info(f"{optimizer_type} Cost: {ga_cost:.4f}")
     logger.info(f"Baseline Cost: {baseline_cost:.4f}")
-    logger.info(f"Success Score: {success_score}/100")
+    logger.info(f"Success Score: {normalized_score}/100")
 
     num_evaluations = opt_results.get('num_evaluations', 0)
     logger.info(f"PID Evaluations: {num_evaluations}")

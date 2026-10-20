@@ -70,7 +70,10 @@ class SystemSimulator:
             result = {'success': False, 'metrics': None}
         else:
             if self.cost_function == 'compute_metrics':
-                metrics = self._compute_metrics(y_1d, cont_signal, t, self.target, signal_params, ref_val)
+                if signal_params.get('signal_type') == "Regulate":
+                    metrics = self._compute_regulate_metrics(y_1d, cont_signal, t, ref_val[0])
+                else:
+                    metrics = self._compute_metrics(y_1d, cont_signal, t, self.target, signal_params, ref_val)
                 result = {'success': True, 'metrics': metrics}
             elif self.cost_function == 'compute_coupling_metrics':
                 metrics = self._compute_mixed_metrics(y, cont_signal, t, signal_params, ref_val)
@@ -257,11 +260,25 @@ class SystemSimulator:
             active_error = eval_error[step_start_idx:]
             approach_threshold = 0.1 * true_step_size
 
-            active_approach_indices = np.where(np.abs(active_error) < approach_threshold)[0]
+            if step_start_idx > 0:
+                pre_step_traj = trajectory[step_start_idx - 1]
+                post_step_ref = ref_signal[step_start_idx] if ref_signal is not None else actual_target
+                theoretical_error = pre_step_traj - post_step_ref
+            else:
+                theoretical_error = eval_error[0]
+
+            if abs(theoretical_error) > 1e-6:
+                initial_sign = np.sign(theoretical_error)
+            else:
+                initial_sign = np.sign(eval_error[step_start_idx])
+
+            active_approach_indices = np.where(
+                (np.abs(active_error) < approach_threshold) |
+                (np.sign(active_error) == -initial_sign)
+            )[0]
 
             if len(active_approach_indices) > 0:
                 first_approach = active_approach_indices[0] + step_start_idx
-                initial_sign = np.sign(eval_error[step_start_idx])
 
                 if first_approach < len(eval_error) - 1:
                     errors_after_approach = eval_error[first_approach:]
@@ -343,6 +360,86 @@ class SystemSimulator:
             'control_zero_crossings': int(np.count_nonzero(sign_changes))
         }
 
+    def _compute_regulate_metrics(self, trajectory: np.ndarray, control: np.ndarray, time: np.ndarray,
+                                  trim_value: float) -> Dict[str, float]:
+        """Compute performance metrics specifically for Regulation (return to trim)."""
+        error = trajectory - trim_value
+        initial_error = error[0]
+        initial_error_mag = abs(initial_error)
+
+        if initial_error_mag < 1e-6:
+            initial_error_mag = 1.0  # Prevent division by zero if system is already at trim
+
+        # 1. MSE
+        mse = float(np.sum(error ** 2) / max(len(trajectory), 1))
+
+        # 2. Settling time
+        settling_band = 0.02 * initial_error_mag
+        settled_idx = np.where(np.abs(error) > settling_band)[0]
+
+        if len(settled_idx) > 0:
+            settling_time = float(self.max_time) if settled_idx[-1] == len(error) - 1 else float(time[settled_idx[-1]])
+        else:
+            settling_time = float(time[0])
+
+        # 3. Overshoot & Wrong-Way Deviation
+        initial_sign = np.sign(initial_error)
+
+        # A. Deviation past the trim value (Traditional Overshoot)
+        crossed_indices = np.where(np.sign(error) == -initial_sign)[0]
+        cross_overshoot = np.max(np.abs(error[crossed_indices])) if len(crossed_indices) > 0 else 0.0
+
+        # B. Moving further away from trim than the start (Wrong-Way Deviation)
+        same_side_indices = np.where(np.sign(error) == initial_sign)[0]
+        if len(same_side_indices) > 0:
+            max_same_side_error = np.max(np.abs(error[same_side_indices]))
+            wrong_way_overshoot = max_same_side_error - initial_error_mag if max_same_side_error > initial_error_mag else 0.0
+        else:
+            wrong_way_overshoot = 0.0
+
+        # Use whichever deviation is strictly larger
+        max_deviation = max(cross_overshoot, wrong_way_overshoot)
+        overshoot = float((max_deviation / initial_error_mag) * 100.0)
+
+        # 4. Normalized Control Effort
+        if self.max_ctrl != "" and self.min_ctrl != "":
+            max_abs_u = max(abs(float(self.min_ctrl)), abs(float(self.max_ctrl)))
+            max_possible_effort = max_abs_u * len(control)
+        elif "U" in self.input_name:
+            max_possible_effort = abs(self.trim_values[self.input_channel])
+        else:
+            max_possible_effort = abs(self.trim_ics[self.input_channel])
+
+        control_effort = float(
+            np.sum(np.abs(control)) * self.dt / max_possible_effort) if max_possible_effort > 0 else 0.0
+
+        # 5. Rise time (Conceptually decay time: Time to reduce error from 90% to 10% of initial magnitude)
+        error_mag = np.abs(error)
+        idx_90 = np.where(error_mag <= 0.9 * initial_error_mag)[0]
+        idx_10 = np.where(error_mag <= 0.1 * initial_error_mag)[0]
+        if len(idx_90) > 0 and len(idx_10) > 0:
+            rise_time = max(0.0, float(time[idx_10[0]] - time[idx_90[0]]))
+        else:
+            rise_time = float(self.max_time)
+
+        # 6. Steady-state error
+        eval_period = max(1, int(0.2 / self.dt))
+        steady_state_error = float(np.mean(np.abs(error[-eval_period:]))) if len(error) > 0 else 0.0
+
+        # 7. Control zero crossings
+        control_signs = np.sign(control)
+        control_signs_nonzero = control_signs[control_signs != 0]
+        sign_changes = np.diff(control_signs_nonzero)
+
+        return {
+            'mse': mse,
+            'settling_time': settling_time,
+            'overshoot': overshoot,
+            'control_effort': control_effort,
+            'rise_time': rise_time,
+            'steady_state_error': steady_state_error,
+            'control_zero_crossings': int(np.count_nonzero(sign_changes))
+        }
 
     def _compute_coupling_metrics(self, x: np.ndarray, control: np.ndarray, time: np.ndarray, signal_params: Dict[str, float]) -> Dict[str, float]:
         metrics_list = []
@@ -355,7 +452,10 @@ class SystemSimulator:
                 continue
             y = x[:, i]
             channel_ref = np.full(len(time), self.trim_ics[i])
-            metrics = self._compute_metrics(y, control, time, self.trim_ics[i], signal_params, channel_ref)
+            if signal_params.get('signal_type') == "Regulate":
+                metrics = self._compute_regulate_metrics(y, control, time, self.trim_ics[i])
+            else:
+                metrics = self._compute_metrics(y, control, time, self.trim_ics[i], signal_params, channel_ref)
             metrics_list.append(metrics)
 
         coupling_metrics = {k: mean(d[k] for d in metrics_list) for k in metrics_list[0]}
@@ -368,7 +468,10 @@ class SystemSimulator:
         coupling_metrics = self._compute_coupling_metrics(x, control, time, signal_params)
 
         x_1d = x[:, self.output_channel]
-        metrics = self._compute_metrics(x_1d, control, time, self.target, signal_params, ref_signal)
+        if signal_params.get('signal_type') == "Regulate":
+            metrics = self._compute_regulate_metrics(x_1d, control, time, self.trim_ics[self.output_channel])
+        else:
+            metrics = self._compute_metrics(x_1d, control, time, self.target, signal_params, ref_signal)
 
         mixed_metrics = {k: metrics[k] * (1 - alpha) + coupling_metrics[k] * alpha for k in metrics}
         return mixed_metrics
@@ -435,7 +538,10 @@ def simulate_system_response(equation: str, case_study: dict, controller_structu
     state_idx = system_config["output_channel"]
     y_1d = y[:, state_idx]
 
-    metrics = simulator._compute_metrics(y_1d, cont_signal, t, system_config["target"], signal_params, ref_val)
+    if signal_params.get('signal_type') == "Regulate":
+        metrics = simulator._compute_regulate_metrics(y_1d, cont_signal, t, trim_value[0])
+    else:
+        metrics = simulator._compute_metrics(y_1d, cont_signal, t, system_config["target"], signal_params, ref_val)
     coupling_metrics = simulator._compute_coupling_metrics(y, cont_signal, t, signal_params)
 
     print()
@@ -449,4 +555,4 @@ def simulate_system_response(equation: str, case_study: dict, controller_structu
     print(simulator.coupled_channels)
     pprint.pprint(coupling_metrics)
 
-    return t, y, ref_val, trim_value, cont_signal
+    return t, y, ref_val, trim_value, cont_signal, metrics

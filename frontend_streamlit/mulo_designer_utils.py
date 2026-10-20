@@ -2,6 +2,8 @@ import streamlit as st
 import re
 import plotly.graph_objects as go
 import copy
+import io
+import pandas as pd
 
 from backend_core.MuloDesigner.utils import (
     active_controller_index,
@@ -58,6 +60,7 @@ def show_performance_plots():
 
         with right_panel:
             if f"cached_plot_{j}" not in st.session_state:
+
                 st.session_state[f"cached_plot_{j}"] = _show_performance_plots(
                     orchestrator, supervisor, code, st.session_state["modified_controller_structure"],
                     new_kp, new_ki, new_kd, is_bounded, min_bound, max_bound,
@@ -136,6 +139,7 @@ def _show_constant_slidebars(orchestrator, supervisor, code, controller_structur
     loop_index = active_controller_index(orchestrator.get_loop_index())
     kp, ki, kd = get_pid_gains(controller_structure, orchestrator.get_loop_index(), cont_index)
 
+
     ctrl_output = controller_structure[loop_index]["controllers"][cont_index].get("controller_output", {})
 
     if st.session_state.get("reset_sliders", False):
@@ -155,23 +159,18 @@ def _show_constant_slidebars(orchestrator, supervisor, code, controller_structur
     controller = controller_structure[loop_index]["controllers"][cont_index]
     default_amp = orchestrator.generate_target(controller)
 
-    kp_bound_up, ki_bound_up, kd_bound_up = get_pid_gain_upper_bounds(supervisor.get_final_states()[cont_index],
-                                                                      controller, orchestrator.get_run_config())
-    kp_bound_low, ki_bound_low, kd_bound_low = get_pid_gain_lower_bounds(supervisor.get_final_states()[cont_index],
-                                                                      controller, orchestrator.get_run_config())
-
     with col_ctrl:
         st.markdown("### 🎛️ Controller Config")
         new_kp = st.number_input(
-            "Proportional Gain (Kp)", min_value=float(kp_bound_low) * 20, max_value=100.0,
+            "Proportional Gain (Kp)", min_value=-1000.0, max_value=1000.0,
             value=float(kp), step=0.01, format="%.9f", key=f"kp_input_{loop_index}{cont_index}"
         )
         new_ki = st.number_input(
-            "Integral Gain (Ki)", min_value=float(ki_bound_low) * 20, max_value=100.0,
+            "Integral Gain (Ki)", min_value=-1000.0, max_value=1000.0,
             value=float(ki), step=0.01, format="%.9f", key=f"ki_input_{loop_index}{cont_index}"
         )
         new_kd = st.number_input(
-            "Derivative Gain (Kd)", min_value=float(kd_bound_low) * 20, max_value=100.0,
+            "Derivative Gain (Kd)", min_value=-1000.0, max_value=1000.0,
             value=float(kd), step=0.01, format="%.9f", key=f"kd_input_{loop_index}{cont_index}"
         )
 
@@ -258,7 +257,8 @@ def _show_performance_plots(orchestrator, supervisor, code, controller,
         input_channel_name = controller_structure["controlled_variable_in_equation"].capitalize()
         unit = controller_structure.get("target", {}).get("unit", "").capitalize()
 
-        t, y, ref_val, trim_value, cont_signal = simulate_system_response(
+        # Unpack the 5 elements returned by simulate_system_response
+        t, y, ref_val, trim_value, cont_signal, metrics = simulate_system_response(
             code,
             orchestrator.get_case_study(),
             controller_structure,
@@ -276,6 +276,51 @@ def _show_performance_plots(orchestrator, supervisor, code, controller,
         match = re.search(r'\d+', input_channel_name)
         n = int(match.group())
 
+        # -------------------------------------------------------------
+        # Export simulation trajectory data to an in-memory Excel file
+        # -------------------------------------------------------------
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+            # Main simulation channels
+            df_sim = pd.DataFrame({
+                "Time (s)": t,
+                f"Controlled Variable (X[{n}])": y[:, n],
+                "Reference Setpoint": ref_val,
+                "Trim Operating Point": trim_value,
+                "Control Signal": cont_signal,
+                "Error": y[:, n] - ref_val
+            })
+            df_sim.to_excel(writer, sheet_name="Tracking_Response", index=False)
+
+            # Metadata and simulation parameters
+            df_meta = pd.DataFrame({
+                "Parameter": [
+                    "Controller Index", "Controlled Variable", "Signal Type",
+                    "Step Time (s)", "Kp", "Ki", "Kd",
+                    "Bounded Control", "Min Control", "Max Control"
+                ],
+                "Value": [
+                    controller_index, input_channel_name, sig_type,
+                    sig_step_time, kp, ki, kd,
+                    is_bounded, min_ctrl, max_ctrl
+                ]
+            })
+            df_meta.to_excel(writer, sheet_name="Run_Config", index=False)
+
+        excel_data = excel_buffer.getvalue()
+
+        # Streamlit download button for the Excel workbook
+        # st.download_button(
+        #     label="📥 Download Simulation Data (.xlsx)",
+        #     data=excel_data,
+        #     file_name=f"simulation_data_loop{loop_index}_ctrl{controller_index}.xlsx",
+        #     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        #     key=f"download_sim_excel_{controller_index}"
+        # )
+
+        # -------------------------------------------------------------
+        # Plot generation
+        # -------------------------------------------------------------
         fig = go.Figure()
 
         fig.add_trace(go.Scatter(
@@ -414,7 +459,7 @@ def display_edit_case_study_page():
                 loop_col1, loop_col2 = st.columns(2)
                 with loop_col1:
                     mse = st.number_input("Mean Squared Error (mse)",
-                                          step=100.0, min_value=0.0, format="%.3f", key=f"mse_input_{i}")
+                                          step=100.0, min_value=0.0, format="%.7f", key=f"mse_input_{i}")
 
                     settling_time = st.number_input("Settling Time Threshold (s)",
                                                     step=0.5, min_value=0.0, key=f"settling_input_{i}")

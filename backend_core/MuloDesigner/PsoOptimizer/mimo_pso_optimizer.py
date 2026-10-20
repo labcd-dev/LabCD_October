@@ -54,8 +54,9 @@ def _parallel_evaluate_mimo_fitness(gains_array: np.ndarray, weights_list: List[
 
         channel_cost = sum(
             weights.get(met, 1.0) * (m[met] ** 2)
-            for met in ['mse', 'settling_time', 'overshoot', 'control_effort']
-            if met in m
+            for met in
+            ['mse', 'settling_time', 'overshoot', 'control_effort', 'control_zero_crossings', 'steady_state_error']
+            if met in m and met in weights
         )
         total_cost += channel_cost
 

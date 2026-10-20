@@ -2,7 +2,6 @@
   "control_architecture": "Cascaded",
   "pid_loops": [
     {
-      "loop_number": 1,
       "loop_name": "inner_wheel_velocity_control",
       "controllers": [
         {
@@ -17,7 +16,6 @@
       ]
     },
     {
-      "loop_number": 2,
       "loop_name": "outer_pendulum_angle_control",
       "controllers": [
         {

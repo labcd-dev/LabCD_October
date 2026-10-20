@@ -36,7 +36,9 @@ def _parallel_evaluate_fitness(Kp: float, Ki: float, Kd: float, weights: Dict[st
     m = result['metrics']
     cost = sum(
         weights.get(met, 1.0) * (m[met] ** 2)
-        for met in ['mse', 'settling_time', 'overshoot', 'control_effort'] if met in m
+        for met in
+        ['mse', 'settling_time', 'overshoot', 'control_effort', 'control_zero_crossings', 'steady_state_error'] if
+        met in m and met in weights
     )
     return cost, result
 

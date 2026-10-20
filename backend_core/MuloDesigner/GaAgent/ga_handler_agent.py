@@ -107,6 +107,7 @@ def initialize_ga_handler_state(
         "controller_name": case_study["controller_name"],
         "optimizer_type": optimizer_type.upper(),
         "signal_type": src["signal_type"],
+        "supervisor_comment": case_study.get("supervisor_comment", ""),
     }
 
     return state

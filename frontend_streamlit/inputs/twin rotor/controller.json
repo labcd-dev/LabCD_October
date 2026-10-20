@@ -2,7 +2,6 @@
   "control_architecture": "Cascaded",
   "pid_loops": [
     {
-      "loop_number": 1,
       "loop_name": "inner_rate_control",
       "controllers": [
         {
@@ -26,7 +25,6 @@
       ]
     },
     {
-      "loop_number": 2,
       "loop_name": "outer_angle_control",
       "controllers": [
         {

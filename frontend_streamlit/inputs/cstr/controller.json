@@ -2,14 +2,7 @@
   "control_architecture": "Cascaded",
   "pid_loops": [
     {
-      "loop_number": 1,
       "loop_name": "inner_Tc_control",
-      "metrics": {
-        "control_effort": 1.5,
-        "mse": 0.01,
-        "overshoot": 2.0,
-        "settling_time": 5.0
-      },
       "controllers": [
         {
           "controlled_variable": "Coolant Temperature",
@@ -31,20 +24,12 @@
             "unit": "K"
           },
           "output_unit": "m^3/s",
-          "input_unit": "K",
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          "input_unit": "K"
         }
       ]
     },
     {
-      "loop_number": 2,
       "loop_name": "middle_T_control",
-      "metrics": {
-        "control_effort": 1.0,
-        "mse": 0.02,
-        "overshoot": 1.5,
-        "settling_time": 4.0
-      },
       "controllers": [
         {
           "controlled_variable": "Reactor Temperature",
@@ -66,20 +51,12 @@
             "unit": "K"
           },
           "output_unit": "K",
-          "input_unit": "K",
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          "input_unit": "K"
         }
       ]
     },
     {
-      "loop_number": 3,
       "loop_name": "outer_CA_control",
-      "metrics": {
-        "control_effort": 2.0,
-        "mse": 0.03,
-        "overshoot": 3.0,
-        "settling_time": 6.0
-      },
       "controllers": [
         {
           "controlled_variable": "Reactor Concentration",
@@ -101,8 +78,7 @@
             "unit": "mol/m^3"
           },
           "output_unit": "mol/m^3",
-          "input_unit": "mol/m^3",
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          "input_unit": "mol/m^3"
         }
       ]
     }

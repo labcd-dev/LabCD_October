@@ -109,7 +109,8 @@ system_prompt: |
       "mse": <float>,
       "settling_time": <float>,
       "overshoot": <float>,
-      "control_effort": <float>
+      "control_effort": <float>,
+      "... (include any additional dynamic metrics here)": <float>
     },
     "ga_population_size": <int>,
     "ga_generations": <int>,

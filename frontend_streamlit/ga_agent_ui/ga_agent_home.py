@@ -221,7 +221,6 @@ def display_home_page(run_by_ga_agent_ui: bool = True) -> None:
         st.session_state.plot_data = empty_plot_data()
         st.session_state.run_config = run_config
         st.session_state.run_complete = False
-        st.session_state.final_state = None
         st.session_state.pop("run_error", None)
         st.session_state.pop("run_error_tb", None)
 
@@ -298,7 +297,7 @@ def _run_experiment_worker(
             buffer_size=run_config["buffer_size"],
             control_objective=run_config.get("control_objective"),
         )
-        _push({"event_type": "run_complete", "final_state": final_state})
+        _push({"event_type": "run_complete"})
     except Exception as exc:
         _push({
             "event_type": "run_error",

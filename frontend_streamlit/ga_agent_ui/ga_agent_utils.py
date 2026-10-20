@@ -1,3 +1,4 @@
+import copy
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -95,6 +96,12 @@ def initialize_controller_data(controller_name: str) -> Dict[str, Any]:
         "settling_time": [],
         "overshoot": [],
         "control_effort": [],
+        # --- NEW: Historical target arrays ---
+        "target_mse": [],
+        "target_settling_time": [],
+        "target_overshoot": [],
+        "target_control_effort": [],
+        # -------------------------------------
         "Kp": [],
         "Ki": [],
         "Kd": [],
@@ -102,30 +109,101 @@ def initialize_controller_data(controller_name: str) -> Dict[str, Any]:
         "success_score": [],
         "best_score_so_far": [],
         "attempt_boundaries_nfe": [],
+        "supervisor_boundaries_nfe": [],
         "attempt_summaries": [],
         "attempt_ranges": {},
         "controller_name": controller_name,
-        "fixed_targets": {},  # <--- ADD THIS LINE
+        "fixed_targets": {},
+        "_nfe_offset": 0,
+        "_last_raw_nfe": 0,
+        "_global_attempt": 0,
+        "_last_raw_attempt": None,
+        "_pending_supervisor_boundary": False,
     }
 
-def update_controller_plot_data(controller_name: str, event: Dict[str, Any]) -> None:
+def mark_supervisor_boundary(controller_name: str) -> None:
     """
-    Update plot data for a specific controller with a new generation event.
+    Flags that a Supervisor / Fine Tuner / Evaluate Agent decision just occurred
+    for this controller, and records the boundary at the current cumulative NFE.
     """
     if "plot_data" not in st.session_state:
         st.session_state.plot_data = empty_plot_data()
 
-    # Initialize controller data if not exists
+    if controller_name not in st.session_state.plot_data:
+        st.session_state.plot_data[controller_name] = initialize_controller_data(controller_name)
+
+    data = st.session_state.plot_data[controller_name]
+    if data["cumulative_nfe"]:
+        boundary_nfe = data["cumulative_nfe"][-1]
+        if boundary_nfe not in data["supervisor_boundaries_nfe"]:
+            data["supervisor_boundaries_nfe"].append(boundary_nfe)
+        data["_pending_supervisor_boundary"] = True
+
+
+def update_controller_plot_data(controller_name: str, event: Dict[str, Any]) -> None:
+    """
+    Update plot data for a specific controller with a new generation event,
+    ensuring NFE and attempt numbers continue sequentially across runs.
+    """
+    if "plot_data" not in st.session_state:
+        st.session_state.plot_data = empty_plot_data()
+
     if controller_name not in st.session_state.plot_data:
         st.session_state.plot_data[controller_name] = initialize_controller_data(controller_name)
 
     data = st.session_state.plot_data[controller_name]
 
-    # 1. Incoming instantaneous generation cost
+    raw_nfe = event.get("cumulative_nfe", 0)
+    raw_attempt = event.get("attempt", 1)
+    gen = event.get("generation", 1)
+
+    # 1. Detect if the backend optimizer reset its NFE counter (e.g. new PSO / MIMO PSO / GA run)
+    if data["cumulative_nfe"] and (raw_nfe < data["_last_raw_nfe"] or (gen == 1 and data["_pending_supervisor_boundary"])):
+        # If raw_nfe restarted from a small number (<= last_raw_nfe), shift offset to the last plotted NFE
+        if raw_nfe <= data["_last_raw_nfe"]:
+            data["_nfe_offset"] = data["cumulative_nfe"][-1]
+
+    adjusted_nfe = data["_nfe_offset"] + raw_nfe
+    # Guarantee strictly non-decreasing NFE if retain=True already included partial offset
+    if data["cumulative_nfe"] and adjusted_nfe <= data["cumulative_nfe"][-1]:
+        data["_nfe_offset"] = data["cumulative_nfe"][-1]
+        adjusted_nfe = data["_nfe_offset"] + raw_nfe
+
+    data["_last_raw_nfe"] = raw_nfe
+
+    # 2. Compute continuous global attempt number
+    is_new_attempt = (
+        data["_last_raw_attempt"] is None
+        or raw_attempt != data["_last_raw_attempt"]
+        or data["_pending_supervisor_boundary"]
+        or (gen == 1 and len(data["cumulative_nfe"]) > 0)
+    )
+
+    if is_new_attempt:
+        prev_nfe = data["cumulative_nfe"][-1] if data["cumulative_nfe"] else None
+        data["_global_attempt"] += 1
+        data["_last_raw_attempt"] = raw_attempt
+
+        if prev_nfe is not None:
+            if data["_pending_supervisor_boundary"]:
+                # Red dotted line was already added by mark_supervisor_boundary;
+                # consume the flag so we don't also draw a gray dashed line on top of it
+                if prev_nfe not in data["supervisor_boundaries_nfe"]:
+                    data["supervisor_boundaries_nfe"].append(prev_nfe)
+            else:
+                # Internal GA Agent attempt transition -> gray dashed line
+                if prev_nfe not in data["attempt_boundaries_nfe"]:
+                    data["attempt_boundaries_nfe"].append(prev_nfe)
+
+        data["_pending_supervisor_boundary"] = False
+
+    global_attempt = data["_global_attempt"]
+
+    # 3. Incoming instantaneous generation cost
     incoming_cost = event.get("best_baseline_cost")
     data["best_baseline_cost"].append(incoming_cost)
 
-    # 2. UI-side running minimum computation
+    # 4. UI-side running minimum computation
     prev_best = (
         data["best_baseline_so_far"][-1]
         if data["best_baseline_so_far"] and data["best_baseline_so_far"][-1] is not None
@@ -140,27 +218,31 @@ def update_controller_plot_data(controller_name: str, event: Dict[str, Any]) -> 
         new_running_best if new_running_best != float("inf") else None
     )
 
-    # Append remaining telemetry
-    data["cumulative_nfe"].append(event.get("cumulative_nfe", 0))
+    # 5. Append remaining telemetry using adjusted_nfe and global_attempt
+    data["cumulative_nfe"].append(adjusted_nfe)
     data["mse"].append(event.get("mse", float('nan')))
     data["settling_time"].append(event.get("settling_time", float('nan')))
     data["overshoot"].append(event.get("overshoot", float('nan')))
     data["control_effort"].append(event.get("control_effort", float('nan')))
+    targets = event.get("fixed_targets", {})
+    data["target_mse"].append(targets.get("mse", float('nan')))
+    data["target_settling_time"].append(targets.get("settling_time", float('nan')))
+    data["target_overshoot"].append(targets.get("overshoot", float('nan')))
+    data["target_control_effort"].append(targets.get("control_effort", float('nan')))
     data["Kp"].append(event.get("Kp", 0.0))
     data["Ki"].append(event.get("Ki", 0.0))
     data["Kd"].append(event.get("Kd", 0.0))
-    data["attempt"].append(event.get("attempt", 1))
+    data["attempt"].append(global_attempt)
     data["success_score"].append(event.get("success_score", 0))
     data["best_score_so_far"].append(event.get("best_score_so_far", 0))
-    data["fixed_targets"] = event.get("fixed_targets", {})
+    data["fixed_targets"] = targets  # Keep latest state
 
-    # Update attempt boundaries if attempt changed
-    if len(data["attempt"]) > 1 and data["attempt"][-1] != data["attempt"][-2]:
-        data["attempt_boundaries_nfe"].append(data["cumulative_nfe"][-2])
+    if "param_ranges" in event and event["param_ranges"]:
+        data["attempt_ranges"][global_attempt] = copy.deepcopy(event["param_ranges"])
 
 def update_attempt_summary(controller_name: str, summary: Dict[str, Any]) -> None:
     """
-    Update attempt summary for a specific controller.
+    Update attempt summary for a specific controller using its continuous global attempt index.
     """
     if "plot_data" not in st.session_state:
         return
@@ -168,23 +250,22 @@ def update_attempt_summary(controller_name: str, summary: Dict[str, Any]) -> Non
     if controller_name in st.session_state.plot_data:
         data = st.session_state.plot_data[controller_name]
 
-        # Store attempt ranges if present
-        if "param_ranges" in summary:
-            att = summary.get("attempt", 1)
-            if att not in data["attempt_ranges"]:
-                data["attempt_ranges"][att] = {}
-            data["attempt_ranges"][att] = summary.get("param_ranges", {})
+        # Align summary attempt number with the continuous global attempt counter
+        att = data["_global_attempt"] if data["_global_attempt"] > 0 else summary.get("attempt", 1)
+        summary_copy = copy.deepcopy(summary)
+        summary_copy["attempt"] = att
 
-        # Append summary to list
-        data["attempt_summaries"].append(summary)
+        if "param_ranges" in summary_copy:
+            data["attempt_ranges"][att] = summary_copy.get("param_ranges", {})
 
+        data["attempt_summaries"].append(summary_copy)
 
 # -- Event-queue drain ---------------------------------------------------------
 
 def drain_event_queue() -> None:
     """
     Non-blocking drain of st.session_state.event_queue into
-    st.session_state.plot_data with controller-aware processing.
+    st.session_state.plot_data with controller-aware and rollback-aware processing.
     """
     event_queue = st.session_state.get("event_queue")
     if event_queue is None:
@@ -192,6 +273,8 @@ def drain_event_queue() -> None:
 
     if "plot_data" not in st.session_state:
         st.session_state.plot_data = empty_plot_data()
+    if "plot_data_snapshots" not in st.session_state:
+        st.session_state.plot_data_snapshots = {}
 
     # Drain all events from the queue
     while not event_queue.empty():
@@ -200,18 +283,35 @@ def drain_event_queue() -> None:
             event_type = event.get("event_type")
 
             if event_type == "generation":
-                # Update controller-specific plot data
                 controller_name = event.get("controller_name", "Unknown Controller")
                 update_controller_plot_data(controller_name, event)
 
             elif event_type == "attempt_complete":
-                # Update attempt summary for specific controller
                 controller_name = event.get("controller_name", "Unknown Controller")
                 update_attempt_summary(controller_name, event)
 
+            elif event_type == "supervisor_boundary":
+                controller_name = event.get("controller_name", "Unknown Controller")
+                mark_supervisor_boundary(controller_name)
+
+            elif event_type == "agent_snapshot":
+                snap_id = event.get("snapshot_id")
+                if snap_id is not None:
+                    st.session_state.plot_data_snapshots[snap_id] = copy.deepcopy(st.session_state.plot_data)
+
+            elif event_type == "rollback":
+                snap_id = event.get("snapshot_id")
+                if snap_id is not None and snap_id in st.session_state.plot_data_snapshots:
+                    st.session_state.plot_data = copy.deepcopy(st.session_state.plot_data_snapshots[snap_id])
+
+            elif event_type == "node_start":
+                st.session_state.current_workflow_node = event.get("node_name", "")
+
+            elif event_type == "agent_step_completed":
+                st.session_state.latest_completed_agent_node = event.get("node_name", "")
+
             elif event_type == "run_complete":
                 st.session_state.run_complete = True
-                st.session_state.final_state = event.get("final_state")
 
             elif event_type == "run_error":
                 st.session_state.run_complete = True

@@ -102,6 +102,11 @@ class Agents(BaseAgent):
             client=bound_client
         )
 
+        response_content = response_content.additional_kwargs["parsed"]
+
+        import pprint
+        pprint.pprint(response_content)
+
         response_content = response_content.replace('"output_variable"', '"output_signal"')
         return response_content
 
@@ -119,7 +124,7 @@ class Agents(BaseAgent):
         )
 
         decision = json.loads(response_content)
-        LIVE_AGENT_DECISIONS.append({"agent": "🧑‍💼 Supervisor Agent", "response": decision})
+        LIVE_AGENT_DECISIONS.append({"agent": "🧑‍💼 Supervisor Agent", "response": decision, "context": agent_context})
         return decision
 
     def fine_tuner_agent(self, control_block: list, agent_context: dict, max_tries: int) -> dict:
@@ -136,7 +141,7 @@ class Agents(BaseAgent):
         )
 
         decision = json.loads(response_content)
-        LIVE_AGENT_DECISIONS.append({"agent": "👌 Fine Tuner Agent", "response": decision})
+        LIVE_AGENT_DECISIONS.append({"agent": "👌 Fine Tuner Agent", "response": decision, "context": agent_context})
         return decision
 
     def evaluate_agent(self, full_architecture: list, agent_context: dict, max_redesigns: int) -> dict:
@@ -153,7 +158,7 @@ class Agents(BaseAgent):
         )
 
         decision = json.loads(response_content)
-        LIVE_AGENT_DECISIONS.append({"agent": "🔍 Evaluate Agent", "response": decision})
+        LIVE_AGENT_DECISIONS.append({"agent": "⚖️ Evaluate Agent", "response": decision, "context": agent_context})
         return decision
 
     def compute_cost(self, in_tokens: int, out_tokens: int) -> float:

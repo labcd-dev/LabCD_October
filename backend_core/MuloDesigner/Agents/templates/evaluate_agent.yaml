@@ -31,8 +31,8 @@ prompt: |
   {{
     "supervisor_decision": "Selective Re-design",
     "action": {{
-      "selected_controller": {{
-        "inner_loop_index": <int>,
+      "selected_controller": {{ // All indexes must be Zero based
+        "inner_loop_index": <int>,  
         "inner_controller_index": <int>,
         "outer_loop_index": <int>,
         "outer_controller_index": <int>

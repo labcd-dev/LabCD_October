@@ -2,14 +2,7 @@
   "control_architecture": "Cascaded",
   "pid_loops": [
     {
-      "loop_number": 1,
       "loop_name": "inner_pitch_rate_control",
-      "metrics": {
-        "control_effort": 10,
-        "mse": 0.01,
-        "overshoot": 5,
-        "settling_time": 1.5
-      },
       "controllers": [
         {
           "controlled_variable": "q",
@@ -32,7 +25,6 @@
             "min_value": 0.1,
             "unit": "rad/s"
           },
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]},
           "skip": true,
           "kp": 0,
           "ki": 0,
@@ -41,14 +33,7 @@
       ]
     },
     {
-      "loop_number": 2,
       "loop_name": "outer_pitch_angle_control",
-      "metrics": {
-        "control_effort": 15,
-        "mse": 0.02,
-        "overshoot": 3,
-        "settling_time": 2.0
-      },
       "controllers": [
         {
           "controlled_variable": "theta",
@@ -70,20 +55,12 @@
             "max_value": 0.08,
             "min_value": 0.08,
             "unit": "rad"
-          },
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          }
         }
       ]
     },
     {
-      "loop_number": 3,
       "loop_name": "outermost_vertical_position_control",
-      "metrics": {
-        "control_effort": 20,
-        "mse": 0.03,
-        "overshoot": 4,
-        "settling_time": 2.5
-      },
       "controllers": [
         {
           "controlled_variable": "z",
@@ -106,7 +83,6 @@
             "min_value": 10,
             "unit": "m"
           },
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
         }
       ]
     }

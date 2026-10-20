@@ -2,14 +2,7 @@
   "control_architecture": "Cascaded",
   "pid_loops": [
     {
-      "loop_number": 1,
       "loop_name": "inner_rate_control",
-      "metrics": {
-        "control_effort": 0.5,
-        "mse": 0.01,
-        "overshoot": 5.0,
-        "settling_time": 1.5
-      },
       "controllers": [
         {
           "controlled_variable": "dpitch",
@@ -32,7 +25,10 @@
             "min_value": 0.1,
             "unit": "radians/s"
           },
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          "skip": true,
+          "kp": 28.9152,
+          "ki": 8.9812,
+          "kd": 0.8721
         },
         {
           "controlled_variable": "dyaw",
@@ -55,19 +51,15 @@
             "min_value": 0.1,
             "unit": "radians/s"
           },
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          "skip": true,
+          "kp": 1.5222,
+          "ki": 15.0,
+          "kd": 0.05
         }
       ]
     },
     {
-      "loop_number": 3,
       "loop_name": "outer_angle_control",
-      "metrics": {
-        "control_effort": 0.6,
-        "mse": 0.02,
-        "overshoot": 4.0,
-        "settling_time": 2.0
-      },
       "controllers": [
         {
           "controlled_variable": "pitch",
@@ -89,8 +81,7 @@
             "max_value": 0.08,
             "min_value": 0.08,
             "unit": "radians/s"
-          },
-          "param_ranges": {"Kp": [-5.0, 5.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          }
         },
         {
           "controlled_variable": "yaw",
@@ -112,8 +103,7 @@
             "max_value": 0.08,
             "min_value": 0.08,
             "unit": "radians/s"
-          },
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          }
         }
       ]
     }

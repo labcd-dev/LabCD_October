@@ -15,58 +15,122 @@ from backend_core.MuloDesigner.Agents.mulo_design_agents import Agents
 logger = get_logger(__name__)
 
 # TODO: In final version this will be removed and replaced by an agent or user input data
-def add_constraint_to_controller(run_config: Dict[str, Any], controller_structure: List[Any], trimming_result: Dict[str, Any]) -> List[Any]:
-    if __name__ == "__main__":
-        agents = Agents(model_name=run_config["llm_model"])
-    else:
-        agents = Agents(model_name=run_config["llm_model"])
+def add_constraint_to_controller(run_config: Dict[str, Any], controller_structure: Dict[str, Any],
+                                 trimming_result: Dict[str, Any]) -> List[Any]:
+    agents = Agents(model_name=run_config["llm_model"])
+
+    # Base structure always preserved directly from controller_structure
+    new_controller = copy.deepcopy(controller_structure["pid_loops"])
+    new_controller = sorted(new_controller, key=lambda x: x.get("loop_number", 0))
 
     if run_config["optimizer_choice"] != "Dummy":
-        if "metrics" in controller_structure["pid_loops"][0].keys():
-            response = json.dumps(controller_structure)
-        elif run_config.get("web_search_model") is not None:
-            response = agents.constraint_estimator_web(controller_structure, trimming_result, run_config["web_search_model"], run_config["control_objective"])
+        # If metrics already exist, no need to ask LLM
+        if "metrics" in new_controller[0]:
+            pass
         else:
-            response = agents.constraint_estimator(controller_structure, trimming_result, run_config["control_objective"])
+            if run_config.get("web_search_model") is not None:
+                response = agents.constraint_estimator_web(
+                    controller_structure, trimming_result, run_config["web_search_model"],
+                    run_config["control_objective"]
+                )
+            else:
+                response = agents.constraint_estimator(
+                    controller_structure, trimming_result, run_config["control_objective"]
+                )
 
-        response = response.replace("```json", "").replace("```", "")
-        new_controller = json.loads(response)
-        new_controller = sorted(new_controller["pid_loops"], key=lambda x: x['loop_number'])
+            if isinstance(response, str):
+                response = response.replace("```json", "").replace("```", "").strip()
+                llm_data = json.loads(response)
+            else:
+                llm_data = response
 
+            # Index LLM loop data by loop_number for fast, robust lookup
+            llm_loops = {loop["loop_number"]: loop for loop in llm_data.get("loops", [])}
+
+            for pid_loop in new_controller:
+                loop_num = pid_loop.get("loop_number")
+                llm_loop_info = llm_loops.get(loop_num, {})
+
+                # Merge synthesized metrics into loop
+                if "metrics" in llm_loop_info:
+                    pid_loop["metrics"] = llm_loop_info["metrics"]
+                else:
+                    pid_loop["metrics"] = {
+                        "control_effort": 0.1, "mse": 0.01, "overshoot": 0.05, "settling_time": 1.5
+                    }
+
+                # Map synthesized controller constraints by controlled_variable name (or fallback to index)
+                llm_ctrls_by_var = {
+                    c.get("controlled_variable"): c for c in llm_loop_info.get("controllers", []) if
+                    "controlled_variable" in c
+                }
+                llm_ctrls_list = llm_loop_info.get("controllers", [])
+
+                for j, cont in enumerate(pid_loop.get("controllers", [])):
+                    var_name = cont.get("controlled_variable")
+                    # Match by variable name first; fallback to index
+                    synth_ctrl = llm_ctrls_by_var.get(var_name) or (
+                        llm_ctrls_list[j] if j < len(llm_ctrls_list) else {})
+
+                    if "target" in synth_ctrl:
+                        cont["target"] = synth_ctrl["target"]
+                    elif "target" not in cont:
+                        cont["target"] = {
+                            "description": cont.get("controlled_variable", ""),
+                            "max_value": 1.0,
+                            "min_value": 0.0,
+                            "unit": cont.get("input_unit", ""),
+                        }
+
+                    if "controller_output" in synth_ctrl:
+                        cont["controller_output"] = synth_ctrl["controller_output"]
+                    elif "controller_output" not in cont:
+                        cont["controller_output"] = {
+                            "is_bounded": True,
+                            "max_bound": 1.0,
+                            "min_bound": -1.0,
+                            "unit": cont.get("output_unit", ""),
+                            "variable_name": cont.get("output_signal", ""),
+                        }
+
+        # Apply state name translation & retain existing gains
         for i, pid_loop in enumerate(new_controller):
-            for j in range(len(pid_loop["controllers"])):
-                new_value = get_state_name(new_controller[i]["controllers"][j]["output_variable_in_equation"])
-                new_controller[i]["controllers"][j]["output_variable_in_equation"] = new_value
+            for j, cont in enumerate(pid_loop.get("controllers", [])):
+                if "output_variable_in_equation" in cont:
+                    cont["output_variable_in_equation"] = get_state_name(cont["output_variable_in_equation"])
 
-        import pprint
-        pprint.pprint(new_controller)
+                orig_cont = controller_structure["pid_loops"][i]["controllers"][j]
+                if "skip" in orig_cont:
+                    cont["skip"] = orig_cont["skip"]
+                    cont["kp"] = orig_cont["kp"]
+                    cont["ki"] = orig_cont["ki"]
+                    cont["kd"] = orig_cont["kd"]
 
         return new_controller
-    else:
-        new_controller = copy.deepcopy(controller_structure['pid_loops'])
-        new_controller = sorted(new_controller, key=lambda x: x.get('loop_number', 0))
 
+    else:
+        # Dummy Optimizer branch: fallback to default synthetic values
         for i, pid_loop in enumerate(new_controller):
             for j, cont in enumerate(pid_loop["controllers"]):
                 input_name = cont["controlled_variable"]
-                input_unit = cont["input_unit"]
-                output_unit = cont["output_unit"]
-                output_name = cont["output_signal"]
+                input_unit = cont.get("input_unit", "")
+                output_unit = cont.get("output_unit", "")
+                output_name = cont.get("output_signal", "")
 
-                new_controller[i]["controllers"][j]["controller_output"] = {
+                cont["controller_output"] = {
                     'is_bounded': True,
-                    'max_bound': 1,
-                    'min_bound': -1,
+                    'max_bound': 1.0,
+                    'min_bound': -1.0,
                     'unit': output_unit,
                     'variable_name': output_name,
                 }
-                new_controller[i]["controllers"][j]["target"] = {
+                cont["target"] = {
                     'description': input_name,
                     'max_value': 1.0,
                     'min_value': 0.0,
                     'unit': input_unit,
                 }
-            new_controller[i]['metrics'] = {
+            pid_loop['metrics'] = {
                 'control_effort': 0.1,
                 'mse': 0.01,
                 'overshoot': 0.05,

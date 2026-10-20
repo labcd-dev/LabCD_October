@@ -38,7 +38,6 @@ WEB_SEARCH_MODEL_OPTIONS: List[str] = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gp
 DEFAULT_OBJECTIVES: Dict[str, str] = {
     "dc motor": "",
     "quanser heli": "",
-    "aircraft": "",
     "active suspension": "",
     "auv depth": "",
     "cstr": "",

@@ -11,9 +11,15 @@ def controller_loop_name(controller_structure: List[Dict[str, Any]], controller_
 
 def get_pid_gains(controller_structure: List[Dict[str, Any]], loop_index: int, controller_index: int) -> Tuple[float, float, float]:
     """Return PID gains for the active controller."""
-    loop_index = active_controller_index(loop_index)
-    controller = controller_structure[loop_index]["controllers"][controller_index]
-    return float(controller["kp"]), float(controller["ki"]), float(controller["kd"])
+    try:
+        loop_index = active_controller_index(loop_index)
+        controller = controller_structure[loop_index]["controllers"][controller_index]
+        return float(controller["kp"]), float(controller["ki"]), float(controller["kd"])
+    except KeyError:
+        print()
+        import pprint
+        pprint.pprint(controller_structure)
+
 
 def get_pid_gain_upper_bounds(final_state: Dict[str, Any], controller_structure: Dict[str, Any],
                               run_config: Dict[str, Any]) -> Tuple[float, float, float]:

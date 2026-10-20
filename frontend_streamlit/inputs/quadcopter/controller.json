@@ -2,7 +2,6 @@
   "control_architecture": "Cascaded",
   "pid_loops": [
     {
-      "loop_number": 1,
       "loop_name": "rate_control",
       "controllers": [
         {
@@ -26,7 +25,6 @@
           },
           "output_unit": "Nm",
           "input_unit": "rad/s",
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
         },
         {
           "controlled_variable": "Angular velocity around y-axis",
@@ -48,8 +46,7 @@
             "unit": "rad/s"
           },
           "output_unit": "Nm",
-          "input_unit": "rad/s",
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          "input_unit": "rad/s"
         },
         {
           "controlled_variable": "Angular velocity around z-axis",
@@ -71,13 +68,11 @@
             "unit": "rad/s"
           },
           "output_unit": "Nm",
-          "input_unit": "rad/s",
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          "input_unit": "rad/s"
         }
       ]
     },
     {
-      "loop_number": 2,
       "loop_name": "attitude_control",
       "controllers": [
         {
@@ -100,8 +95,7 @@
           },
           "output_variable_in_equation": "X_sp[9]",
           "output_unit": "rad/s",
-          "input_unit": "rad",
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          "input_unit": "rad"
         },
         {
           "controlled_variable": "Orientation angle theta (pitch)",
@@ -123,8 +117,7 @@
           },
           "output_variable_in_equation": "X_sp[10]",
           "output_unit": "rad/s",
-          "input_unit": "rad",
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          "input_unit": "rad"
         },
         {
           "controlled_variable": "Orientation angle psi (yaw)",
@@ -146,13 +139,11 @@
           },
           "output_variable_in_equation": "X_sp[11]",
           "output_unit": "rad/s",
-          "input_unit": "rad",
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          "input_unit": "rad"
         }
       ]
     },
     {
-      "loop_number": 3,
       "loop_name": "position_control",
       "controllers": [
         {
@@ -175,8 +166,7 @@
             "unit": "rad"
           },
           "output_unit": "rad",
-          "input_unit": "m",
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          "input_unit": "m"
         },
         {
           "controlled_variable": "Position in x-direction",
@@ -198,8 +188,7 @@
             "unit": "rad"
           },
           "output_unit": "rad",
-          "input_unit": "m",
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          "input_unit": "m"
         },
         {
           "controlled_variable": "Position in z-direction",
@@ -221,8 +210,7 @@
             "unit": "m"
           },
           "output_unit": "N",
-          "input_unit": "m",
-          "param_ranges": {"Kp": [-1.0, 1.0], "Ki": [-1.0, 1.0], "Kd": [-1.0, 1.0]}
+          "input_unit": "m"
         }
       ]
     }

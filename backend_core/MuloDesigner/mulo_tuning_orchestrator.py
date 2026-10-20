@@ -31,54 +31,50 @@ class MuloTuningOrchestrator:
         self.working_function = ""
         self.final_state = {}
 
-    def initialize_control_block(self, tuning_order: List[str] = None):
+    def initialize_control_block(self, tuning_order: List[str] = None) -> bool:
         self.set_controller_index(0)
 
         i = int(self.get_loop_index())
         if i >= len(self.get_controller_structure()):
-            print("design controller none")
-            return None, None
+            return False
 
-        control_block = self.get_controller_structure()[i]["controllers"]
-        control_block = self.change_tuning_order(control_block, tuning_order)
+        control_block = self.get_active_control_block()
+        self.controller_structure[i]["controllers"] = self.change_tuning_order(control_block, tuning_order)
 
         # Pre-process the metrics and simulation configurations
-        self.pre_processing(self.get_controller_structure()[i])
+        self.pre_processing(self.controller_structure[i])
 
         # INJECTION: Add all controllers into the equation with 0-gains upfront
-        self.equation, self.working_function = inject_all_zeroed_controllers(self.equation, self.case_study, control_block)
-        
-        return control_block
-        
+        self.equation, self.working_function = inject_all_zeroed_controllers(
+            self.equation, self.case_study, self.get_active_control_block()
+        )
+        return True
 
-    def design_controller(self, control_block: List[Dict[str, Any]], controller_name: str, llm_agent: Any,
-                          cost_function: str = "compute_metrics", coupling_ratio: float = 0.0) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        # for j in range(len(control_block)):
-        # if len(non_working_controllers) > 0 and j not in non_working_controllers:
-        #     continue
-
-        # Tune controller to find the new optimal gains
+    def design_controller(self, controller_name: str, llm_agent: Any,
+                          cost_function: str = "compute_metrics", coupling_ratio: float = 0.0) -> dict[str, Any]:
         j = self.controller_index
-        control_block = self.tune_controller(control_block, j, self.working_function, cost_function, controller_name, coupling_ratio, llm_agent)
+        control_block = self.get_active_control_block()
+
+        self.tune_controller(control_block, j, self.working_function, cost_function, controller_name, coupling_ratio, llm_agent)
 
         target_index = len(control_block) - j - 1
         self.equation = update_gains_on_equation(self.equation, control_block[j], target_index)
 
-        return self.get_final_state(), control_block
+        return self.get_final_state()
 
-
-    def fine_tune_control_block(self, control_block: List[Dict[str, Any]], channels: List[Dict[str, Any]]):
-        control_block = self.fine_tuner(control_block, channels)
+    def fine_tune_control_block(self, channels: List[Dict[str, Any]]) -> dict[str, Any]:
+        control_block = self.get_active_control_block()
+        self.fine_tuner(control_block, channels)
 
         for j, cont in enumerate(control_block):
             target_index = len(control_block) - j - 1
-            self.equation = update_gains_on_equation(self.equation, control_block[j], target_index)
+            self.equation = update_gains_on_equation(self.equation, cont, target_index)
 
-        return self.get_final_state(), control_block
+        return self.get_final_state()
 
     def selective_redesign_controller(self, inner_loop_idx: int, inner_cont_idx: int,
                                       outer_loop_idx: int, outer_cont_idx: int,
-                                      controller_name: str, llm_agent: Any) -> tuple[dict[str, Any], list[Any]]:
+                                      controller_name: str, llm_agent: Any) -> dict[str, Any]:
         """
         Optimizes an inner controller's gains by evaluating the step response
         of an outer controller's loop.
@@ -92,21 +88,11 @@ class MuloTuningOrchestrator:
                            enumerate(self.controller_structure) if loop_idx > inner_loop_idx])
         target_file_index = len(inner_control_block) + outer_count - inner_cont_idx - 1
 
-        print()
-        print(self.equation)
-        print()
-        print(target_file_index)
-        print()
-
         self.update_case_study_for_selective_redesign(
             inner_cont, outer_cont, target_file_index, controller_name)
 
-        if "skip" in inner_cont:
-            gains, final_state = run_fixed_pid_handler(
-                inner_cont["kp"], inner_cont["ki"], inner_cont["kd"],
-                self.case_study, self.equation, self.run_config
-            )
-        elif self.run_config["optimizer_choice"] == "Agentic GA":
+
+        if self.run_config["optimizer_choice"] == "Agentic GA":
             gains, final_state = ga_agent_controller_tuner(self.run_config, self.case_study, llm_agent)
         elif self.run_config["optimizer_choice"] == "PSO Optimizer":
             gains, final_state = pso_controller_tuner(self.case_study, self.equation, self.run_config)
@@ -122,7 +108,7 @@ class MuloTuningOrchestrator:
 
         self.equation = update_gains_on_equation(self.equation, inner_cont, target_file_index)
 
-        return self.get_final_state(), self.controller_structure
+        return self.get_final_state()
 
     def update_case_study_for_selective_redesign(self, inner_cont: Dict[str, Any], outer_cont: Dict[str, Any]
                                                  , target_file_index: int, controller_name: str) -> None:
@@ -152,12 +138,6 @@ class MuloTuningOrchestrator:
         if inner_cont.get("kp") is not None:
             self.case_study["initial_conditions"] = [[inner_cont["kp"], inner_cont["ki"], inner_cont["kd"]]]
 
-        print()
-        import pprint
-        pprint.pprint(self.case_study)
-        print()
-
-
     def change_tuning_order(self, control_block: List[Dict[str, Any]], tuning_order: List[str]) -> List[
         Dict[str, Any]]:
         if tuning_order == None:
@@ -169,7 +149,6 @@ class MuloTuningOrchestrator:
         self.case_study["fixed_targets"] = coerce_metric_targets(pid_loop.get('metrics'))
         self.case_study["coupled_channels"] = [get_index(cont["controlled_variable_in_equation"]) for cont in
                                                pid_loop["controllers"]]
-
 
     def fine_tuner(self, control_block: List[Dict[str, Any]], channels: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         gains = []
@@ -198,14 +177,12 @@ class MuloTuningOrchestrator:
 
         return control_block
 
-
     def tune_controller(self, control_block: List[Dict[str, Any]], index: int,
-                        working_function: str, cost_function: str, controller_name: str, coupling_ratio: int, llm_agent: Any) -> List[Dict[str, Any]]:
+                        working_function: str, cost_function: str, controller_name: str, coupling_ratio: float,llm_agent: Any) -> List[Dict[str, Any]]:
         cont = control_block[index]
 
         # Calculate inverse index targeting specifically for replace_last_pid_controller_gains
         target_file_index = len(control_block) - index - 1
-
 
         self.update_case_study(cont, working_function, target_file_index, cost_function, controller_name, coupling_ratio)
 
@@ -213,12 +190,15 @@ class MuloTuningOrchestrator:
 
         if "skip" in control_block[index]:
             gains, final_state = run_fixed_pid_handler(control_block[index]["kp"], control_block[index]["ki"],
-                                                       control_block[index]["kd"], self.case_study, self.equation,self.run_config)
+                                                       control_block[index]["kd"], self.case_study, self.equation,
+                                                       self.run_config)
 
         elif self.run_config["optimizer_choice"] == "Agentic GA":
-            gains, final_state = ga_agent_controller_tuner(self.run_config, self.case_study, llm_agent, simulator_config=simulator_config)
+            gains, final_state = ga_agent_controller_tuner(self.run_config, self.case_study, llm_agent,
+                                                           simulator_config=simulator_config)
         elif self.run_config["optimizer_choice"] == "PSO Optimizer":
-            gains, final_state = pso_controller_tuner(self.case_study, self.equation, self.run_config, simulator_config=simulator_config)
+            gains, final_state = pso_controller_tuner(self.case_study, self.equation, self.run_config,
+                                                      simulator_config=simulator_config)
         else:
             gains, final_state = dummy_controller_tuner(self.run_config)
 
@@ -233,13 +213,13 @@ class MuloTuningOrchestrator:
         return control_block
 
     def update_case_study(self, cont: Dict[str, Any], working_function: str, target_file_index: int, cost_function: str,
-                          controller_name: str, coupling_ratio: int) -> None:
+                          controller_name: str, coupling_ratio: float) -> None:
         simulator_config = self.get_simulator_config(cont)
         min_b = simulator_config["min_ctrl"]
         max_b = simulator_config["max_ctrl"]
 
         # Inject real-time controller name for UI tracking
-        self.case_study["controller_name"] =  controller_name
+        self.case_study["controller_name"] = controller_name
         self.case_study["output_channel"] = simulator_config["output_channel"]
         self.case_study["input_channel"] = simulator_config["input_channel"]
         self.case_study["input_name"] = simulator_config["input_name"]
@@ -277,7 +257,6 @@ class MuloTuningOrchestrator:
             "target": self.generate_target(cont),
             "signal_type": cont.get("signal_type", "Step"),
         }
-
 
     def generate_target(self, cont):
         min_target = float(cont['target']['min_value'])
@@ -326,10 +305,10 @@ class MuloTuningOrchestrator:
 
     def set_loop_index(self, index: int) -> None:
         self.loop_index = index
-        
+
     def get_controller_index(self) -> int:
         return self.controller_index
-    
+
     def set_controller_index(self, index: int) -> None:
         self.controller_index = index
 
@@ -345,11 +324,18 @@ class MuloTuningOrchestrator:
     def set_final_state(self, final_state: Dict[str, Any]) -> None:
         self.final_state = final_state
 
+    def get_active_control_block(self) -> List[Dict[str, Any]]:
+        """Always returns a direct reference to the current loop's controllers list."""
+        i = int(self.loop_index)
+        if 0 <= i < len(self.controller_structure):
+            return self.controller_structure[i]["controllers"]
+        return []
 
-def generate_case_study(system_identification: Dict[str, Any], trimming_result: Dict[str, Any], equation: str) -> Dict[str, Any]:
+
+def generate_case_study(system_identification: Dict[str, Any], trimming_result: Dict[str, Any], equation: str) -> Dict[
+    str, Any]:
     trim_values = [float(num) for num in trimming_result["equilibrium"]["u_e"]]
     trim_ics = [float(num) for num in trimming_result["equilibrium"]["x_e"]]
-
 
     return {
         "system_name": system_identification["system_name"],

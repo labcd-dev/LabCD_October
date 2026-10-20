@@ -1,5 +1,7 @@
 import streamlit as st
 import queue
+import threading
+import traceback as _tb
 from typing import Any, Dict
 
 st.set_page_config(layout="wide")
@@ -19,22 +21,41 @@ def _run_experiment_worker(
     """
     Runs inside a daemon thread.
     1. Registers a progress callback with the thread-local registry.
-    2. Calls run_ga_handler (blocking).
+    2. Calls supervisor_agent.run (blocking, supporting live pause and rollback).
     3. Emits 'run_complete' or 'run_error' when finished.
     """
+    start_from_latest_agent = getattr(supervisor_agent, "_start_next_run_from_rollback", False)
+    if supervisor_agent is not None:
+        supervisor_agent._start_next_run_from_rollback = False
 
     def _push(event: Dict[str, Any]) -> None:
-        """Non-blocking put; silently drop if queue is unexpectedly full."""
+        """
+        Checks for cooperative abort/rollback on optimizer telemetry events,
+        then pushes the event non-blockingly onto event_queue.
+        """
+        if supervisor_agent is not None and event.get("event_type") in ("generation", "attempt_complete"):
+            supervisor_agent.check_abort()
         try:
             event_queue.put_nowait(event)
         except Exception:
             pass
 
     register_callback(_push)
-    # final_state = supervisor_agent.rule_based_control_design()
-    final_state = supervisor_agent.run()
-    _push({"event_type": "run_complete", "final_state": final_state})
-    unregister_callback()
+    if supervisor_agent is not None:
+        supervisor_agent.set_event_callback(_push)
+    try:
+        supervisor_agent.run(start_from_latest_agent=start_from_latest_agent)
+        _push({"event_type": "run_complete"})
+    except Exception as exc:
+        _push({
+            "event_type": "run_error",
+            "error": str(exc),
+            "traceback": _tb.format_exc(),
+        })
+    finally:
+        if supervisor_agent is not None:
+            supervisor_agent.set_event_callback(None)
+        unregister_callback()
 
 
 if "mulo_designer_stage" not in st.session_state:
@@ -84,13 +105,13 @@ else:
 
                     # 2. Reset run states so the UI knows to start polling again!
                     st.session_state["run_complete"] = False
-                    st.session_state["final_state"] = None
                     st.session_state["event_queue"] = queue.Queue()
                     st.session_state["plot_data"] = empty_plot_data()
                     st.session_state.pop("run_error", None)
                     st.session_state.pop("run_error_tb", None)
                     st.session_state.pop("modified_code", None)
                     st.session_state.pop("modified_controller_structure", None)
+                    st.session_state.pop("context_injection_mode", None)
                     clear_cached_plots()
 
                     orchestrator.set_controller_designed(False)

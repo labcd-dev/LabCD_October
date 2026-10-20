@@ -1,3 +1,4 @@
+import queue
 import time
 from typing import Any, Dict, List, Optional
 
@@ -6,7 +7,7 @@ import streamlit as st
 from plotly.subplots import make_subplots
 
 from frontend_streamlit.ga_agent_ui.ga_agent_utils import drain_event_queue, empty_plot_data
-from frontend_streamlit.mulo_designer_utils import show_performance_plots, generate_controller_name
+from frontend_streamlit.mulo_designer_utils import show_performance_plots, generate_controller_name, clear_cached_plots
 
 # Import the live decision queue from the backend
 try:
@@ -25,6 +26,12 @@ _GRAY = "rgba(120,120,120,0.55)"
 _RANGE_FILL = "rgba(33,150,243,0.13)"
 _TEMPLATE = "plotly_white"
 
+_AGENT_LABELS = {
+    "supervisor": "🧑‍💼 Supervisor Agent",
+    "fine_tuner_agent": "👌 Fine Tuner Agent",
+    "evaluate_agent": "⚖️ Evaluate Agent",
+}
+
 
 # -- Public entry-point --------------------------------------------------------
 
@@ -34,6 +41,8 @@ def display_project_page(run_by_ga_agent_ui: bool = True) -> None:
     if orchestrator is None:
         st.error("orchestrator not initialized. Please return to home and start a new experiment.")
         return
+
+    supervisor_agent = st.session_state.get("supervisor_agent")
 
     # Grab loop index to ensure unique chart keys on sequential runs
     loop_idx = orchestrator.get_loop_index()
@@ -50,6 +59,8 @@ def display_project_page(run_by_ga_agent_ui: bool = True) -> None:
         st.markdown("<div style='margin-top:18px;'></div>", unsafe_allow_html=True)
         st.markdown('<div id="blue_btn"></div>', unsafe_allow_html=True)
         if st.button("🏠 New Experiment", width='stretch'):
+            if supervisor_agent is not None and hasattr(supervisor_agent, "force_stop"):
+                supervisor_agent.force_stop()
             st.session_state["mulo_designer_stage"] = "setup"
             _reset_and_go_home()
             return
@@ -64,9 +75,16 @@ def display_project_page(run_by_ga_agent_ui: bool = True) -> None:
 
     # -- Get plot data (now a dict keyed by controller name) -------------------
     plot_data: Dict[str, Any] = st.session_state.get("plot_data", {})
+    run_complete: bool = st.session_state.get("run_complete", False)
 
     # -- Live status bar -------------------------------------------------------
-    _render_status_bar(plot_data)
+    _render_status_bar(plot_data, supervisor_agent)
+
+    # -- Live Workflow Pause, Rollback & User Context Injection Panel ----------
+    is_editing_context = False
+    if not run_by_ga_agent_ui and supervisor_agent is not None:
+        is_editing_context = _render_workflow_control_panel(supervisor_agent, run_complete)
+
     st.markdown("")
 
     # -- Main plots ------------------------------------------------------------
@@ -77,27 +95,33 @@ def display_project_page(run_by_ga_agent_ui: bool = True) -> None:
         is_mimo = len(controller_names) > 1
 
         if run_by_ga_agent_ui:
-            tab_cost, tab_metrics, tab_gains, tab_summary, tab_decisions = st.tabs([
+            tab_cost, tab_metrics, tab_gains, tab_summary, tab_decisions, tab_context = st.tabs([
                 "Baseline Cost",
                 "Performance Metrics",
                 "PID Gains",
                 "LLM Summary",
                 "Agent Decisions",
+                "Agent Context",
             ])
-            tabs = {"cost": tab_cost, "metrics": tab_metrics, "gains": tab_gains, "summary": tab_summary,
-                    "decisions": tab_decisions}
+            tabs = {
+                "cost": tab_cost, "metrics": tab_metrics, "gains": tab_gains,
+                "summary": tab_summary, "decisions": tab_decisions, "context": tab_context,
+            }
         else:
-            tab_performance, tab_cost, tab_metrics, tab_gains, tab_summary, tab_decisions, tab_result = st.tabs([
+            tab_performance, tab_cost, tab_metrics, tab_gains, tab_summary, tab_decisions, tab_context, tab_result = st.tabs([
                 "Controller Lab",
                 "Baseline Cost",
                 "Performance Metrics",
                 "PID Gains",
                 "LLM Summary",
                 "Agent Decisions",
+                "Agent Context",
                 "Final Result",
             ])
-            tabs = {"cost": tab_cost, "metrics": tab_metrics, "gains": tab_gains, "summary": tab_summary,
-                    "decisions": tab_decisions}
+            tabs = {
+                "cost": tab_cost, "metrics": tab_metrics, "gains": tab_gains,
+                "summary": tab_summary, "decisions": tab_decisions, "context": tab_context,
+            }
 
             with tab_performance:
                 if orchestrator.get_controller_designed():
@@ -172,7 +196,6 @@ def display_project_page(run_by_ga_agent_ui: bool = True) -> None:
             if not LIVE_AGENT_DECISIONS:
                 st.info("⏳ Waiting for the first agent decision...")
             else:
-                # Reverse the list so the most recent decisions appear at the top
                 for i, decision in enumerate(reversed(LIVE_AGENT_DECISIONS)):
                     agent_name = decision.get("agent", "Unknown Agent")
                     decision_number = len(LIVE_AGENT_DECISIONS) - i
@@ -180,13 +203,39 @@ def display_project_page(run_by_ga_agent_ui: bool = True) -> None:
                     with st.expander(f"{agent_name} - Decision #{decision_number}", expanded=(i == 0)):
                         st.json(decision.get("response", {}))
 
-    # -- Auto-rerun while GA is running ----------------------------------------
-    run_complete: bool = st.session_state.get("run_complete", False)
+        with tabs["context"]:
+            if supervisor_agent is not None and hasattr(supervisor_agent, "get_workflow_status"):
+                wf_info = supervisor_agent.get_workflow_status()
+                uc_hist = wf_info.get("user_context_history", [])
+                if uc_hist:
+                    with st.expander(f"🗣️ User Context History ({len(uc_hist)} entries)", expanded=True):
+                        st.json({
+                            "latest_user_context": wf_info.get("user_context"),
+                            "user_context_history": uc_hist,
+                        })
+
+            if not LIVE_AGENT_DECISIONS:
+                st.info("⏳ Waiting for the first agent context...")
+            else:
+                for i, decision in enumerate(reversed(LIVE_AGENT_DECISIONS)):
+                    agent_name = decision.get("agent", "Unknown Agent")
+                    decision_number = len(LIVE_AGENT_DECISIONS) - i
+
+                    context_data = decision.get("context", {})
+                    if context_data != {}:
+                        with st.expander(f"{agent_name} - Context #{decision_number}", expanded=(i == 0)):
+                            if isinstance(context_data, str):
+                                st.text(context_data)
+                            else:
+                                st.json(context_data)
+
+    # -- Auto-rerun while GA is running (paused while user is typing prompt) ---
     if not run_complete:
         thread = st.session_state.get("run_thread")
         if thread and thread.is_alive():
-            time.sleep(0.75)
-            st.rerun()
+            if not is_editing_context:
+                time.sleep(0.75)
+                st.rerun()
         else:
             drain_event_queue()
             st.session_state.run_complete = True
@@ -201,6 +250,230 @@ def display_project_page(run_by_ga_agent_ui: bool = True) -> None:
             st.session_state["mulo_designer_stage"] = "optimisation_complete"
 
 
+# -- Live Workflow Control & Context Injection Panel ---------------------------
+
+def _render_workflow_control_panel(supervisor_agent: Any, run_complete: bool) -> bool:
+    """
+    Renders live controls for pausing the LangGraph workflow and injecting UserContext:
+      - Mode 1 (Graceful): Keep current step running, pause at step completion (or queue prompt),
+        inject UserContext, and proceed to the next step.
+      - Mode 2 (Immediate Terminate & Rollback): Immediately terminate the ongoing process,
+        roll back to the latest completed graph-level agentic step (`supervisor`, `fine_tuner_agent`,
+        or `evaluate_agent`), inject UserContext, and re-run that agentic step and all steps after it.
+        Disabled during the initial `optimize` run before the first supervisor decision is made.
+
+    Returns True if the user currently has the context editor open (so the 0.75s polling loop
+    pauses and does not interrupt typing).
+    """
+    if not hasattr(supervisor_agent, "get_workflow_status"):
+        return False
+
+    wf_info = supervisor_agent.get_workflow_status()
+    wf_status = wf_info["status"]
+    current_node = wf_info["current_node"]
+    can_rollback = wf_info["can_rollback"]
+    latest_agent = wf_info["latest_agent"]
+    pending_prompt = wf_info["pending_prompt"]
+    uc_history = wf_info["user_context_history"]
+
+    active_mode = st.session_state.get("context_injection_mode")
+    if wf_status in ("pausing_after_step", "paused") and active_mode is None and pending_prompt is None:
+        active_mode = "graceful"
+        st.session_state["context_injection_mode"] = "graceful"
+    elif wf_status in ("terminating", "paused_after_rollback") and active_mode is None:
+        active_mode = "rollback"
+        st.session_state["context_injection_mode"] = "rollback"
+
+    latest_agent_str = (
+        f"{_AGENT_LABELS.get(latest_agent['node_name'], latest_agent['node_name'])} "
+        f"(Loop {latest_agent['loop_index'] + 1}, Ctrl {latest_agent['controller_index'] + 1}, Attempt {latest_agent['attempt']})"
+        if latest_agent else "None yet (Initial Optimization Run)"
+    )
+
+    st.markdown("---")
+    info_col1, info_col2, info_col3 = st.columns([2, 3, 2])
+    with info_col1:
+        st.markdown(f"**📍 Active Graph Step:** `{current_node}`")
+    with info_col2:
+        st.markdown(f"**🧠 Latest Completed Agent:** {latest_agent_str}")
+    with info_col3:
+        if pending_prompt:
+            st.markdown("**📥 Context Queued:** Waiting for step to finish")
+        else:
+            st.markdown(f"**💬 Injected Contexts:** `{len(uc_history)}`")
+
+    # 1. While workflow is running
+    if not run_complete:
+        if active_mode is None:
+            btn_col1, btn_col2 = st.columns(2)
+            with btn_col1:
+                if st.button(
+                    "⏸️ Pause After Current Step & Inject Context",
+                    type="secondary",
+                    width='stretch',
+                    key="btn_graceful_pause",
+                    help="Allows the currently running process to finish its job normally, then injects your context before the next step.",
+                ):
+                    supervisor_agent.request_pause_after_current_step(pause_and_wait=True)
+                    st.session_state["context_injection_mode"] = "graceful"
+                    st.rerun()
+
+            with btn_col2:
+                rollback_help = (
+                    "Immediately terminates the ongoing process, rolls back to the latest completed agentic step, "
+                    "injects your user context, and re-runs that agentic step and all processes after it."
+                    if can_rollback
+                    else "Disabled during the initial optimization run because no Supervisor Agent decision has been completed yet."
+                )
+                if st.button(
+                    "🛑 Terminate Current Process & Rollback to Last Agent",
+                    type="primary",
+                    width='stretch',
+                    disabled=not can_rollback,
+                    key="btn_terminate_rollback",
+                    help=rollback_help,
+                ):
+                    supervisor_agent.request_terminate_and_rollback(wait_for_prompt=True)
+                    st.session_state["context_injection_mode"] = "rollback"
+                    drain_event_queue()
+                    st.rerun()
+
+            if not can_rollback:
+                st.caption(
+                    "ℹ️ *Terminate & Rollback becomes available once the first Supervisor Agent decision completes. "
+                    "During the initial optimization run, use **Pause After Current Step** to inject context after optimization finishes.*"
+                )
+            return False
+
+        # Active Context Editor Panel (Mode 1 or Mode 2)
+        with st.container(border=True):
+            if active_mode == "graceful":
+                if wf_status == "paused":
+                    st.info(
+                        f"⏸️ **Workflow Paused After Step (`{current_node}`):** "
+                        f"The ongoing step finished normally. Write your prompt below to inject user context before the next step starts."
+                    )
+                else:
+                    st.warning(
+                        f"⏳ **Graceful Pause Active (Current Step `{current_node}` Finishing Normally):** "
+                        f"The current process is **not** interrupted and continues in the background. "
+                        f"Write your prompt below — as soon as `{current_node}` finishes, your context will be injected into the workflow."
+                    )
+            else:
+                target_label = _AGENT_LABELS.get(latest_agent["node_name"], latest_agent["node_name"]) if latest_agent else "Latest Agent"
+                st.error(
+                    f"🛑 **Process Terminated & Rolled Back to {target_label}:** "
+                    f"The ongoing process was terminated and state was restored to right before **{target_label}** "
+                    f"(`{latest_agent['checkpoint'] if latest_agent else ''}`). "
+                    f"Write your prompt below to inject user context and re-run **{target_label}** along with all subsequent steps."
+                )
+
+            prompt_text = st.text_area(
+                "User Context Prompt",
+                placeholder="Type your guidance or constraints for the workflow agents (e.g., 'Relax settling time target to 10s and focus on reducing overshoot')...",
+                key="live_user_context_input",
+                height=110,
+            )
+
+            if active_mode == "graceful" and can_rollback:
+                act_col1, act_col2, act_col3, act_col4 = st.columns([3, 2, 2, 1])
+            else:
+                act_col1, act_col2, act_col4 = st.columns([4, 3, 1])
+                act_col3 = None
+
+            with act_col1:
+                submit_label = (
+                    "▶️ Inject Context & Re-run Agent Step"
+                    if active_mode == "rollback"
+                    else "▶️ Inject Context & Proceed"
+                )
+                if st.button(submit_label, type="primary", width='stretch', key="btn_submit_user_context"):
+                    if not prompt_text or not prompt_text.strip():
+                        st.warning("⚠️ Please enter a non-empty prompt to inject, or click 'Resume Without Context'.")
+                    else:
+                        supervisor_agent.resume_with_context(prompt_text.strip())
+                        st.session_state.pop("context_injection_mode", None)
+                        st.session_state.pop("live_user_context_input", None)
+                        st.rerun()
+
+            with act_col2:
+                if st.button("▶️ Resume Without Context", type="secondary", width='stretch', key="btn_resume_no_context"):
+                    supervisor_agent.resume_with_context(None)
+                    st.session_state.pop("context_injection_mode", None)
+                    st.session_state.pop("live_user_context_input", None)
+                    st.rerun()
+
+            if act_col3 is not None:
+                with act_col3:
+                    if st.button(
+                        "🛑 Terminate & Rollback Instead",
+                        type="secondary",
+                        width='stretch',
+                        key="btn_switch_to_rollback",
+                        help="Immediately abort the current step and roll back to the latest completed agentic step instead of waiting.",
+                    ):
+                        supervisor_agent.request_terminate_and_rollback(wait_for_prompt=True)
+                        st.session_state["context_injection_mode"] = "rollback"
+                        drain_event_queue()
+                        st.rerun()
+
+            with act_col4:
+                if st.button("🔄 Refresh", type="secondary", width='stretch', key="btn_refresh_pause_panel"):
+                    drain_event_queue()
+                    st.rerun()
+
+        return True
+
+    # 2. When the current loop has completed (`run_complete` is True)
+    with st.expander("💬 Inject User Context or Re-run Latest Completed Agentic Step", expanded=False):
+        post_prompt = st.text_area(
+            "User Context Prompt",
+            placeholder="Add context for the next loop or to re-run the latest completed agentic step...",
+            key="post_run_user_context_input",
+            height=90,
+        )
+        p_col1, p_col2 = st.columns(2)
+        with p_col1:
+            if st.button(
+                "📥 Add Context for Next Stage",
+                type="secondary",
+                width='stretch',
+                key="btn_add_post_context",
+            ):
+                if post_prompt and post_prompt.strip():
+                    supervisor_agent.inject_context_while_idle(post_prompt.strip())
+                    st.success("✅ User context added to workflow state and history!")
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Please enter a non-empty context prompt.")
+
+        with p_col2:
+            if st.button(
+                "🛑 Inject Context & Re-run Latest Completed Agent",
+                type="primary",
+                width='stretch',
+                disabled=not can_rollback,
+                key="btn_post_rollback_rerun",
+                help="Rolls back to the latest completed agentic step in this loop, injects your prompt, and re-runs from that step.",
+            ):
+                if not post_prompt or not post_prompt.strip():
+                    st.warning("⚠️ Please enter a prompt before re-running the latest agentic step.")
+                else:
+                    supervisor_agent._pending_user_prompt = post_prompt.strip()
+                    supervisor_agent._start_next_run_from_rollback = True
+                    st.session_state["run_complete"] = False
+                    st.session_state.pop("run_error", None)
+                    st.session_state.pop("run_error_tb", None)
+                    st.session_state.pop("modified_code", None)
+                    st.session_state.pop("modified_controller_structure", None)
+                    clear_cached_plots()
+                    st.session_state["orchestrator"].set_controller_designed(False)
+                    st.session_state["mulo_designer_stage"] = "run_designer"
+                    st.rerun()
+
+    return False
+
+
 # -- Internal helpers ----------------------------------------------------------
 
 def _reset_and_go_home() -> None:
@@ -211,8 +484,8 @@ def _reset_and_go_home() -> None:
         pass
 
     for key in (
-            "run_config", "event_queue", "plot_data", "run_thread",
-            "run_complete", "final_state", "run_error", "run_error_tb",
+            "run_config", "event_queue", "plot_data", "plot_data_snapshots", "run_thread",
+            "run_complete", "run_error", "run_error_tb", "context_injection_mode",
     ):
         st.session_state.pop(key, None)
     st.session_state.plot_data = empty_plot_data()
@@ -233,15 +506,30 @@ def _render_config_badges() -> None:
         col.metric(label, value)
 
 
-def _render_status_bar(plot_data: Dict[str, Any]) -> None:
+def _render_status_bar(plot_data: Dict[str, Any], supervisor_agent: Any = None) -> None:
     run_complete: bool = st.session_state.get("run_complete", False)
     err = st.session_state.get("run_error")
 
+    wf_status = "running"
+    if supervisor_agent is not None and hasattr(supervisor_agent, "get_workflow_status"):
+        wf_status = supervisor_agent.get_workflow_status().get("status", "running")
+
     if not run_complete:
-        status_html = (
-            '<div style="background:#FF9800;color:white;border-radius:6px;'
-            'padding:6px 14px;text-align:center;font-weight:600;">🔄  Running…</div>'
-        )
+        if wf_status in ("paused", "paused_after_rollback"):
+            status_html = (
+                '<div style="background:#9C27B0;color:white;border-radius:6px;'
+                'padding:6px 14px;text-align:center;font-weight:600;">⏸️  Paused</div>'
+            )
+        elif wf_status == "pausing_after_step":
+            status_html = (
+                '<div style="background:#00BCD4;color:white;border-radius:6px;'
+                'padding:6px 14px;text-align:center;font-weight:600;">⏳  Finishing Step…</div>'
+            )
+        else:
+            status_html = (
+                '<div style="background:#FF9800;color:white;border-radius:6px;'
+                'padding:6px 14px;text-align:center;font-weight:600;">🔄  Running…</div>'
+            )
     elif err:
         status_html = (
             '<div style="background:#F44336;color:white;border-radius:6px;'
@@ -297,21 +585,39 @@ def _add_attempt_vlines(
         pd: Dict,
         row: Optional[int] = None,
         col: Optional[int] = None,
+        opacity: float = 0.7,
 ) -> None:
-    kwargs: Dict[str, Any] = {"line_dash": "dash", "line_color": _GRAY, "opacity": 0.7}
+    base_kwargs: Dict[str, Any] = {}
     if row is not None:
-        kwargs["row"] = row
+        base_kwargs["row"] = row
     if col is not None:
-        kwargs["col"] = col
-    for nfe in pd["attempt_boundaries_nfe"]:
-        fig.add_vline(x=nfe, **kwargs)
+        base_kwargs["col"] = col
+
+    # 1. Internal GA Agent attempt boundaries (gray dashed line)
+    for nfe in pd.get("attempt_boundaries_nfe", []):
+        fig.add_vline(
+            x=nfe,
+            line_dash="dash",
+            line_color=_GRAY,
+            opacity=opacity,
+            **base_kwargs,
+        )
+
+    # 2. Supervisor / Fine Tuner / Evaluate Agent boundaries (red dotted line)
+    for nfe in pd.get("supervisor_boundaries_nfe", []):
+        fig.add_vline(
+            x=nfe,
+            line_dash="dot",
+            line_color=_PURPLE,
+            line_width=2,
+            opacity=0.9,
+            **base_kwargs,
+        )
 
 
 def _build_cost_fig(pd: Dict, title_suffix: str = "") -> go.Figure:
     fig = go.Figure()
 
-    # 1. Best baseline cost of the current generation (shows exploration spikes)
-    # if "best_baseline_cost" in pd and pd["best_baseline_cost"]:
     fig.add_trace(go.Scatter(
         x=pd["cumulative_nfe"],
         y=pd["best_baseline_cost"],
@@ -321,19 +627,7 @@ def _build_cost_fig(pd: Dict, title_suffix: str = "") -> go.Figure:
         marker=dict(size=4),
     ))
 
-    # 2. Cumulative best baseline cost so far (all-time running champion)
-    # if "best_baseline_so_far" in pd and pd["best_baseline_so_far"]:
-    # fig.add_trace(go.Scatter(
-    #     x=pd["cumulative_nfe"],
-    #     y=pd["best_baseline_so_far"],
-    #     mode="lines+markers",
-    #     name="Best Baseline Cost So Far",
-    #     line=dict(color=_BLUE, width=2.5),
-    #     marker=dict(size=6),
-    # ))
-
-    for nfe in pd.get("attempt_boundaries_nfe", []):
-        fig.add_vline(x=nfe, line_dash="dash", line_color=_GRAY, opacity=0.7)
+    _add_attempt_vlines(fig, pd, opacity=0.7)
 
     fig.update_layout(
         title=f"Baseline Cost vs Cumulative NFE{title_suffix}",
@@ -355,17 +649,10 @@ def _build_cost_fig(pd: Dict, title_suffix: str = "") -> go.Figure:
 
 def _build_metrics_fig(pd: Dict, title_suffix: str = "") -> go.Figure:
     metrics = ["mse", "settling_time", "overshoot", "control_effort"]
+    target_keys = ["target_mse", "target_settling_time", "target_overshoot", "target_control_effort"]
     labels = ["MSE", "Settling Time", "Overshoot", "Control Effort"]
     colors = [_BLUE, _ORANGE, _PURPLE, _TEAL]
     positions = [(1, 1), (1, 2), (2, 1), (2, 2)]
-
-    targets = pd["fixed_targets"]
-    # if isinstance(fixed_targets_data, list) and len(fixed_targets_data) > 0:
-    #     targets: Dict[str, float] = fixed_targets_data[-1]
-    # elif isinstance(fixed_targets_data, dict):
-    #     targets: Dict[str, float] = fixed_targets_data
-    # else:
-    #     targets: Dict[str, float] = {}
 
     fig = make_subplots(
         rows=2, cols=2,
@@ -373,7 +660,9 @@ def _build_metrics_fig(pd: Dict, title_suffix: str = "") -> go.Figure:
         horizontal_spacing=0.10,
         vertical_spacing=0.20,
     )
-    for metric, label, color, (r, c) in zip(metrics, labels, colors, positions):
+
+    for metric, t_key, label, color, (r, c) in zip(metrics, target_keys, labels, colors, positions):
+        # Actual performance metric trace
         fig.add_trace(
             go.Scatter(
                 x=pd["cumulative_nfe"],
@@ -385,27 +674,42 @@ def _build_metrics_fig(pd: Dict, title_suffix: str = "") -> go.Figure:
             ),
             row=r, col=c,
         )
-        target_val = targets.get(metric)
 
-
-        if target_val is not None:
-            fig.add_hline(
-                y=target_val,
-                line_dash="dash",
-                line_color=_RED,
-                opacity=0.75,
-                annotation_text=f"Target={target_val}",
-                annotation_position="top right",
+        # Historical target metric trace (plotted as a step graph)
+        if pd.get(t_key) and not all(v != v for v in pd[t_key]):  # Ensure data isn't all NaNs
+            fig.add_trace(
+                go.Scatter(
+                    x=pd["cumulative_nfe"],
+                    y=pd[t_key],
+                    mode="lines",
+                    name=f"Target {label}",
+                    line=dict(color=_RED, width=2, dash="dash"),
+                    line_shape="vh",  # <--- Change this from "hv" to "vh"
+                    showlegend=False,
+                ),
                 row=r, col=c,
             )
-        for nfe in pd["attempt_boundaries_nfe"]:
-            fig.add_vline(x=nfe, line_dash="dash", line_color=_GRAY,
-                          opacity=0.5, row=r, col=c)
+
+            # Fix: Use data coordinates and native row/col binding
+            latest_target = pd[t_key][-1]
+            if latest_target == latest_target:  # check for not NaN
+                fig.add_annotation(
+                    x=pd["cumulative_nfe"][-1],  # Anchor to the highest NFE point
+                    y=latest_target,  # Anchor to the target line height
+                    text=f"Target={latest_target}",
+                    showarrow=False,
+                    xanchor="right",
+                    yanchor="bottom",
+                    font=dict(color=_GRAY),
+                    row=r, col=c  # Natively target the correct subplot
+                )
+
+        _add_attempt_vlines(fig, pd, row=r, col=c, opacity=0.5)
 
     fig.update_layout(
         title=f"Performance Metrics vs Cumulative NFE{title_suffix}",
         template=_TEMPLATE,
-        height=480,
+        height=650,
         margin=dict(l=64, r=40, t=64, b=52),
     )
     for r, c in positions:
@@ -432,7 +736,8 @@ def _build_gains_fig(pd: Dict, title_suffix: str = "") -> go.Figure:
 
     for gi, (gain, color) in enumerate(zip(gains, colors), 1):
         for att_num, ext in extents.items():
-            rng = safe_ranges.get(att_num, {}).get(gain)
+            att_rng_dict = safe_ranges.get(att_num, {})
+            rng = att_rng_dict.get(gain) or att_rng_dict.get(gain.lower())
             if rng:
                 lo, hi = rng
                 fig.add_shape(
@@ -454,9 +759,7 @@ def _build_gains_fig(pd: Dict, title_suffix: str = "") -> go.Figure:
             ),
             row=1, col=gi,
         )
-        for nfe in pd["attempt_boundaries_nfe"]:
-            fig.add_vline(x=nfe, line_dash="dash", line_color=_GRAY,
-                          opacity=0.55, row=1, col=gi)
+        _add_attempt_vlines(fig, pd, row=1, col=gi, opacity=0.55)
 
     fig.update_layout(
         title=f"PID Gains vs Cumulative NFE{title_suffix} (shaded = search range)",
@@ -548,11 +851,13 @@ def _build_summary_fig(pd: Dict, title_suffix: str = "") -> go.Figure:
     for gi, gain in enumerate(["Kp", "Ki", "Kd"], 2):
         for s in summaries:
             att = s["attempt"]
-            rng = s.get("param_ranges", {}).get(gain)
+            p_ranges = s.get("param_ranges", {})
+            rng = p_ranges.get(gain) or p_ranges.get(gain.lower())
             if rng is None:
                 continue
             lo, hi = rng
-            final_val = s.get("controller_gains", {}).get(gain, (lo + hi) / 2)
+            c_gains = s.get("controller_gains", {})
+            final_val = c_gains.get(gain, c_gains.get(gain.lower(), (lo + hi) / 2))
 
             fig.add_trace(
                 go.Scatter(
