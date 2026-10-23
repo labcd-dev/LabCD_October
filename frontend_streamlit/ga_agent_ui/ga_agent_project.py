@@ -604,13 +604,21 @@ def _add_attempt_vlines(
         )
 
     # 2. Supervisor / Fine Tuner / Evaluate Agent boundaries (red dotted line)
-    for nfe in pd.get("supervisor_boundaries_nfe", []):
+    nfes = pd.get("supervisor_boundaries_nfe", [])
+    labels = pd.get("supervisor_boundaries_labels", [])
+
+    for i, nfe in enumerate(nfes):
+        label = labels[i] if i < len(labels) else ""
+
         fig.add_vline(
             x=nfe,
             line_dash="dot",
             line_color=_PURPLE,
             line_width=2,
             opacity=0.9,
+            annotation_text=label,
+            annotation_position="top right",
+            annotation_font=dict(color=_PURPLE, size=10),
             **base_kwargs,
         )
 
@@ -667,7 +675,7 @@ def _build_metrics_fig(pd: Dict, title_suffix: str = "") -> go.Figure:
             go.Scatter(
                 x=pd["cumulative_nfe"],
                 y=pd[metric],
-                mode="lines+markers",
+                mode="lines",
                 name=label,
                 line=dict(color=color, width=2),
                 showlegend=False,
@@ -752,7 +760,7 @@ def _build_gains_fig(pd: Dict, title_suffix: str = "") -> go.Figure:
             go.Scatter(
                 x=pd["cumulative_nfe"],
                 y=pd[gain],
-                mode="lines+markers",
+                mode="lines",
                 name=gain,
                 line=dict(color=color, width=2),
                 showlegend=False,
@@ -825,12 +833,12 @@ def _build_summary_fig(pd: Dict, title_suffix: str = "") -> go.Figure:
     t_pct = [s.get("time_remaining_pct", 0) for s in summaries]
     c_pct = [s.get("cost_remaining_pct", 0) for s in summaries]
     fig.add_trace(go.Scatter(name="Time %", x=attempts, y=t_pct,
-                             mode="lines+markers",
+                             mode="lines",
                              line=dict(color=_BLUE),
                              showlegend=True, legendgroup="budget"),
                   row=1, col=4)
     fig.add_trace(go.Scatter(name="Cost %", x=attempts, y=c_pct,
-                             mode="lines+markers",
+                             mode="lines",
                              line=dict(color=_RED, dash="dot"),
                              showlegend=True, legendgroup="budget"),
                   row=1, col=4)

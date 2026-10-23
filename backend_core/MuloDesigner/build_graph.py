@@ -834,7 +834,7 @@ class MuloSupervisorAgent:
                 if isinstance(state["supervisor_decision"], Enum)
                 else str(state["supervisor_decision"])
             )
-            self._emit_supervisor_boundary([name], label=f"Supervisor: {decision_val}")
+            self._emit_supervisor_boundary([name], label=f"{decision_val}")
 
         final_state = self.orchestrator.design_controller(name, self.llm_agent)
 
@@ -1147,7 +1147,7 @@ class MuloSupervisorAgent:
             )
 
         # Mark red dotted line before Fine Tuner optimization starts
-        self._emit_supervisor_boundary(channel_names, label=f"Fine Tuner (Try {attempt})")
+        self._emit_supervisor_boundary(channel_names, label=f"Fine Tuner")
 
         final_state = self.orchestrator.fine_tune_control_block(channels)
 
@@ -1200,7 +1200,7 @@ class MuloSupervisorAgent:
         # Use canonical controlled_variable name so it continues on the existing channel graph
         name = outer_controllers[outer_idx]["controlled_variable"]
 
-        self._emit_supervisor_boundary([name], label=f"Evaluate Agent Re-design (Try {attempt})")
+        self._emit_supervisor_boundary([name], label=f"Re-design")
 
         final_state = self.orchestrator.selective_redesign_controller(
             inner_loop_idx, inner_idx, outer_loop_idx, outer_idx, name, self.llm_agent

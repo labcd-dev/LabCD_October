@@ -25,9 +25,9 @@ prompt: |
       {{
         "loop_number": integer,
         "metrics": {{
-          "mse": float,
-          "settling_time": float,
-          "overshoot": float,
+          "mse": float, 
+          "settling_time": float, 
+          "overshoot": float, (as a percentage)
           "control_effort": float
         }},
         "controllers": [

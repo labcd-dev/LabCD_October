@@ -14,6 +14,7 @@ OPTIMIZATION_OPTIONS: List[str] = [
 
 
 LLM_MODELS: List[str] = [
+    "openai/gpt-oss-120b",
     "gpt-6-luna",
     "gpt-6-astra",
     "gpt-4o-mini",

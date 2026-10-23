@@ -110,6 +110,7 @@ def initialize_controller_data(controller_name: str) -> Dict[str, Any]:
         "best_score_so_far": [],
         "attempt_boundaries_nfe": [],
         "supervisor_boundaries_nfe": [],
+        "supervisor_boundaries_labels": [],
         "attempt_summaries": [],
         "attempt_ranges": {},
         "controller_name": controller_name,
@@ -121,11 +122,8 @@ def initialize_controller_data(controller_name: str) -> Dict[str, Any]:
         "_pending_supervisor_boundary": False,
     }
 
-def mark_supervisor_boundary(controller_name: str) -> None:
-    """
-    Flags that a Supervisor / Fine Tuner / Evaluate Agent decision just occurred
-    for this controller, and records the boundary at the current cumulative NFE.
-    """
+
+def mark_supervisor_boundary(controller_name: str, event: Dict[str, Any]) -> None:
     if "plot_data" not in st.session_state:
         st.session_state.plot_data = empty_plot_data()
 
@@ -135,10 +133,12 @@ def mark_supervisor_boundary(controller_name: str) -> None:
     data = st.session_state.plot_data[controller_name]
     if data["cumulative_nfe"]:
         boundary_nfe = data["cumulative_nfe"][-1]
+        label = event.get("label", "Decision")  # <--- ADD THIS
+
         if boundary_nfe not in data["supervisor_boundaries_nfe"]:
             data["supervisor_boundaries_nfe"].append(boundary_nfe)
+            data["supervisor_boundaries_labels"].append(label)  # <--- ADD THIS
         data["_pending_supervisor_boundary"] = True
-
 
 def update_controller_plot_data(controller_name: str, event: Dict[str, Any]) -> None:
     """
@@ -292,7 +292,7 @@ def drain_event_queue() -> None:
 
             elif event_type == "supervisor_boundary":
                 controller_name = event.get("controller_name", "Unknown Controller")
-                mark_supervisor_boundary(controller_name)
+                mark_supervisor_boundary(controller_name, event)  # <--- PASS event HERE
 
             elif event_type == "agent_snapshot":
                 snap_id = event.get("snapshot_id")

@@ -19,9 +19,9 @@ prompt: |
   - Do not exceed the maximum number of supervisor decisions for this controller: {MAX_ATTEMPTS}. (This is not the maximum number of optimization attempts).
   - To give the optimization process more time, use the "Increase Optimizer Budget" action.
   - Sometimes, many optimization attempts do not improve a metric. This shows the target is impossible for the physical system. Use the "Change Target Metrics" action to change the threshold to a possible limit.
-  - Do not make targets too easy. Worst achieved metric for settling time is 49 seconds (basically the system never reaches an steady state) and because of that overshoot and control_effort will 0 or near 0 values in this situations you must go for "Change Objective".
+  - Do not make targets too easy. Worst achieved metric for settling time is 49 seconds (basically the system never reaches an steady state) and because of that overshoot (as a percentage) and control_effort will 0 or near 0 values in this situations you must go for "Change Objective".
   - Do not use the "Change Objective" action if a numerical target is too difficult. Use the "Change Objective" action only if the controller fails to track the reference signal.
-  - The baseline cost calculates 'mse', 'settling_time', 'overshoot', and 'control_effort' with this formula: cost += (achieved - target) / max(target, 1e-6). An easy target creates a large negative cost. This negative cost hides bad performance in other metrics. Use the "Change Target Metrics" action to make easy targets more strict. Do this only to identify and correct other bad metrics. When all metrics show balanced performance, do not make the targets more strict. Accept the results and use the "Proceed" action.
+  - The baseline cost calculates 'mse', 'settling_time', 'overshoot'(as a percentage), and 'control_effort' with this formula: cost += (achieved - target) / max(target, 1e-6). An easy target creates a large negative cost. This negative cost hides bad performance in other metrics. Use the "Change Target Metrics" action to make easy targets more strict. Do this only to identify and correct other bad metrics. When all metrics show balanced performance, do not make the targets more strict. Accept the results and use the "Proceed" action.
   - You can use the "Proceed" or "Terminate" actions. Both actions stop the current optimization process and move the workflow to the next step.
   - The GA/PSO Agent can only change cost function weights and parameter search ranges. Write actionable instructions in the "comment" field. These instructions must tell the GA/PSO Agent how to adjust those specific variables.
   - Monitor the 'control_zero_crossings' metric. A high value shows high-frequency oscillations and control signal chatter. This chatter can cause damage to physical actuators. If you see too many zero crossings, use the "Add Cost Penalty" action. This adds 'control_zero_crossings' to the cost evaluation. This mathematically penalizes aggressive control efforts.
@@ -64,7 +64,7 @@ prompt: |
       "new_target_metrics": {{
         "mse": <float>,
         "settling_time": <float>,
-        "overshoot": <float>,
+        "overshoot": <float>, (as a percentage)
         "control_effort": <float>
       }},
       "comment": "<Actionable advice for the GA/PSO agent>"

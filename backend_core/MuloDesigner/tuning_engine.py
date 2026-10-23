@@ -37,27 +37,32 @@ def add_constraint_to_controller(run_config: Dict[str, Any], controller_structur
                 response = agents.constraint_estimator(
                     controller_structure, trimming_result, run_config["control_objective"]
                 )
+                # import pprint
+                # pprint.pprint(response)
 
             if isinstance(response, str):
                 response = response.replace("```json", "").replace("```", "").strip()
+                response = response.replace("('", "").replace("')", "").strip()
                 llm_data = json.loads(response)
             else:
                 llm_data = response
 
             # Index LLM loop data by loop_number for fast, robust lookup
-            llm_loops = {loop["loop_number"]: loop for loop in llm_data.get("loops", [])}
+            llm_loops = llm_data.get("loops", [])
 
-            for pid_loop in new_controller:
-                loop_num = pid_loop.get("loop_number")
-                llm_loop_info = llm_loops.get(loop_num, {})
+            for i, pid_loop in enumerate(new_controller):
+                llm_loop_info = llm_loops[i]
+
+                import pprint
+                pprint.pprint(llm_loop_info)
 
                 # Merge synthesized metrics into loop
-                if "metrics" in llm_loop_info:
-                    pid_loop["metrics"] = llm_loop_info["metrics"]
-                else:
-                    pid_loop["metrics"] = {
-                        "control_effort": 0.1, "mse": 0.01, "overshoot": 0.05, "settling_time": 1.5
-                    }
+                # if "metrics" in llm_loop_info:
+                pid_loop["metrics"] = llm_loop_info["metrics"]
+                # else:
+                #     pid_loop["metrics"] = {
+                #         "control_effort": 0.1, "mse": 0.01, "overshoot": 0.05, "settling_time": 1.5
+                #     }
 
                 # Map synthesized controller constraints by controlled_variable name (or fallback to index)
                 llm_ctrls_by_var = {
@@ -105,6 +110,9 @@ def add_constraint_to_controller(run_config: Dict[str, Any], controller_structur
                     cont["kp"] = orig_cont["kp"]
                     cont["ki"] = orig_cont["ki"]
                     cont["kd"] = orig_cont["kd"]
+
+        # import pprint
+        # pprint.pprint(new_controller)
 
         return new_controller
 
